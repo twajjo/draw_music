@@ -79,18 +79,26 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
 
 ### Persistence: `DrawMusic.Library`
 - `mix phx.gen.auth Accounts User users --live` (this adds `Scope`; every context function takes it).
-- **Tables:**
-  - `compositions`: `user_id`, `name`, timestamps. Unique `(user_id, lower(name))`.
-  - `composition_versions`: `composition_id` (on_delete: delete_all), `number`, `score` (jsonb via `embeds_one`). Unique `(composition_id, number)`.
+- **Hierarchy:** Composition → Key → Version (built).
+  - `compositions`: `user_id`, `name` (citext, unique per user), `subtitle`, `composer` (may differ from the user, e.g. a by-ear transcription), `arranger`, `lyricist`, `copyright`, `notes`.
+  - `composition_keys`: `composition_id`, `sf` (−7..7), `mode` (major|minor). Unique per composition, sorted circle-of-fifths.
+  - `composition_versions`: `key_id`, `number` (per key), `label`, `time_num`/`time_den`, `time_symbol` (none|common|cut), `tempo_bpm`, `tempo_text`, `pickup_ticks`, `instrument` (GM program), `score` (jsonb; phase 2 swaps `:map` for an embedded `Score`, no migration needed).
+  - The version's key and time signature are *starting* values; changes partway through live in the score.
+- **Changing key in the editor** transposes the notes after the user confirms, and saves as a new version under the target key (`save_in_key/4` creates the key if it's missing).
+- **Delete rules:** deleting a key's only version removes the key. The composition's last version and last key can't be deleted.
+- **Import resolution:** the key comes from the file's key signature.
+  - `:new` returns `{:error, :name_taken}` on a collision.
+  - `:replace` resets only that key's versions to v1.
+  - `:new_version` adds the next version under that key, creating it if needed.
 - **The structured score is canonical.** MIDI is generated on download.
   - The writer also embeds the score JSON in a **sequencer-specific meta event, FF 7F with manufacturer ID 0x7D**. The ID is reserved for non-commercial use, so our own files round-trip losslessly.
   - On import the blob is validated through changesets, and quantized MIDI conversion is the fallback.
 - **API:**
-  - `list_compositions`, `get_composition!`, `list_versions`, `get_version!`;
-  - `create_composition`, `rename`, `delete_composition`, `delete_version`;
-  - `save_version`, `save_new_version`, `save_as_new_composition`;
-  - `import(scope, score, name, :new | :replace | :new_version)` returns `{:error, :name_taken}` to trigger the dialog;
-  - `Repo.transact` wraps multi-step saves.
+  - `list_compositions`, `get_composition!`, `get_composition_by_name`, `get_version!(scope, id)`, `get_latest_version!(scope, key_id)`;
+  - `create_composition(scope, comp, key, version)`, `update_composition`, `delete_composition`, `delete_key`, `delete_version`;
+  - `save_version`, `save_new_version(scope, key, attrs)`, `save_in_key`, `save_as_new_composition`;
+  - `import_score(scope, name, %{composition:, key:, version:}, resolution)`;
+  - `Repo.transact` with a composition row lock wraps multi-step saves.
 
 ### Music domain (pure): `lib/draw_music/music/`
 - **`Score`:** key (sf −7..7, mode), time_sig, tempo, ppq 960, `measures: [Measure{id, events}]`.
@@ -114,6 +122,9 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
 - **`ScoreCodec`:** quantizes to 64ths, assigns staff by track or by pitch, fills gaps with rests, and ties notes across bars.
 
 ### Web
+**Build the UI from function components wherever possible** (user requirement):
+- The palette (notes and rests), the transport, the chord catalog, the save menu, the import-collision dialog and the composition list rows are all components.
+- LiveView templates mostly compose components.
 - **Routes** (authenticated `live_session`):
   - `/compositions` (LibraryLive: list, versions, upload with collision dialog);
   - `/compositions/new`;
