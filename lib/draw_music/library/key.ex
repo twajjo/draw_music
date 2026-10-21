@@ -13,6 +13,8 @@ defmodule DrawMusic.Library.Key do
   @major_tonics ~w(C♭ G♭ D♭ A♭ E♭ B♭ F C G D A E B F♯ C♯)
   @minor_tonics ~w(A♭ E♭ B♭ F C G D A E B F♯ C♯ G♯ D♯ A♯)
 
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
   schema "composition_keys" do
     field :sf, :integer
     field :mode, Ecto.Enum, values: [:major, :minor]

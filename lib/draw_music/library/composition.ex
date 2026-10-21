@@ -16,6 +16,8 @@ defmodule DrawMusic.Library.Composition do
 
   @credit_fields [:subtitle, :composer, :arranger, :lyricist, :copyright]
 
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
   schema "compositions" do
     field :name, :string
     field :subtitle, :string

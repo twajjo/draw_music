@@ -14,7 +14,7 @@ config :draw_music, :scopes,
     assign_key: :current_scope,
     access_path: [:user, :id],
     schema_key: :user_id,
-    schema_type: :id,
+    schema_type: :binary_id,
     schema_table: :users,
     test_data_fixture: DrawMusic.AccountsFixtures,
     test_setup_helper: :register_and_log_in_user
@@ -22,7 +22,13 @@ config :draw_music, :scopes,
 
 config :draw_music,
   ecto_repos: [DrawMusic.Repo],
-  generators: [timestamp_type: :utc_datetime]
+  generators: [timestamp_type: :utc_datetime, binary_id: true]
+
+# UUID primary and foreign keys everywhere, so ids stay globally unique
+# across backup and restore.
+config :draw_music, DrawMusic.Repo,
+  migration_primary_key: [type: :binary_id],
+  migration_foreign_key: [type: :binary_id]
 
 # Configure the endpoint
 config :draw_music, DrawMusicWeb.Endpoint,

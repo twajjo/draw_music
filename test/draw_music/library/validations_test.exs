@@ -6,7 +6,8 @@ defmodule DrawMusic.Library.ValidationsTest do
   alias DrawMusic.Accounts.{Scope, User}
   alias DrawMusic.Library.{Composition, Key, Version}
 
-  @scope %Scope{user: %User{id: 1}}
+  @user_id Ecto.UUID.generate()
+  @scope %Scope{user: %User{id: @user_id}}
 
   describe "Composition.changeset/3" do
     defp composition(attrs), do: Composition.changeset(%Composition{}, attrs, @scope)
@@ -38,8 +39,8 @@ defmodule DrawMusic.Library.ValidationsTest do
     end
 
     test "owner comes from the scope, never from attrs" do
-      changeset = composition(%{name: "A", user_id: 999})
-      assert Ecto.Changeset.get_change(changeset, :user_id) == 1
+      changeset = composition(%{name: "A", user_id: Ecto.UUID.generate()})
+      assert Ecto.Changeset.get_change(changeset, :user_id) == @user_id
     end
   end
 
@@ -98,9 +99,16 @@ defmodule DrawMusic.Library.ValidationsTest do
     end
 
     test "number and key come from the context, never from attrs" do
-      changeset = Version.changeset(%Version{number: 1, key_id: 5}, %{number: 9, key_id: 6})
+      key_id = Ecto.UUID.generate()
+
+      changeset =
+        Version.changeset(%Version{number: 1, key_id: key_id}, %{
+          number: 9,
+          key_id: Ecto.UUID.generate()
+        })
+
       assert Ecto.Changeset.get_field(changeset, :number) == 1
-      assert Ecto.Changeset.get_field(changeset, :key_id) == 5
+      assert Ecto.Changeset.get_field(changeset, :key_id) == key_id
     end
   end
 

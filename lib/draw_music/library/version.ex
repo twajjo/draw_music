@@ -15,6 +15,8 @@ defmodule DrawMusic.Library.Version do
 
   @time_denominators [1, 2, 4, 8, 16, 32, 64]
 
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
   schema "composition_versions" do
     field :number, :integer
     field :label, :string
