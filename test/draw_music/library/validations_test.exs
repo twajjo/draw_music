@@ -94,6 +94,26 @@ defmodule DrawMusic.Library.ValidationsTest do
       assert %{instrument: [_]} = errors_on(version(%{instrument: 128}))
     end
 
+    test "a pickup bar is shorter than a full measure" do
+      assert version(%{time_num: 3, time_den: 4, pickup_ticks: 1920}).valid?
+
+      assert %{pickup_ticks: ["must be shorter than a full measure"]} =
+               errors_on(version(%{time_num: 3, time_den: 4, pickup_ticks: 2880}))
+    end
+
+    test "score params are validated down to each note" do
+      note = %{"staff" => "treble", "offset" => 0, "value" => "quarter", "step" => 28}
+      score = fn note -> %{score: %{"measures" => [%{"notes" => [note]}]}} end
+
+      assert version(score.(note)).valid?
+
+      assert %{score: %{measures: [%{notes: [%{step: [_]}]}]}} =
+               errors_on(version(score.(%{note | "step" => 100})))
+
+      assert %{score: %{measures: [%{notes: [%{voice: [_]}]}]}} =
+               errors_on(version(score.(Map.put(note, "voice", 5))))
+    end
+
     test "label at most 120 characters" do
       assert %{label: [_]} = errors_on(version(%{label: String.duplicate("x", 121)}))
     end

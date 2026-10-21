@@ -59,9 +59,12 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
   - Sharps go in the order F C G D A E B, flats in B E A D G C F.
   - Their positions on each clef come from the SMuFL/standard tables.
   - Minor is relative: same signature, mode flag.
-- **Accidentals:**
-  - An accidental lasts to the end of the bar.
-  - Show the accidental only where it differs from the key signature, plus courtesy naturals after a tie across the bar line.
+- **Accidentals** (signs before individual notes, as opposed to the key signature):
+  - Notes store their absolute alteration. The renderer derives the signs.
+  - A sign (♯ ♭ ♮ 𝄪 𝄫) shows only when the note's alteration differs from what's in effect at that point: the key signature, overridden by any earlier accidental on the same staff position, staff and bar.
+  - So ♮ appears only when the note would otherwise read sharp or flat.
+  - An accidental lasts until the bar line. A tied continuation into the next bar shows no sign.
+  - No courtesy (parenthesized) accidentals unless requested later.
 - **Rests:**
   - A whole rest hangs from the 4th line and also stands for a full empty bar in any meter.
   - Rests sit centered on their staff.
@@ -74,6 +77,22 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
 - **Bravura assets:** `steinbergmedia/bravura` (SIL OFL 1.1). Use `redist/woff/Bravura.woff2` (323 KB) and `redist/Bravura.json` (metadata) at build time, and ship `OFL.txt`.
 - **Sources consulted:** Wikipedia (Stem, Beam, Key signature, Accidental), teoria.com Reading Music, the SMuFL spec, and the midimusic.github.io SMF spec. musictheory.net renders its lessons in JavaScript, so its content couldn't be fetched. tonedear.com is an ear-training site, which suggests a later feature: interval and chord recognition drills.
 - **Glyphs:** SMuFL code points come from Bravura's `glyphnames.json`, with spacing from `bravura_metadata.json` (`engravingDefaults`) for staff-line thickness, stem thickness, beam thickness and ledger-line extension.
+
+## Libraries and licensing (decided 2026-10-21)
+**Use off-the-shelf libraries; don't re-invent them.**
+- **MIDI files:** `ex_midi` (hex, Apache-2.0), wrapped in one module of ours. Its read/write API takes file paths: uploads are temp files, and downloads go through a temp file.
+- **Browser audio:** Tone.js (MIT) for placement tones and scheduling, and smplr (MIT) for instruments.
+  - Splendid Grand Piano (public domain).
+  - General MIDI soundfonts from the MusyngKite set (CC BY-SA 3.0). `version.instrument` (GM 0–127) maps 1:1 to them.
+- **Samples are self-hosted.** `mix samples.fetch` downloads them into a gitignored `priv/static/samples/`, together with each set's license file. `mix setup` runs it.
+  - Default set: Splendid Grand Piano plus about 12 GM instruments (electric piano, harpsichord, organ, acoustic guitar, violin, cello, flute, clarinet, trumpet, choir, marimba…).
+  - More can be added in the task config. The picker shows unfetched instruments as "not installed".
+- **Not used:** midiex (live MIDI ports, maybe later for keyboard input), midi_synth / TuningFork (they make sound on the server, which users can't hear), @tonejs/midi (files are handled on the server).
+- **Attribution:**
+  - A Credits page (footer link) and `THIRD_PARTY_NOTICES.md`.
+  - MusyngKite needs credit plus a license link.
+  - Bravura ships with `OFL.txt`.
+  - Keep MIT notices.
 
 ## Architecture
 
@@ -115,7 +134,7 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
   - A note that overfills its bar returns `{:error, :measure_full}`; notes pushed across a bar line are split into ties.
 - **`Playback`:** builds a list of `%{id, start_s, dur_s, freq}` from a start tick or a range.
 
-### MIDI: `lib/draw_music/midi/` (pure Elixir binaries)
+### MIDI: `lib/draw_music/midi/` (SUPERSEDED: use `ex_midi` for file encoding and decoding; keep only the score ↔ events mapping)
 - **`VLQ`:** variable-length numbers.
 - **`Writer`:** Format 1, 960 ticks per quarter. Track 0 holds name, tempo, time signature, key signature and the FF 7F blob; tracks 1 and 2 are treble and bass, each ending with FF 2F 00.
 - **`Reader`:** formats 0 and 1, running status, velocity-0 note-on counts as note-off.
@@ -139,7 +158,16 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
   - The server sends playback events with `push_event`, and the hook highlights each note while it sounds.
   - There's no suitable Elixir audio library, and streaming tones from the server adds latency.
 - **Fonts:** `Bravura.woff2` lives in `priv/static/fonts` with `@font-face` in `app.css`.
-- **SVG export:** renders the score in print mode with Bravura embedded as base64 (about 250 KB).
+- **Score color scheme** (decided 2026-10-21): traditional (black notation on white paper) or dark (white notation on black).
+  - It follows the app's existing System/Light/Dark header toggle (`Layouts.theme_toggle`, remembered per browser). There's no separate score switch.
+  - `ScoreComponents` draw with CSS custom properties (`--score-ink`, `--score-paper`, plus the selection, hover-ghost and playback-highlight colors) set per `[data-theme]` in `app.css`. No colors are hard-coded in the SVG, so a switch needs no re-render.
+  - Dark mode keeps the same contrast for selection, ghost-note and playback highlights.
+  - **Dark-mode ink color is user-selectable** (decided 2026-10-21). It applies to notes, rests, staff lines, clefs, signatures, beams and ties; traditional mode is always black.
+    - Picked from a few preset swatches (white (default), cream, amber, light green, light blue, light pink) or any custom color from a color picker.
+    - Colors without enough contrast on black are refused with a message (WCAG contrast ratio of at least 7:1 against `#000`). The check runs in the changeset, so it holds for every way the color gets set.
+    - Saved on the user account: a `score_ink_dark` field on `users` (a `#rrggbb` string, nil = white), so it follows the user to any device. It's set through a changeset on `User` with format and contrast checks, and changed from a "Score colors" section on the settings page and a swatch control in the editor palette.
+    - The layout sets `--score-ink` inline from `@current_scope.user`, inside the dark theme only.
+- **SVG export:** renders the score in print mode with Bravura embedded as base64 (about 250 KB). Exports are **always traditional** (black on white), whatever the screen shows.
 
 ## Environment: mise
 - Add a project `mise.toml` pinning `erlang = "29.1.2"`, `elixir = "1.20.4-otp-29"` and `node = "23.8.0"` (needed for npm/Tone.js).
@@ -171,4 +199,6 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
   - Open a downloaded `.mid` in MuseScore.
   - Re-upload it and try all four collision choices.
   - Open the SVG export without Bravura installed.
+  - Switch Light/Dark while editing: the score flips between black-on-white and white-on-black without reloading, and the SVG export stays black on white.
+  - Pick an amber ink in dark mode: the score redraws in amber, the color survives logging in from another browser, and a near-black custom color is refused.
 - `mix precommit` is clean.
