@@ -198,4 +198,303 @@ defmodule DrawMusic.Music.EditingTest do
       assert Transpose.to_key(score, {0, :major}, {-1, :major}, :down) == {:error, :out_of_range}
     end
   end
+
+  describe "insert_time/5" do
+    test "shifts later events on that staff only" do
+      {score, _id} =
+        note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
+
+      {score, _id} = note!(score, @ctx, 0, "E4", %{staff: :treble, offset: 960, value: :quarter})
+      {score, _id} = note!(score, @ctx, 0, "C3", %{staff: :bass, offset: 0, value: :whole})
+
+      {:ok, score} = Editing.insert_time(score, @ctx, 960, 480, :treble)
+
+      assert notes(score) == [
+               {0, 0, "C3", :whole, 0},
+               {0, 0, "C4", :quarter, 0},
+               {0, 1440, "E4", :quarter, 0}
+             ]
+    end
+
+    test "splits a note sounding across the point and drops its tie" do
+      {score, id} = note!(Score.new(), @ctx, 0, "G4", %{staff: :treble, offset: 0, value: :half})
+
+      {:ok, score} = Editing.insert_time(score, @ctx, 960, 960, :treble)
+
+      assert notes(score) == [{0, 0, "G4", :quarter, 0}, {0, 1920, "G4", :quarter, 0}]
+      assert tie_chain(score, id) == [id]
+    end
+
+    test "appends bars when pushed past the end" do
+      {score, id} =
+        note!(Score.new(1), @ctx, 0, "G4", %{staff: :treble, offset: 0, value: :whole})
+
+      {:ok, score} = Editing.insert_time(score, @ctx, 0, 960, :treble)
+
+      assert length(score.measures) == 2
+      assert notes(score) == [{0, 960, "G4", :half, 1}, {1, 0, "G4", :quarter, 0}]
+      assert length(tie_chain(score, id)) == 2
+    end
+  end
+
+  defp rests(score) do
+    for {m, i} <- Enum.with_index(score.measures),
+        r <- m.rests,
+        do: {i, r.offset, r.value, r.dots}
+  end
+
+  describe "split/3" do
+    test "a note becomes two tied halves" do
+      {score, id} =
+        note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
+
+      {:ok, score, [^id, second]} = Editing.split(score, @ctx, id)
+
+      assert notes(score) == [{0, 0, "C4", :eighth, 0}, {0, 480, "C4", :eighth, 0}]
+      assert tie_chain(score, id) == [id, second]
+    end
+
+    test "a dotted value loses a dot and keeps the remainder" do
+      {score, id} =
+        note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter, dots: 1})
+
+      {:ok, score, _ids} = Editing.split(score, @ctx, id)
+      assert notes(score) == [{0, 0, "C4", :quarter, 0}, {0, 960, "C4", :eighth, 0}]
+    end
+
+    test "a rest becomes two rests" do
+      {:ok, score, id} =
+        Editing.place_rest(Score.new(), @ctx, 0, %{staff: :treble, offset: 0, value: :quarter})
+
+      {:ok, score, _ids} = Editing.split(score, @ctx, id)
+      assert rests(score) == [{0, 0, :eighth, 0}, {0, 480, :eighth, 0}]
+    end
+
+    test "a 64th cannot be split" do
+      {score, id} =
+        note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :sixty_fourth})
+
+      assert Editing.split(score, @ctx, id) == {:error, :unrepresentable}
+    end
+  end
+
+  describe "set_value/5" do
+    test "lengthens a note when there is room" do
+      {score, id} =
+        note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
+
+      {:ok, score} = Editing.set_value(score, @ctx, id, :half, 0)
+      assert notes(score) == [{0, 0, "C4", :half, 0}]
+    end
+
+    test "refuses to overfill the bar" do
+      {score, id} =
+        note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 2880, value: :quarter})
+
+      assert Editing.set_value(score, @ctx, id, :half, 0) == {:error, :measure_full}
+    end
+
+    test "refuses to run into the next note of the voice" do
+      {score, id} =
+        note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
+
+      {score, _id} = note!(score, @ctx, 0, "E4", %{staff: :treble, offset: 960, value: :quarter})
+
+      assert Editing.set_value(score, @ctx, id, :half, 0) == {:error, :overlap}
+    end
+  end
+
+  describe "to_rest/3 and to_note/5" do
+    test "a note becomes a rest of the same length, losing its ties" do
+      {score, a} =
+        note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
+
+      {score, b} = note!(score, @ctx, 0, "C4", %{staff: :treble, offset: 960, value: :quarter})
+      {:ok, score} = Editing.tie(score, @ctx, a, b)
+
+      {:ok, score, _rest_id} = Editing.to_rest(score, @ctx, b)
+
+      assert notes(score) == [{0, 0, "C4", :quarter, 0}]
+      assert rests(score) == [{0, 960, :quarter, 0}]
+      assert tie_chain(score, a) == [a]
+    end
+
+    test "a rest becomes a note on the given step" do
+      {:ok, score, id} =
+        Editing.place_rest(Score.new(), @ctx, 0, %{staff: :treble, offset: 960, value: :half})
+
+      {step, alter} = pitch!("E4")
+      {:ok, score, _note_id} = Editing.to_note(score, @ctx, id, step, alter)
+
+      assert notes(score) == [{0, 960, "E4", :half, 0}]
+      assert rests(score) == []
+    end
+  end
+
+  defp q(score, offset, spn, attrs \\ %{}) do
+    note!(
+      score,
+      @ctx,
+      0,
+      spn,
+      Map.merge(%{staff: :treble, offset: offset, value: :quarter}, attrs)
+    )
+  end
+
+  describe "delete/3" do
+    setup do
+      {s, c} = q(Score.new(), 0, "C4")
+      {s, d} = q(s, 960, "D4")
+      {s, _e} = q(s, 1920, "E4")
+      {s, _bass} = note!(s, @ctx, 0, "C3", %{staff: :bass, offset: 0, value: :whole})
+      %{score: s, c: c, d: d}
+    end
+
+    test "closes the gap on that staff only", %{score: score, d: d} do
+      {:ok, score} = Editing.delete(score, @ctx, [d])
+
+      assert notes(score) == [
+               {0, 0, "C3", :whole, 0},
+               {0, 0, "C4", :quarter, 0},
+               {0, 960, "E4", :quarter, 0}
+             ]
+    end
+
+    test "closes a gap left by several events", %{score: score, c: c, d: d} do
+      {:ok, score} = Editing.delete(score, @ctx, [c, d])
+      assert {0, 0, "E4", :quarter, 0} in notes(score)
+    end
+
+    test "time another voice still sounds is not a gap", %{score: score, c: c} do
+      {score, _v2} = q(score, 0, "G4", %{value: :half, voice: 2})
+      {:ok, score} = Editing.delete(score, @ctx, [c])
+
+      assert {0, 960, "D4", :quarter, 0} in notes(score)
+    end
+  end
+
+  describe "transposing" do
+    test "by semitones, spelled for the key" do
+      {s, id} = q(Score.new(), 0, "C4")
+      {:ok, up} = Editing.transpose_chromatic(s, @ctx, [id], 1)
+      assert [{0, 0, "C♯4", :quarter, 0}] = notes(up)
+
+      {:ok, flat_key} = Editing.transpose_chromatic(s, %Context{sf: -1}, [id], 1)
+      assert [{0, 0, "D♭4", :quarter, 0}] = notes(flat_key)
+    end
+
+    test "by an exact interval" do
+      {s, id} = q(Score.new(), 0, "C4")
+      {:ok, third_up} = Editing.transpose_interval(s, @ctx, [id], 2, 4)
+      assert [{0, 0, "E4", :quarter, 0}] = notes(third_up)
+
+      {:ok, minor_third_down} = Editing.transpose_interval(s, @ctx, [id], -2, -3)
+      assert [{0, 0, "A3", :quarter, 0}] = notes(minor_third_down)
+
+      {s, fs} = q(Score.new(), 0, "F#4")
+      {:ok, major_third} = Editing.transpose_interval(s, @ctx, [fs], 2, 4)
+      assert [{0, 0, "A♯4", :quarter, 0}] = notes(major_third)
+    end
+
+    test "refuses to leave the piano's range" do
+      {s, id} = q(Score.new(), 0, "C8")
+      assert Editing.transpose_chromatic(s, @ctx, [id], 1) == {:error, :out_of_range}
+    end
+  end
+
+  describe "reverse/3" do
+    test "plays the selection backwards in its own span" do
+      {s, c} = q(Score.new(), 0, "C4")
+      {s, d} = note!(s, @ctx, 0, "D4", %{staff: :treble, offset: 960, value: :eighth})
+      {s, e} = q(s, 1440, "E4")
+
+      {:ok, s} = Editing.reverse(s, @ctx, [c, d, e])
+
+      assert notes(s) == [
+               {0, 0, "E4", :quarter, 0},
+               {0, 960, "D4", :eighth, 0},
+               {0, 1440, "C4", :quarter, 0}
+             ]
+    end
+
+    test "ties inside the selection still point forward" do
+      {s, a} = q(Score.new(), 0, "C4")
+      {s, b} = q(s, 960, "C4")
+      {:ok, s} = Editing.tie(s, @ctx, a, b)
+
+      {:ok, s} = Editing.reverse(s, @ctx, [a, b])
+      assert tie_chain(s, b) == [b, a]
+    end
+  end
+
+  describe "review fixes" do
+    test "rebar_to handles much shorter bars" do
+      {s, _id} = note!(Score.new(4), @ctx, 3, "C4", %{staff: :treble, offset: 0, value: :eighth})
+      assert {:ok, s} = Editing.rebar_to(s, @ctx, %Context{time_num: 1, time_den: 8})
+      assert length(s.measures) == 32
+    end
+
+    test "the pickup bar can't be deleted" do
+      ctx = %Context{pickup_ticks: 960}
+      assert Editing.delete_measure(Score.new(2), ctx, 0) == {:error, :pickup_bar}
+      assert {:ok, _score} = Editing.delete_measure(Score.new(3), ctx, 1)
+    end
+
+    test "inserting a bar drops ties it separates" do
+      {s, a} = q(Score.new(2), 2880, "C4")
+      {s, b} = note!(s, @ctx, 1, "C4", %{staff: :treble, offset: 0, value: :quarter})
+      {:ok, s} = Editing.tie(s, @ctx, a, b)
+
+      {:ok, s} = Editing.insert_measure(s, @ctx, 1)
+      assert tie_chain(s, a) == [a]
+    end
+
+    test "chord_ids finds the whole chord" do
+      {:ok, s, ids} =
+        Editing.place_chord(Score.new(), @ctx, 0, %{staff: :treble, offset: 0, value: :quarter}, [
+          pitch!("C4"),
+          pitch!("E4")
+        ])
+
+      assert Enum.sort(Editing.chord_ids(s, @ctx, hd(ids))) == Enum.sort(ids)
+    end
+
+    test "set_value and split change a whole chord" do
+      {:ok, s, ids} =
+        Editing.place_chord(Score.new(), @ctx, 0, %{staff: :treble, offset: 0, value: :quarter}, [
+          pitch!("C4"),
+          pitch!("E4")
+        ])
+
+      {:ok, half} = Editing.set_value(s, @ctx, ids, :half, 0)
+      assert Enum.map(notes(half), &elem(&1, 3)) == [:half, :half]
+
+      {:ok, split, _ids} = Editing.split(s, @ctx, ids)
+      assert length(notes(split)) == 4
+    end
+
+    test "to_rest turns a whole chord into one rest" do
+      {:ok, s, ids} =
+        Editing.place_chord(Score.new(), @ctx, 0, %{staff: :treble, offset: 0, value: :quarter}, [
+          pitch!("C4"),
+          pitch!("E4")
+        ])
+
+      {:ok, s, _rest} = Editing.to_rest(s, @ctx, ids)
+      assert notes(s) == []
+      assert rests(s) == [{0, 0, :quarter, 0}]
+    end
+  end
+
+  describe "rebar_to/3" do
+    test "keeps events' times and re-flows them into the new bars" do
+      {score, id} =
+        note!(Score.new(), @ctx, 0, "G4", %{staff: :treble, offset: 1920, value: :half})
+
+      {:ok, score} = Editing.rebar_to(score, @ctx, %Context{time_num: 3, time_den: 4})
+
+      assert notes(score) == [{0, 1920, "G4", :quarter, 0}, {1, 0, "G4", :quarter, 0}]
+      assert length(tie_chain(score, id)) == 2
+    end
+  end
 end

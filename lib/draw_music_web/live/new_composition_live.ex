@@ -7,7 +7,7 @@ defmodule DrawMusicWeb.NewCompositionLive do
 
   use DrawMusicWeb, :live_view
 
-  import DrawMusicWeb.LibraryComponents, only: [version_path: 3]
+  import DrawMusicWeb.LibraryComponents, only: [version_path: 3, key_options: 0]
 
   alias DrawMusic.Library
   alias DrawMusic.Library.{Composition, Key, Version}
@@ -166,12 +166,6 @@ defmodule DrawMusicWeb.NewCompositionLive do
       beats * Context.beat_ticks(%Context{time_den: String.to_integer(den)})
     else
       _ -> 0
-    end
-  end
-
-  defp key_options do
-    for {label, mode} <- [{"Major", :major}, {"Minor", :minor}] do
-      {label, for(sf <- -7..7, do: {Key.name(sf, mode), Key.slug(sf, mode)})}
     end
   end
 end

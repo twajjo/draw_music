@@ -17,6 +17,9 @@ defmodule DrawMusic.Engraving.Staff do
   @sharps [38, 35, 39, 36, 33, 37, 34]
   @flats [34, 37, 33, 36, 32, 35, 31]
 
+  @doc "Step of the top line of `staff`."
+  def top_step(staff), do: Map.fetch!(@top_step, staff)
+
   @doc "y of the top line of `staff`."
   def top(:treble), do: 0
   def top(:bass), do: 4 + @gap

@@ -30,7 +30,7 @@ defmodule DrawMusic.Engraving.Layout do
   """
 
   alias DrawMusic.Engraving.{Notes, Smufl, Staff}
-  alias DrawMusic.Music.{Context, Duration, Score, Timeline}
+  alias DrawMusic.Music.{Context, Duration, Measure, Score, Timeline}
 
   @spacing 8
   @left_pad 2.0
@@ -43,7 +43,14 @@ defmodule DrawMusic.Engraving.Layout do
 
   @digit_glyphs ~w(timeSig0 timeSig1 timeSig2 timeSig3 timeSig4 timeSig5 timeSig6 timeSig7 timeSig8 timeSig9)a
 
-  def layout(%Score{} = score, %Context{} = ctx, opts \\ []) do
+  # A score with no measures (e.g. imported from an empty file) is drawn
+  # as one empty bar.
+  def layout(score, ctx, opts \\ [])
+
+  def layout(%Score{measures: []} = score, ctx, opts),
+    do: layout(%{score | measures: [Measure.new()]}, ctx, opts)
+
+  def layout(%Score{} = score, %Context{} = ctx, opts) do
     width = Keyword.get(opts, :width, :infinity)
     scale = Keyword.get(opts, :spacing, @spacing) / Duration.ppq()
     last = length(score.measures) - 1

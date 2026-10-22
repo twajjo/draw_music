@@ -95,6 +95,11 @@ defmodule DrawMusic.Engraving.LayoutTest do
     end
   end
 
+  test "a score with no measures is drawn as one empty bar" do
+    layout = Layout.layout(%Score{measures: []}, @ctx)
+    assert [%{measures: [%{index: 0}]}] = layout.systems
+  end
+
   describe "geometry" do
     test "measures map ticks to x and back, and notes sit at their tick" do
       {score, id} = place(Score.new(2), @ctx, 1, "G4", %{offset: 1440, value: :eighth})

@@ -11,6 +11,13 @@ defmodule DrawMusicWeb.LibraryComponents do
 
   alias DrawMusic.Library.Key
 
+  @doc "Every key as select options, grouped into major and minor, valued by slug."
+  def key_options do
+    for {label, mode} <- [{"Major", :major}, {"Minor", :minor}] do
+      {label, for(sf <- -7..7, do: {Key.name(sf, mode), Key.slug(sf, mode)})}
+    end
+  end
+
   @doc "Path of a version's score view."
   def version_path(composition_id, %Key{} = key, number),
     do: ~p"/compositions/#{composition_id}/#{Key.slug(key)}/v/#{number}"

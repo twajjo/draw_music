@@ -179,6 +179,400 @@ defmodule DrawMusic.Music.Editing do
     map_selected(score, ctx, ids, fn entry -> {:ok, %{entry | start: entry.start + delta}} end)
   end
 
+  @doc """
+  Inserts `ticks` of time at absolute tick `at` on one staff: every event on
+  `staff` starting at or after `at` moves right by `ticks`. An event sounding
+  across `at` is split there and its tail moves; the tie between a note's
+  halves is dropped, since they no longer touch. Bars are appended as
+  needed; the other staff is untouched.
+  """
+  def insert_time(%Score{} = score, %Context{} = ctx, at, ticks, staff)
+      when is_integer(at) and at >= 0 and is_integer(ticks) and ticks > 0 do
+    entries =
+      score
+      |> Timeline.flatten(ctx)
+      |> Enum.flat_map(fn
+        %{event: %{staff: ^staff}} = entry when entry.start >= at ->
+          [%{entry | start: entry.start + ticks}]
+
+        %{event: %{staff: ^staff}} = entry when entry.start + entry.ticks > at ->
+          split_at(entry, at, ticks)
+
+        entry ->
+          [entry]
+      end)
+
+    rebuild(score, ctx, entries)
+  end
+
+  @doc """
+  Deletes events and closes the gap on each staff they were on: every
+  later event on that staff moves left by the time emptied before it. Time
+  another voice on the staff still sounds is not a gap.
+  """
+  def delete(%Score{} = score, %Context{} = ctx, ids) do
+    ids = MapSet.new(ids)
+    {gone, kept} = score |> Timeline.flatten(ctx) |> Enum.split_with(&(&1.event.id in ids))
+
+    gaps =
+      gone
+      |> Enum.group_by(& &1.event.staff)
+      |> Map.new(fn {staff, removed} ->
+        {staff, emptied(removed, Enum.filter(kept, &(&1.event.staff == staff)))}
+      end)
+
+    shifted =
+      Enum.map(kept, fn entry ->
+        closed =
+          for {from, to} <- Map.get(gaps, entry.event.staff, []), to <= entry.start, do: to - from
+
+        %{entry | start: entry.start - Enum.sum(closed)}
+      end)
+
+    rebuild(score, ctx, shifted)
+  end
+
+  # The removed events' spans, merged, minus time still covered by others.
+  defp emptied(removed, kept) do
+    covers = Enum.map(kept, &{&1.start, &1.start + &1.ticks})
+
+    removed
+    |> Enum.map(&{&1.start, &1.start + &1.ticks})
+    |> merge_spans()
+    |> Enum.flat_map(fn span -> Enum.reduce(covers, [span], &cut_out/2) end)
+  end
+
+  defp merge_spans(spans) do
+    spans
+    |> Enum.sort()
+    |> Enum.reduce([], fn
+      {from, to}, [{prev_from, prev_to} | rest] when from <= prev_to ->
+        [{prev_from, max(to, prev_to)} | rest]
+
+      span, acc ->
+        [span | acc]
+    end)
+    |> Enum.reverse()
+  end
+
+  # Removes the cover {cs, ce} from each span.
+  defp cut_out({cs, ce}, spans) do
+    Enum.flat_map(spans, fn {s, e} ->
+      Enum.reject([{s, min(e, cs)}, {max(s, ce), e}], fn {a, b} -> a >= b end)
+    end)
+  end
+
+  @doc "Moves notes by `semitones`, spelled to suit the key."
+  def transpose_chromatic(%Score{} = score, %Context{} = ctx, ids, semitones)
+      when is_integer(semitones) do
+    map_selected(score, ctx, ids, fn entry ->
+      note_only(entry, fn note ->
+        {step, alter} = Pitch.spell(Note.midi(note) + semitones, ctx.sf)
+        %{note | step: step, alter: alter}
+      end)
+    end)
+  end
+
+  @doc """
+  Moves notes by an exact interval: the letter moves `steps` and the
+  alteration makes up `semitones` (a major third up is 2 steps, 4
+  semitones). A spelling needing more than a double sharp or flat is
+  re-spelled for the key.
+  """
+  def transpose_interval(%Score{} = score, %Context{} = ctx, ids, steps, semitones)
+      when is_integer(steps) and is_integer(semitones) do
+    map_selected(score, ctx, ids, fn entry ->
+      note_only(entry, &by_interval(&1, steps, semitones, ctx.sf))
+    end)
+  end
+
+  defp by_interval(note, steps, semitones, sf) do
+    midi = Note.midi(note) + semitones
+    step = note.step + steps
+    {step, alter} = spelled(step, midi - Pitch.natural_midi(step), midi, sf)
+    %{note | step: step, alter: alter}
+  end
+
+  defp spelled(step, alter, _midi, _sf) when alter in -2..2, do: {step, alter}
+  defp spelled(_step, _alter, midi, sf), do: Pitch.spell(midi, sf)
+
+  @doc """
+  Plays the events backwards within the time they span. Ties inside the
+  selection are flipped so they still point forward; ties into or out of
+  it are dropped.
+  """
+  def reverse(%Score{} = score, %Context{} = ctx, ids) do
+    ids = MapSet.new(ids)
+    entries = Timeline.flatten(score, ctx)
+    selected = Enum.filter(entries, &(&1.event.id in ids))
+
+    if selected == [] do
+      {:ok, score}
+    else
+      first = selected |> Enum.map(& &1.start) |> Enum.min()
+      last = selected |> Enum.map(&(&1.start + &1.ticks)) |> Enum.max()
+
+      flipped =
+        for %{event: %Note{id: from, tie_to: to}} <- selected,
+            to in ids,
+            into: %{},
+            do: {to, from}
+
+      entries
+      |> Enum.map(&mirror(&1, ids, first + last, flipped))
+      |> then(&rebuild(score, ctx, &1))
+    end
+  end
+
+  # A selected entry's start mirrored within the span (`span` = first +
+  # last tick), with its tie flipped.
+  defp mirror(entry, ids, span, flipped) do
+    if entry.event.id in ids,
+      do: %{
+        entry
+        | start: span - (entry.start + entry.ticks),
+          event: put_tie(entry.event, flipped[entry.event.id])
+      },
+      else: entry
+  end
+
+  @doc """
+  Splits a note or rest into two. An undotted value becomes two of the next
+  shorter value; a dotted one becomes the same value with one dot fewer plus
+  the remainder (dotted quarter → quarter + eighth). A note's halves are tied.
+  Returns the ids of the halves, head then tail for each event; heads keep
+  the events' ids. Give the ids of a whole chord (see `chord_ids/3`) to
+  split it together.
+  """
+  def split(%Score{} = score, %Context{} = ctx, ids) when is_list(ids) do
+    entries = Timeline.flatten(score, ctx)
+
+    with {:ok, chosen} <- find_entries(entries, ids),
+         {:ok, head_value_dots, tail_value_dots} <-
+           halves(hd(chosen).event.value, hd(chosen).event.dots) do
+      pieces = Map.new(chosen, &{&1.event.id, split_entry(&1, head_value_dots, tail_value_dots)})
+
+      replaced =
+        Enum.flat_map(entries, fn entry -> Map.get(pieces, entry.event.id, [entry]) end)
+
+      new_ids = for entry <- chosen, piece <- pieces[entry.event.id], do: piece.event.id
+      with {:ok, score} <- rebuild(score, ctx, replaced), do: {:ok, score, new_ids}
+    end
+  end
+
+  def split(%Score{} = score, %Context{} = ctx, id), do: split(score, ctx, [id])
+
+  defp split_entry(entry, {head_value, head_dots}, {tail_value, tail_dots}) do
+    second = Ecto.UUID.generate()
+    head_ticks = Duration.ticks(head_value, head_dots)
+
+    head = %{
+      entry
+      | ticks: head_ticks,
+        event: put_tie(%{entry.event | value: head_value, dots: head_dots}, second)
+    }
+
+    tail = %{
+      entry
+      | start: entry.start + head_ticks,
+        ticks: entry.ticks - head_ticks,
+        event: %{entry.event | id: second, value: tail_value, dots: tail_dots}
+    }
+
+    [head, tail]
+  end
+
+  @doc """
+  Ids of the chord `id` belongs to: the notes of its staff and voice that
+  start and end with it (just `[id]` for a rest or a lone note).
+  """
+  def chord_ids(%Score{} = score, %Context{} = ctx, id) do
+    entries = Timeline.flatten(score, ctx)
+
+    case find_entry(entries, id) do
+      {:ok, %{kind: :note} = entry} ->
+        for %{kind: :note} = other <- entries,
+            other.event.staff == entry.event.staff and other.event.voice == entry.event.voice,
+            other.start == entry.start and other.ticks == entry.ticks,
+            do: other.event.id
+
+      _rest_or_missing ->
+        [id]
+    end
+  end
+
+  defp find_entries(entries, ids) do
+    case Enum.filter(entries, &(&1.event.id in ids)) do
+      [] -> {:error, :not_found}
+      found -> {:ok, found}
+    end
+  end
+
+  defp halves(value, 0) do
+    case Enum.drop_while(Duration.values(), &(&1 != value)) do
+      [_value, shorter | _] -> {:ok, {shorter, 0}, {shorter, 0}}
+      _shortest -> {:error, :unrepresentable}
+    end
+  end
+
+  defp halves(value, dots) do
+    remainder = Duration.ticks(value, dots) - Duration.ticks(value, dots - 1)
+
+    case Duration.decompose(remainder) do
+      {:ok, [tail]} -> {:ok, {value, dots - 1}, tail}
+      _ -> {:error, :unrepresentable}
+    end
+  end
+
+  @doc """
+  Changes the length of a note or rest (or, given a chord's ids, of the
+  whole chord) in place. It must still fit in its bar (`:measure_full`) and
+  its voice (`:overlap`).
+  """
+  def set_value(%Score{} = score, %Context{} = ctx, ids, value, dots)
+      when is_list(ids) and dots in 0..2 do
+    entries = Timeline.flatten(score, ctx)
+
+    with true <- value in Duration.values() || {:error, :unrepresentable},
+         {:ok, [first | _] = chosen} <- find_entries(entries, ids),
+         ticks = Duration.ticks(value, dots),
+         :ok <- fits_bar(score, ctx, first.start, ticks) do
+      changed =
+        Map.new(chosen, fn entry ->
+          {entry.event.id,
+           %{entry | ticks: ticks, event: %{entry.event | value: value, dots: dots}}}
+        end)
+
+      rebuild(score, ctx, Enum.map(entries, &Map.get(changed, &1.event.id, &1)))
+    end
+  end
+
+  def set_value(%Score{} = score, %Context{} = ctx, id, value, dots),
+    do: set_value(score, ctx, [id], value, dots)
+
+  defp fits_bar(score, ctx, start, ticks) do
+    {bar_start, capacity} = bar_of(Timeline.bars(score, ctx), start)
+    if start + ticks <= bar_start + capacity, do: :ok, else: {:error, :measure_full}
+  end
+
+  @doc """
+  Turns a note (or, given a chord's ids, the whole chord) into one rest of
+  the same length and position, keeping the first note's id; ties into or
+  out of it are removed.
+  """
+  def to_rest(%Score{} = score, %Context{} = ctx, ids) when is_list(ids) do
+    entries = Timeline.flatten(score, ctx)
+
+    with {:ok, [first | _]} <- find_entries(entries, ids) do
+      rest = %Rest{
+        id: first.event.id,
+        staff: first.event.staff,
+        voice: first.event.voice,
+        offset: first.event.offset,
+        value: first.event.value,
+        dots: first.event.dots
+      }
+
+      replaced =
+        Enum.flat_map(entries, fn entry ->
+          cond do
+            entry.event.id == first.event.id -> [%{entry | kind: :rest, event: rest}]
+            entry.event.id in ids -> []
+            true -> [entry]
+          end
+        end)
+
+      with {:ok, score} <- rebuild(score, ctx, replaced), do: {:ok, score, first.event.id}
+    end
+  end
+
+  def to_rest(%Score{} = score, %Context{} = ctx, id), do: to_rest(score, ctx, [id])
+
+  @doc """
+  Turns a rest into a note of the same length and position (keeping its
+  id), on `step` with `alter`.
+  """
+  def to_note(%Score{} = score, %Context{} = ctx, id, step, alter) when alter in -2..2 do
+    entries = Timeline.flatten(score, ctx)
+
+    with {:ok, entry} <- find_entry(entries, id) do
+      note = %Note{
+        id: id,
+        staff: entry.event.staff,
+        voice: entry.event.voice,
+        offset: entry.event.offset,
+        value: entry.event.value,
+        dots: entry.event.dots,
+        step: step,
+        alter: alter
+      }
+
+      with {:ok, score} <-
+             rebuild(
+               score,
+               ctx,
+               replace_entry(entries, id, [%{entry | kind: :note, event: note}])
+             ),
+           do: {:ok, score, id}
+    end
+  end
+
+  @doc """
+  Re-reads a score written against `from_ctx` into the bars of `to_ctx`
+  (after a time signature or pickup change): every event keeps its time
+  from the start, events crossing the new bar lines are split into ties,
+  and the score keeps at least as many bars as the music spanned.
+  """
+  def rebar_to(%Score{} = score, %Context{} = from_ctx, %Context{} = to_ctx) do
+    empty = %Score{
+      measures:
+        for(_ <- 1..bars_spanning(to_ctx, Timeline.end_tick(score, from_ctx)), do: Measure.new())
+    }
+
+    rebuild(empty, to_ctx, Timeline.flatten(score, from_ctx))
+  end
+
+  # How many bars of `ctx` it takes to reach tick `last` (at least one).
+  defp bars_spanning(ctx, last) do
+    first = Context.capacity(ctx, 0)
+
+    if last <= first,
+      do: 1,
+      else: 1 + div(last - first + Context.measure_ticks(ctx) - 1, Context.measure_ticks(ctx))
+  end
+
+  defp find_entry(entries, id) do
+    case Enum.find(entries, &(&1.event.id == id)) do
+      nil -> {:error, :not_found}
+      entry -> {:ok, entry}
+    end
+  end
+
+  defp replace_entry(entries, id, replacements) do
+    Enum.flat_map(entries, fn
+      %{event: %{id: ^id}} -> replacements
+      entry -> [entry]
+    end)
+  end
+
+  # Head up to `at` (keeping the id), tail moved `gap` later with a fresh id
+  # and whatever tie the event had.
+  defp split_at(entry, at, gap) do
+    head = %{entry | ticks: at - entry.start, event: put_tie(entry.event, nil)}
+
+    tail = %{
+      entry
+      | start: at + gap,
+        ticks: entry.start + entry.ticks - at,
+        event: %{entry.event | id: Ecto.UUID.generate()}
+    }
+
+    [head, tail]
+  end
+
+  defp put_tie(%Note{} = note, target), do: %{note | tie_to: target}
+  defp put_tie(event, _target), do: event
+
   defp note_only(%{kind: :note} = entry, fun), do: {:ok, %{entry | event: fun.(entry.event)}}
   defp note_only(entry, _fun), do: {:ok, entry}
 
@@ -280,12 +674,23 @@ defmodule DrawMusic.Music.Editing do
 
   def insert_measure(_score, _index), do: {:error, :no_such_measure}
 
+  @doc "Inserts an empty measure before `index`, dropping ties the new bar separates."
+  def insert_measure(%Score{} = score, %Context{} = ctx, index) do
+    with {:ok, score} <- insert_measure(score, index), do: {:ok, prune_ties(score, ctx)}
+  end
+
   @doc "Appends an empty measure."
   def append_measure(%Score{measures: measures} = score),
     do: insert_measure(score, length(measures))
 
-  @doc "Deletes measure `index` and its contents. The last measure cannot be deleted."
+  @doc """
+  Deletes measure `index` and its contents. The last measure cannot be
+  deleted, nor the pickup bar (remove the pickup in the settings instead).
+  """
   def delete_measure(%Score{measures: [_only]}, _ctx, 0), do: {:error, :last_measure}
+
+  def delete_measure(%Score{}, %Context{pickup_ticks: pickup}, 0) when pickup > 0,
+    do: {:error, :pickup_bar}
 
   def delete_measure(%Score{measures: measures} = score, ctx, index)
       when is_integer(index) and index >= 0 and index < length(measures) do

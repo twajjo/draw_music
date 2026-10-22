@@ -35,3 +35,6 @@ draw_music-*.tar
 npm-debug.log
 /assets/node_modules/
 
+# Plan-execution scratch (ledgers, briefs) from the superpowers plugin.
+/.superpowers/
+

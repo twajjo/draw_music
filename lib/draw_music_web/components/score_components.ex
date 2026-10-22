@@ -19,6 +19,9 @@ defmodule DrawMusicWeb.ScoreComponents do
   # 1.75 mm staff space.
   @page_width 104
 
+  @doc "Space left of the first system in the score's viewBox, in staff spaces."
+  def padding, do: @padding
+
   @doc "System width for page layout, in staff spaces."
   def page_width, do: @page_width
 
@@ -31,6 +34,7 @@ defmodule DrawMusicWeb.ScoreComponents do
   attr :layout, :map, required: true
   attr :space, :integer, default: 10, doc: "pixels per staff space"
   attr :class, :any, default: nil
+  attr :selection, :any, default: MapSet.new(), doc: "ids of selected notes and rests"
 
   def score(assigns) do
     assigns = assign(assigns, :padding, @padding)
@@ -47,13 +51,17 @@ defmodule DrawMusicWeb.ScoreComponents do
       role="img"
       aria-label="Score"
     >
-      <.systems layout={@layout} />
+      <.systems layout={@layout} selection={@selection} />
     </svg>
     """
   end
 
-  @doc "The systems of a layout, in staff-space units, painted in `currentColor`."
+  @doc """
+  The systems of a layout, in staff-space units, painted in `currentColor`.
+  Selected notes and rests get the `selected` class.
+  """
   attr :layout, :map, required: true
+  attr :selection, :any, default: MapSet.new()
 
   def systems(assigns) do
     assigns = assign(assigns, :font_size, @font_size)
@@ -67,16 +75,24 @@ defmodule DrawMusicWeb.ScoreComponents do
       font-size={@font_size}
       fill="currentColor"
     >
-      <.item :for={item <- system.items} item={item} />
+      <.item :for={item <- system.items} item={item} selection={@selection} />
     </g>
     """
   end
 
   attr :item, :map, required: true
+  attr :selection, :any, default: MapSet.new()
 
   defp item(%{item: %{type: :glyph}} = assigns) do
     ~H"""
-    <text id={dom_id(@item)} x={n(@item.x)} y={n(@item.y)}>{Smufl.char(@item.glyph)}</text>
+    <text
+      id={dom_id(@item)}
+      class={MapSet.member?(@selection, Map.get(@item, :id)) && "selected"}
+      x={n(@item.x)}
+      y={n(@item.y)}
+    >
+      {Smufl.char(@item.glyph)}
+    </text>
     """
   end
 

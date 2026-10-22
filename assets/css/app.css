@@ -117,9 +117,16 @@
 .score-colors {
   --score-ink: #000;
   --score-paper: #fff;
+  --score-selection: #2563eb;
 }
 
 [data-theme=dark] .score-colors {
   --score-ink: var(--score-ink-dark, #fff);
   --score-paper: #000;
+  --score-selection: #7cc4ff;
+}
+
+/* Selected notes and rests in the editor. */
+#score .selected {
+  fill: var(--score-selection);
 }
