@@ -22,9 +22,30 @@ defmodule DrawMusic.Music.Chords do
     add9: [{0, 0}, {2, 4}, {4, 7}, {8, 14}]
   }
 
+  @typedoc "A chord quality from the catalog."
+  @type quality ::
+          :major
+          | :minor
+          | :diminished
+          | :augmented
+          | :dominant7
+          | :major7
+          | :minor7
+          | :half_diminished7
+          | :diminished7
+          | :sus2
+          | :sus4
+          | :add9
+
+  @typedoc "A pitch as a staff step and an alteration."
+  @type pitch :: {integer(), -2..2}
+
+  @doc "The chord qualities in the catalog."
+  @spec qualities() :: [quality()]
   def qualities, do: Map.keys(@qualities)
 
   @doc "Builds a chord of `quality` on the root `{root_step, root_alter}`."
+  @spec build(integer(), -2..2, quality()) :: {:ok, [pitch()]} | {:error, :out_of_range}
   def build(root_step, root_alter, quality) do
     root = Pitch.midi(root_step, root_alter)
 
@@ -42,6 +63,9 @@ defmodule DrawMusic.Music.Chords do
   with `seventh: true`) of the key's notes. In minor keys the V and vii°
   chords raise the leading tone, as in harmonic minor.
   """
+  @spec diatonic(-7..7, :major | :minor, integer()) :: {:ok, [pitch()]} | {:error, :out_of_range}
+  @spec diatonic(-7..7, :major | :minor, integer(), seventh: boolean()) ::
+          {:ok, [pitch()]} | {:error, :out_of_range}
   def diatonic(sf, mode, root_step, opts \\ []) do
     {tonic, _pc} = Pitch.tonic(sf, mode)
     degree = Integer.mod(Pitch.letter(root_step) - tonic, 7) + 1

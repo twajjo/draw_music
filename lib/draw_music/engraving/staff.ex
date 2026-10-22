@@ -17,26 +17,35 @@ defmodule DrawMusic.Engraving.Staff do
   @sharps [38, 35, 39, 36, 33, 37, 34]
   @flats [34, 37, 33, 36, 32, 35, 31]
 
+  @type staff :: DrawMusic.Music.Note.staff()
+
   @doc "Step of the top line of `staff`."
+  @spec top_step(staff()) :: integer()
   def top_step(staff), do: Map.fetch!(@top_step, staff)
 
   @doc "y of the top line of `staff`."
+  @spec top(staff()) :: non_neg_integer()
   def top(:treble), do: 0
   def top(:bass), do: 4 + @gap
 
   @doc "y of the bass staff's bottom line: the grand staff's height."
+  @spec bottom() :: non_neg_integer()
   def bottom, do: top(:bass) + 4
 
   @doc "y of the middle line of `staff`."
+  @spec middle(staff()) :: non_neg_integer()
   def middle(staff), do: top(staff) + 2
 
   @doc "y of `step` on `staff`."
+  @spec y(staff(), integer()) :: number()
   def y(staff, step), do: top(staff) + (Map.fetch!(@top_step, staff) - step) / 2
 
   @doc "Whether `step` sits on a line (rather than in a space)."
+  @spec line?(integer()) :: boolean()
   def line?(step), do: rem(step, 2) == 0
 
   @doc "Steps of the ledger lines a note on `step` needs on `staff`."
+  @spec ledger_steps(staff(), integer()) :: [integer()]
   def ledger_steps(staff, step) do
     top = Map.fetch!(@top_step, staff)
     bottom = top - 8
@@ -49,6 +58,7 @@ defmodule DrawMusic.Engraving.Staff do
   end
 
   @doc "Steps of the key signature's signs on `staff`, in writing order."
+  @spec key_signature_steps(staff(), -7..7) :: [integer()]
   def key_signature_steps(staff, sf) do
     shift = if staff == :bass, do: -14, else: 0
     steps = if sf >= 0, do: @sharps, else: @flats

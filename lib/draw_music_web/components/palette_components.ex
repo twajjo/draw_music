@@ -55,6 +55,7 @@ defmodule DrawMusicWeb.PaletteComponents do
   attr :playing?, :boolean, default: false
   slot :trailing, doc: "extra controls at the right end (e.g. save)"
 
+  @spec palette(map()) :: Phoenix.LiveView.Rendered.t()
   def palette(assigns) do
     assigns =
       assign(assigns,
@@ -259,6 +260,7 @@ defmodule DrawMusicWeb.PaletteComponents do
   attr :dirty?, :boolean, required: true
   attr :saved?, :boolean, required: true, doc: "whether this is a stored version (not the draft)"
 
+  @spec save_menu(map()) :: Phoenix.LiveView.Rendered.t()
   def save_menu(assigns) do
     ~H"""
     <div class="flex items-center gap-1">

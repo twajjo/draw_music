@@ -15,7 +15,7 @@ defmodule DrawMusic.Library do
   import Ecto.Query, warn: false
 
   alias DrawMusic.Accounts.Scope
-  alias DrawMusic.Library.{Composition, Key, Version}
+  alias DrawMusic.Library.{Composition, Import, Key, Version}
   alias DrawMusic.Repo
 
   ## Compositions
@@ -24,6 +24,7 @@ defmodule DrawMusic.Library do
   Lists the user's compositions by name, with keys and version summaries
   (no scores) preloaded.
   """
+  @spec list_compositions(Scope.t()) :: [Composition.t()]
   def list_compositions(%Scope{} = scope) do
     Composition
     |> where(user_id: ^scope.user.id)
@@ -37,6 +38,7 @@ defmodule DrawMusic.Library do
   preloaded. Raises `Ecto.NoResultsError` if it does not exist or belongs to
   someone else.
   """
+  @spec get_composition!(Scope.t(), Ecto.UUID.t()) :: Composition.t()
   def get_composition!(%Scope{} = scope, id) do
     Composition
     |> where(user_id: ^scope.user.id, id: ^id)
@@ -47,6 +49,7 @@ defmodule DrawMusic.Library do
   @doc """
   Finds the user's composition with `name`, ignoring case. Returns `nil` if none.
   """
+  @spec get_composition_by_name(Scope.t(), String.t()) :: Composition.t() | nil
   def get_composition_by_name(%Scope{} = scope, name) when is_binary(name) do
     Repo.get_by(Composition, user_id: scope.user.id, name: String.trim(name))
   end
@@ -55,6 +58,8 @@ defmodule DrawMusic.Library do
   Creates a composition (`composition_attrs`: name and credits) with one key
   (`key_attrs`: `sf`, `mode`) holding version 1 (`version_attrs`).
   """
+  @spec create_composition(Scope.t(), map(), map(), map()) ::
+          {:ok, Version.t()} | {:error, Ecto.Changeset.t()}
   def create_composition(%Scope{} = scope, composition_attrs, key_attrs, version_attrs) do
     Repo.transact(fn ->
       with {:ok, composition} <-
@@ -70,6 +75,8 @@ defmodule DrawMusic.Library do
   @doc """
   Returns a changeset for tracking composition changes in forms.
   """
+  @spec change_composition(Scope.t(), Composition.t()) :: Ecto.Changeset.t()
+  @spec change_composition(Scope.t(), Composition.t(), map()) :: Ecto.Changeset.t()
   def change_composition(%Scope{} = scope, %Composition{} = composition, attrs \\ %{}) do
     Composition.changeset(composition, attrs, scope)
   end
@@ -77,6 +84,8 @@ defmodule DrawMusic.Library do
   @doc """
   Updates a composition's name, credits and notes.
   """
+  @spec update_composition(Scope.t(), Composition.t(), map()) ::
+          {:ok, Composition.t()} | {:error, Ecto.Changeset.t()}
   def update_composition(%Scope{} = scope, %Composition{} = composition, attrs) do
     true = owner?(scope, composition)
 
@@ -88,6 +97,8 @@ defmodule DrawMusic.Library do
   @doc """
   Deletes a composition with all of its keys and versions.
   """
+  @spec delete_composition(Scope.t(), Composition.t()) ::
+          {:ok, Composition.t()} | {:error, Ecto.Changeset.t()}
   def delete_composition(%Scope{} = scope, %Composition{} = composition) do
     true = owner?(scope, composition)
     Repo.delete(composition)
@@ -99,6 +110,8 @@ defmodule DrawMusic.Library do
   Deletes a key and its versions. A composition's last key cannot be deleted;
   delete the composition instead.
   """
+  @spec delete_key(Scope.t(), Key.t()) ::
+          {:ok, Key.t()} | {:error, :last_key | Ecto.Changeset.t()}
   def delete_key(%Scope{} = scope, %Key{composition: %Composition{} = composition} = key) do
     true = owner?(scope, composition)
 
@@ -119,6 +132,7 @@ defmodule DrawMusic.Library do
   Gets one of the user's versions by id, with `key` and `key.composition`
   loaded. Raises `Ecto.NoResultsError` if not found.
   """
+  @spec get_version!(Scope.t(), Ecto.UUID.t()) :: Version.t()
   def get_version!(%Scope{} = scope, id) do
     scope
     |> owned_versions()
@@ -129,6 +143,7 @@ defmodule DrawMusic.Library do
   @doc """
   Gets the highest-numbered version in one of the user's keys.
   """
+  @spec get_latest_version!(Scope.t(), Ecto.UUID.t()) :: Version.t()
   def get_latest_version!(%Scope{} = scope, key_id) do
     scope
     |> owned_versions()
@@ -143,6 +158,8 @@ defmodule DrawMusic.Library do
   `{sf, mode}`, with `key` and `key.composition` loaded. Raises
   `Ecto.NoResultsError` if not found.
   """
+  @spec get_version_by_number!(Scope.t(), Ecto.UUID.t(), {-7..7, :major | :minor}, pos_integer()) ::
+          Version.t()
   def get_version_by_number!(%Scope{} = scope, composition_id, {sf, mode}, number) do
     scope
     |> owned_versions()
@@ -154,11 +171,15 @@ defmodule DrawMusic.Library do
   @doc """
   Returns a changeset for tracking version changes in forms.
   """
+  @spec change_version(Version.t()) :: Ecto.Changeset.t()
+  @spec change_version(Version.t(), map()) :: Ecto.Changeset.t()
   def change_version(%Version{} = version, attrs \\ %{}), do: Version.changeset(version, attrs)
 
   @doc """
   Save: overwrites an existing version's content.
   """
+  @spec save_version(Scope.t(), Version.t(), map()) ::
+          {:ok, Version.t()} | {:error, Ecto.Changeset.t()}
   def save_version(
         %Scope{} = scope,
         %Version{key: %Key{composition: %Composition{}}} = version,
@@ -174,6 +195,8 @@ defmodule DrawMusic.Library do
   @doc """
   Save as new version: stores `attrs` under the key's next version number.
   """
+  @spec save_new_version(Scope.t(), Key.t(), map()) ::
+          {:ok, Version.t()} | {:error, Ecto.Changeset.t()}
   def save_new_version(
         %Scope{} = scope,
         %Key{composition: %Composition{} = composition} = key,
@@ -192,6 +215,8 @@ defmodule DrawMusic.Library do
   in an existing composition, creating that key if the composition does not
   have it yet. Used when transposing into another key.
   """
+  @spec save_in_key(Scope.t(), Composition.t(), map(), map()) ::
+          {:ok, Version.t()} | {:error, Ecto.Changeset.t()}
   def save_in_key(%Scope{} = scope, %Composition{} = composition, key_attrs, version_attrs) do
     true = owner?(scope, composition)
 
@@ -207,6 +232,8 @@ defmodule DrawMusic.Library do
   @doc """
   Save as new composition: same as `create_composition/4`.
   """
+  @spec save_as_new_composition(Scope.t(), map(), map(), map()) ::
+          {:ok, Version.t()} | {:error, Ecto.Changeset.t()}
   def save_as_new_composition(%Scope{} = scope, composition_attrs, key_attrs, version_attrs),
     do: create_composition(scope, composition_attrs, key_attrs, version_attrs)
 
@@ -215,6 +242,8 @@ defmodule DrawMusic.Library do
   too, unless that is the composition's only key: the composition's last
   version cannot be deleted (`{:error, :last_version}`).
   """
+  @spec delete_version(Scope.t(), Version.t()) ::
+          {:ok, Version.t()} | {:error, :last_version | Ecto.Changeset.t()}
   def delete_version(%Scope{} = scope, %Version{key: %Key{composition: %Composition{}}} = version) do
     composition = version.key.composition
     true = owner?(scope, composition)
@@ -237,9 +266,9 @@ defmodule DrawMusic.Library do
   ## Import
 
   @doc """
-  Stores an imported piece under `name`. `import` holds the attrs parsed from
-  the file: `%{composition: map, key: map, version: map}`. The key comes from
-  the file's key signature. A name collision is resolved by `resolution`:
+  Stores an imported piece (a `DrawMusic.Library.Import`, e.g. from
+  `DrawMusic.MidiCodec.import/2`) under `name`. The key comes from the
+  file's key signature. A name collision is resolved by `resolution`:
 
     * `:new` - create a new composition; `{:error, :name_taken}` if the name exists
     * `:replace` - in the existing composition, delete every version under the
@@ -251,12 +280,14 @@ defmodule DrawMusic.Library do
   `:replace` and `:new_version` return `{:error, :not_found}` when no
   composition has that name.
   """
+  @spec import_score(Scope.t(), String.t(), Import.t(), :new | :replace | :new_version) ::
+          {:ok, Version.t()} | {:error, :name_taken | :not_found | Ecto.Changeset.t()}
   def import_score(scope, name, import, resolution)
 
-  def import_score(%Scope{} = scope, name, import, :new) do
+  def import_score(%Scope{} = scope, name, %Import{} = import, :new) do
     case get_composition_by_name(scope, name) do
       nil ->
-        composition_attrs = Map.put(Map.get(import, :composition, %{}), :name, name)
+        composition_attrs = Map.put(import.composition, :name, name)
         create_composition(scope, composition_attrs, import.key, import.version)
 
       %Composition{} ->

@@ -1,16 +1,28 @@
 defmodule DrawMusic.Engraving.Notes do
   @moduledoc """
-  Lays out one measure's notes and rests as drawing items (the item shapes
-  are described in `DrawMusic.Engraving.Layout`): noteheads, ledger lines,
-  accidentals, dots, stems, flags, beams and rests.
+  Lays out one measure's notes and rests as drawing items
+  (`DrawMusic.Engraving.Item`): noteheads, ledger lines, accidentals, dots,
+  stems, flags, beams and rests.
 
   Chords are the notes of one voice that share an offset. In a chord, a
   note a second away from its neighbour moves to the other side of the
   stem. Accidentals stagger leftwards in columns when they would collide.
   """
 
-  alias DrawMusic.Engraving.{Smufl, Staff}
-  alias DrawMusic.Music.{Accidentals, Beaming, Duration, Stems}
+  alias DrawMusic.Engraving.{
+    Anchor,
+    Beam,
+    ChordLayout,
+    Glyph,
+    Head,
+    Item,
+    Line,
+    MeasureGeometry,
+    Smufl,
+    Staff
+  }
+
+  alias DrawMusic.Music.{Accidentals, BeamGroup, Beaming, Context, Duration, Measure, Stems}
 
   @stem_length 3.5
   @min_beamed_stem 2.5
@@ -60,10 +72,12 @@ defmodule DrawMusic.Engraving.Notes do
   `capacity`, `content_x` and `scale` in staff spaces per tick). `tied_in`
   holds the ids of notes continuing a tie from the previous measure.
 
-  Returns `{items, anchors}`; `anchors` maps each note id to
-  `%{x0, x1, y, dir}` (notehead edges, y and stem direction) for ties.
+  Returns `{items, anchors}`; `anchors` maps each note id to its
+  `DrawMusic.Engraving.Anchor`, for ties.
   """
-  def items(measure, index, geom, ctx, tied_in) do
+  @spec items(Measure.t(), non_neg_integer(), MeasureGeometry.t(), Context.t(), MapSet.t()) ::
+          {[Item.t()], %{Ecto.UUID.t() => Anchor.t()}}
+  def items(%Measure{} = measure, index, %MeasureGeometry{} = geom, %Context{} = ctx, tied_in) do
     voice_counts = voice_counts(measure)
     chords = Enum.group_by(measure.notes, &{&1.staff, &1.voice, &1.offset})
     groups = Beaming.groups(measure, ctx, index)
@@ -117,7 +131,7 @@ defmodule DrawMusic.Engraving.Notes do
     right = (heads |> Enum.map(& &1.x) |> Enum.max()) + width
     ys = Enum.map(heads, & &1.y)
 
-    %{
+    %ChordLayout{
       staff: staff,
       dir: dir,
       value: first.value,
@@ -129,7 +143,8 @@ defmodule DrawMusic.Engraving.Notes do
         Enum.map(heads, &glyph(:notehead, glyph, &1.x, &1.y, &1.note.id)) ++
           ledgers(heads, staff, left, right) ++
           dots(heads, right) ++ accidentals(heads, left, accidentals),
-      anchors: for(h <- heads, do: {h.note.id, %{x0: h.x, x1: h.x + width, y: h.y, dir: dir}})
+      anchors:
+        for(h <- heads, do: {h.note.id, %Anchor{x0: h.x, x1: h.x + width, y: h.y, dir: dir}})
     }
   end
 
@@ -145,16 +160,17 @@ defmodule DrawMusic.Engraving.Notes do
     notes
     |> Enum.sort_by(& &1.step, order)
     |> Enum.map_reduce(nil, fn note, previous ->
-      moved = previous != nil and abs(note.step - previous.step) == 1 and not previous.moved
+      moved =
+        previous != nil and abs(note.step - previous.note.step) == 1 and not previous.moved
 
-      head = %{
+      head = %Head{
         note: note,
         x: x + shift(moved, dir, width),
         y: Staff.y(staff, note.step),
         moved: moved
       }
 
-      {head, %{step: note.step, moved: moved}}
+      {head, head}
     end)
     |> elem(0)
   end
@@ -207,7 +223,7 @@ defmodule DrawMusic.Engraving.Notes do
 
   ## Stems, flags and beams
 
-  defp free_stem(%{value: :whole}), do: []
+  defp free_stem(%ChordLayout{value: :whole}), do: []
 
   defp free_stem(chord) do
     flags = Duration.flags(chord.value)
@@ -240,7 +256,7 @@ defmodule DrawMusic.Engraving.Notes do
   end
 
   defp stem(x, base, tip, dir),
-    do: Map.put(line(:stem, x, base, x, tip, Smufl.default("stemThickness")), :dir, dir)
+    do: %{line(:stem, x, base, x, tip, Smufl.default("stemThickness")) | dir: dir}
 
   defp flag(0, _dir, _x, _tip), do: []
 
@@ -257,7 +273,7 @@ defmodule DrawMusic.Engraving.Notes do
   # The beam runs between the ideal stem tips of the first and last chords,
   # its slope clamped, then moves away from the notes until every stem is
   # long enough.
-  defp beam(%{staff: staff, voice: voice, offsets: offsets}, laid) do
+  defp beam(%BeamGroup{staff: staff, voice: voice, offsets: offsets}, laid) do
     chords = Enum.map(offsets, &Map.fetch!(laid, {staff, voice, &1}))
     dir = hd(chords).dir
     sign = if dir == :up, do: -1, else: 1
@@ -326,8 +342,7 @@ defmodule DrawMusic.Engraving.Notes do
   defp beam_item(xa, xb, beam_y, level, sign) do
     offset = -sign * (level - 1) * @beam_step
 
-    %{
-      type: :beam,
+    %Beam{
       x1: xa,
       y1: beam_y.(xa) + offset,
       x2: xb,
@@ -393,9 +408,9 @@ defmodule DrawMusic.Engraving.Notes do
 
   ## Items
 
-  defp glyph(role, glyph, x, y), do: %{type: :glyph, role: role, glyph: glyph, x: x, y: y}
-  defp glyph(role, glyph, x, y, id), do: Map.put(glyph(role, glyph, x, y), :id, id)
+  defp glyph(role, glyph, x, y, id \\ nil),
+    do: %Glyph{role: role, glyph: glyph, x: x, y: y, id: id}
 
   defp line(role, x1, y1, x2, y2, thickness),
-    do: %{type: :line, role: role, x1: x1, y1: y1, x2: x2, y2: y2, thickness: thickness}
+    do: %Line{role: role, x1: x1, y1: y1, x2: x2, y2: y2, thickness: thickness}
 end

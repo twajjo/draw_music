@@ -10,7 +10,7 @@ defmodule DrawMusicWeb.ScoreComponents do
 
   use Phoenix.Component
 
-  alias DrawMusic.Engraving.Smufl
+  alias DrawMusic.Engraving.{Beam, Brace, Glyph, Line, Smufl, Tie}
 
   # SMuFL fonts are scaled so that one em is four staff spaces.
   @font_size 4
@@ -20,12 +20,15 @@ defmodule DrawMusicWeb.ScoreComponents do
   @page_width 104
 
   @doc "Space left of the first system in the score's viewBox, in staff spaces."
+  @spec padding() :: number()
   def padding, do: @padding
 
   @doc "System width for page layout, in staff spaces."
+  @spec page_width() :: number()
   def page_width, do: @page_width
 
   @doc "Layout options for a user's preferred score layout (`:strip` or `:page`)."
+  @spec layout_width(:strip | :page) :: :infinity | number()
   def layout_width(:page), do: @page_width
   def layout_width(:strip), do: :infinity
 
@@ -36,6 +39,7 @@ defmodule DrawMusicWeb.ScoreComponents do
   attr :class, :any, default: nil
   attr :selection, :any, default: MapSet.new(), doc: "ids of selected notes and rests"
 
+  @spec score(map()) :: Phoenix.LiveView.Rendered.t()
   def score(assigns) do
     assigns = assign(assigns, :padding, @padding)
 
@@ -63,6 +67,7 @@ defmodule DrawMusicWeb.ScoreComponents do
   attr :layout, :map, required: true
   attr :selection, :any, default: MapSet.new()
 
+  @spec systems(map()) :: Phoenix.LiveView.Rendered.t()
   def systems(assigns) do
     assigns = assign(assigns, :font_size, @font_size)
 
@@ -83,11 +88,11 @@ defmodule DrawMusicWeb.ScoreComponents do
   attr :item, :map, required: true
   attr :selection, :any, default: MapSet.new()
 
-  defp item(%{item: %{type: :glyph}} = assigns) do
+  defp item(%{item: %Glyph{}} = assigns) do
     ~H"""
     <text
       id={dom_id(@item)}
-      class={MapSet.member?(@selection, Map.get(@item, :id)) && "selected"}
+      class={MapSet.member?(@selection, @item.id) && "selected"}
       x={n(@item.x)}
       y={n(@item.y)}
     >
@@ -96,7 +101,7 @@ defmodule DrawMusicWeb.ScoreComponents do
     """
   end
 
-  defp item(%{item: %{type: :line}} = assigns) do
+  defp item(%{item: %Line{}} = assigns) do
     ~H"""
     <line
       x1={n(@item.x1)}
@@ -109,13 +114,13 @@ defmodule DrawMusicWeb.ScoreComponents do
     """
   end
 
-  defp item(%{item: %{type: :beam}} = assigns) do
+  defp item(%{item: %Beam{}} = assigns) do
     ~H"""
     <polygon points={beam_points(@item)} />
     """
   end
 
-  defp item(%{item: %{type: :tie}} = assigns) do
+  defp item(%{item: %Tie{}} = assigns) do
     ~H"""
     <path d={tie_path(@item)} />
     """
@@ -123,7 +128,7 @@ defmodule DrawMusicWeb.ScoreComponents do
 
   # The brace glyph is one staff tall at the normal size; scale the font so
   # it spans the grand staff.
-  defp item(%{item: %{type: :brace}} = assigns) do
+  defp item(%{item: %Brace{}} = assigns) do
     ~H"""
     <text x={n(@item.x)} y={n(@item.y2)} font-size={n(@item.y2 - @item.y1)}>
       {Smufl.char(:brace)}
@@ -131,11 +136,11 @@ defmodule DrawMusicWeb.ScoreComponents do
     """
   end
 
-  defp dom_id(%{role: :notehead, id: id}), do: "note-#{id}"
-  defp dom_id(%{role: :rest, id: id}) when is_binary(id), do: "rest-#{id}"
+  defp dom_id(%Glyph{role: :notehead, id: id}), do: "note-#{id}"
+  defp dom_id(%Glyph{role: :rest, id: id}) when is_binary(id), do: "rest-#{id}"
   defp dom_id(_item), do: nil
 
-  defp beam_points(%{x1: x1, y1: y1, x2: x2, y2: y2, thickness: t}) do
+  defp beam_points(%Beam{x1: x1, y1: y1, x2: x2, y2: y2, thickness: t}) do
     Enum.map_join([{x1, y1}, {x2, y2}, {x2, y2 + t}, {x1, y1 + t}], " ", fn {x, y} ->
       "#{n(x)},#{n(y)}"
     end)
@@ -143,7 +148,7 @@ defmodule DrawMusicWeb.ScoreComponents do
 
   # Two quadratic curves between the endpoints: the outer one bulges `dir`,
   # the inner one a little less, leaving the tie its midpoint thickness.
-  defp tie_path(%{x1: x1, x2: x2, y: y, dir: dir}) do
+  defp tie_path(%Tie{x1: x1, x2: x2, y: y, dir: dir}) do
     sign = if dir == :down, do: 1, else: -1
     height = (x2 - x1) |> Kernel.*(0.2) |> max(0.6) |> min(1.8)
     inner = height - 2 * Smufl.default("tieMidpointThickness")

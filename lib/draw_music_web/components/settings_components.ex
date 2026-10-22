@@ -17,12 +17,14 @@ defmodule DrawMusicWeb.SettingsComponents do
   ]
 
   @doc "The preset dark-mode ink colors as `{name, \"#rrggbb\"}`."
+  @spec ink_presets() :: [{String.t(), String.t()}]
   def ink_presets, do: @ink_presets
 
   @doc "Switches between one long staff and page-style systems."
   attr :id, :string, required: true
   attr :layout, :atom, required: true, values: [:strip, :page]
 
+  @spec layout_toggle(map()) :: Phoenix.LiveView.Rendered.t()
   def layout_toggle(assigns) do
     ~H"""
     <div id={@id} class="join" role="group" aria-label="Score layout">
@@ -58,6 +60,7 @@ defmodule DrawMusicWeb.SettingsComponents do
   attr :color, :string, default: nil, doc: "the current color; nil means white"
   attr :form, Phoenix.HTML.Form, required: true, doc: "the preferences form, for errors"
 
+  @spec ink_picker(map()) :: Phoenix.LiveView.Rendered.t()
   def ink_picker(assigns) do
     assigns = assign(assigns, presets: @ink_presets, current: assigns.color || "#ffffff")
 

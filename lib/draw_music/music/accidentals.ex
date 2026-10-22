@@ -16,6 +16,8 @@ defmodule DrawMusic.Music.Accidentals do
   `tied_in` is the set of note ids that are tie targets from the previous
   measure.
   """
+  @spec displayed(Measure.t(), -7..7) :: %{Ecto.UUID.t() => -2..2}
+  @spec displayed(Measure.t(), -7..7, MapSet.t(Ecto.UUID.t())) :: %{Ecto.UUID.t() => -2..2}
   def displayed(%Measure{notes: notes}, sf, tied_in \\ MapSet.new()) do
     {shown, _in_effect} =
       notes

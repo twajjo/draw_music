@@ -3,7 +3,7 @@ defmodule DrawMusic.Engraving.LayoutTest do
 
   import DrawMusic.MusicHelpers
 
-  alias DrawMusic.Engraving.{Layout, Staff}
+  alias DrawMusic.Engraving.{Beam, Layout, Staff, Tie}
   alias DrawMusic.Music.{Context, Editing, Score}
 
   @ctx %Context{}
@@ -66,7 +66,7 @@ defmodule DrawMusic.Engraving.LayoutTest do
         end)
 
       layout = Layout.layout(score, @ctx)
-      assert length(items(layout, &(&1.type == :beam))) == 2
+      assert length(items(layout, &match?(%Beam{}, &1))) == 2
       assert role(layout, :flag) == []
       assert length(role(layout, :stem)) == 4
     end
@@ -155,13 +155,13 @@ defmodule DrawMusic.Engraving.LayoutTest do
     end
 
     test "a tie across a system break is drawn as two halves", %{score: score} do
-      assert length(items(Layout.layout(score, @ctx), &(&1.type == :tie))) == 1
+      assert length(items(Layout.layout(score, @ctx), &match?(%Tie{}, &1))) == 1
 
       layout = Layout.layout(score, @ctx, width: @page)
       system_of = for s <- layout.systems, m <- s.measures, into: %{}, do: {m.index, s.index}
       assert system_of[1] != system_of[2]
 
-      ties = for s <- layout.systems, item <- s.items, item.type == :tie, do: s.index
+      ties = for s <- layout.systems, %Tie{} <- s.items, do: s.index
       assert Enum.sort(ties) == [system_of[1], system_of[2]]
     end
   end

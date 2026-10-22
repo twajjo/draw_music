@@ -10,7 +10,7 @@ defmodule DrawMusicWeb.EditorComponents do
   import DrawMusicWeb.CoreComponents, only: [icon: 1, input: 1]
 
   alias DrawMusic.Engraving.Smufl
-  alias DrawMusicWeb.ScoreComponents
+  alias DrawMusicWeb.{BarControl, ScoreComponents}
 
   @lengths [
     {:whole, :noteWhole, "Whole"},
@@ -25,6 +25,7 @@ defmodule DrawMusicWeb.EditorComponents do
   @doc "Asks for the new composition's name (and credits) when saving as a new composition."
   attr :form, Phoenix.HTML.Form, required: true
 
+  @spec save_as_dialog(map()) :: Phoenix.LiveView.Rendered.t()
   def save_as_dialog(assigns) do
     ~H"""
     <div class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
@@ -57,6 +58,7 @@ defmodule DrawMusicWeb.EditorComponents do
   @doc "The score's settings: key, time signature, tempo and pickup."
   attr :form, Phoenix.HTML.Form, required: true
 
+  @spec settings_panel(map()) :: Phoenix.LiveView.Rendered.t()
   def settings_panel(assigns) do
     assigns = assign(assigns, :key_options, DrawMusicWeb.LibraryComponents.key_options())
 
@@ -110,6 +112,7 @@ defmodule DrawMusicWeb.EditorComponents do
   @doc "Asks how to move the notes into a newly chosen key."
   attr :key_name, :string, required: true
 
+  @spec transpose_dialog(map()) :: Phoenix.LiveView.Rendered.t()
   def transpose_dialog(assigns) do
     ~H"""
     <div id="transpose-dialog" class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
@@ -142,6 +145,7 @@ defmodule DrawMusicWeb.EditorComponents do
   """
   attr :menu, :map, required: true, doc: "%{id, ids, kind: :note | :rest | :selection, x, y}"
 
+  @spec context_menu(map()) :: Phoenix.LiveView.Rendered.t()
   def context_menu(%{menu: %{kind: :selection}} = assigns) do
     assigns = assign(assigns, :intervals, @intervals)
 
@@ -305,13 +309,14 @@ defmodule DrawMusicWeb.EditorComponents do
   attr :engraved, :map, required: true
   attr :score, :map, required: true, doc: "the Music.Score, to know which bars hold music"
 
+  @spec measure_controls(map()) :: Phoenix.LiveView.Rendered.t()
   def measure_controls(assigns) do
     padding = ScoreComponents.padding()
     total = assigns.engraved.width + 2 * padding
 
     bars =
       for system <- assigns.engraved.systems, m <- system.measures do
-        %{
+        %BarControl{
           index: m.index,
           left: (m.x + padding) / total * 100,
           top: max(system.y - 2.2, 0) / assigns.engraved.height * 100,

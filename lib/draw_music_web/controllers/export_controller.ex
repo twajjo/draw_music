@@ -5,6 +5,7 @@ defmodule DrawMusicWeb.ExportController do
   alias DrawMusicWeb.{ScoreExport, VersionLookup}
 
   @doc "Downloads a version's score as a print-ready SVG."
+  @spec svg(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def svg(conn, params) do
     version = VersionLookup.fetch!(conn.assigns.current_scope, params)
 
@@ -17,6 +18,7 @@ defmodule DrawMusicWeb.ExportController do
   end
 
   @doc "Downloads a version as a Standard MIDI File (it re-imports exactly)."
+  @spec mid(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def mid(conn, params) do
     version = VersionLookup.fetch!(conn.assigns.current_scope, params)
     {:ok, midi} = MidiCodec.export(version)

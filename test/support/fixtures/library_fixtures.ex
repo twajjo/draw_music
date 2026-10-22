@@ -36,7 +36,8 @@ defmodule DrawMusic.LibraryFixtures do
   def composition_fixture(scope, opts \\ []), do: version_fixture(scope, opts).key.composition
 
   def import_fixture(opts \\ []) do
-    %{
+    %DrawMusic.Library.Import{
+      name: Keyword.get(opts, :name, unique_composition_name()),
       composition: Keyword.get(opts, :composition, %{}),
       key: key_attrs(Keyword.get(opts, :key, %{})),
       version: version_attrs(Keyword.get(opts, :version, %{}))

@@ -28,11 +28,13 @@ defmodule DrawMusicWeb.EditorLive do
   alias DrawMusic.Music.{Context, Editing, Note, Playback, Score, Session, Timeline, Transpose}
 
   alias DrawMusicWeb.{
+    ContextMenu,
     EditorCommands,
     EditorGeometry,
     EditorPalette,
     EditorPlacement,
     EditorSettings,
+    PlaybackPayload,
     ScorePreferences,
     VersionLookup
   }
@@ -109,8 +111,8 @@ defmodule DrawMusicWeb.EditorLive do
               else: "w-fit"
             )
           ]}
-          data-geometry={JSON.encode!(EditorGeometry.encode(@engraved, @session.ctx))}
-          data-armed={JSON.encode!(EditorGeometry.armed(@armed))}
+          data-geometry={Jason.encode!(EditorGeometry.encode(@engraved, @session.ctx))}
+          data-armed={Jason.encode!(EditorGeometry.armed(@armed))}
           data-dirty={to_string(@session.dirty?)}
         >
           <.score
@@ -509,7 +511,8 @@ defmodule DrawMusicWeb.EditorLive do
     if events == [] do
       {:noreply, socket}
     else
-      {:noreply, socket |> assign(:playing?, true) |> push_event("play", %{events: events})}
+      payload = %PlaybackPayload{events: events}
+      {:noreply, socket |> assign(:playing?, true) |> push_event("play", payload)}
     end
   end
 
@@ -572,6 +575,7 @@ defmodule DrawMusicWeb.EditorLive do
   }
 
   @doc "What to tell the user when an edit is refused for `reason`."
+  @spec error_message(atom()) :: String.t()
   def error_message(reason), do: Map.get(@messages, reason, "That can't be done here")
 
   defp arm(socket, {:ok, armed}), do: assign(socket, :armed, armed)
@@ -616,7 +620,7 @@ defmodule DrawMusicWeb.EditorLive do
         :error -> nil
       end
 
-    %{id: event.id, ids: ids, kind: kind, x: params["x"], y: params["y"], step: step}
+    %ContextMenu{id: event.id, ids: ids, kind: kind, x: params["x"], y: params["y"], step: step}
   end
 
   defp copy(socket) do

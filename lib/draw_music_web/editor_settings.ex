@@ -11,6 +11,7 @@ defmodule DrawMusicWeb.EditorSettings do
   @time_denominators ~w(1 2 4 8 16 32 64)
 
   @doc "The settings form's params for a context and tempo marking."
+  @spec params(Context.t(), String.t() | nil) :: %{String.t() => String.t()}
   def params(%Context{} = ctx, tempo_text) do
     %{
       "key" => Key.slug(ctx.sf, ctx.mode),
@@ -28,6 +29,8 @@ defmodule DrawMusicWeb.EditorSettings do
   and the Context fields they set, `{:error, errors}` (keyed by form field)
   or `:error` for an unknown key.
   """
+  @spec validate(map()) ::
+          {:ok, {-7..7, :major | :minor}, map()} | {:error, keyword()} | :error
   def validate(params) do
     with {:ok, key} <- Key.from_slug(params["key"] || "") do
       changeset = Version.changeset(%Version{number: 1}, version_params(params))
@@ -67,6 +70,7 @@ defmodule DrawMusicWeb.EditorSettings do
   re-flow into the new bars (undoably). Unchanged settings leave the
   session as it is.
   """
+  @spec apply(Session.t(), map()) :: {:ok, Session.t()} | {:error, Editing.reason()}
   def apply(%Session{} = session, fields) do
     ctx = struct(session.ctx, fields)
     if ctx == session.ctx, do: {:ok, session}, else: rebar(session, ctx)
@@ -78,6 +82,7 @@ defmodule DrawMusicWeb.EditorSettings do
   end
 
   @doc "What a save stores: the score and the settings it is read against."
+  @spec version_attrs(Session.t(), String.t() | nil) :: map()
   def version_attrs(%Session{score: score, ctx: ctx}, tempo_text) do
     %{
       score: score,
@@ -91,6 +96,7 @@ defmodule DrawMusicWeb.EditorSettings do
   end
 
   @doc "A blank tempo marking is none."
+  @spec tempo_text(String.t() | nil) :: String.t() | nil
   def tempo_text(value) when value in [nil, ""], do: nil
   def tempo_text(value), do: value
 end

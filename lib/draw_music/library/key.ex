@@ -26,9 +26,21 @@ defmodule DrawMusic.Library.Key do
     timestamps(type: :utc_datetime)
   end
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          sf: -7..7 | nil,
+          mode: :major | :minor | nil,
+          composition_id: Ecto.UUID.t() | nil,
+          composition: Composition.t() | Ecto.Association.NotLoaded.t(),
+          versions: [Version.t()] | Ecto.Association.NotLoaded.t(),
+          inserted_at: DateTime.t() | nil,
+          updated_at: DateTime.t() | nil
+        }
+
   @doc """
   Changeset for `sf` and `mode`; `composition_id` is set by the context.
   """
+  @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(key, attrs) do
     key
     |> cast(attrs, [:sf, :mode])
@@ -40,6 +52,8 @@ defmodule DrawMusic.Library.Key do
   @doc """
   Human name of a key, e.g. `name(1, :major)` → `"G major"`.
   """
+  @spec name(t()) :: String.t()
+  @spec name(-7..7, :major | :minor) :: String.t()
   def name(%__MODULE__{sf: sf, mode: mode}), do: name(sf, mode)
   def name(sf, :major) when sf in -7..7, do: Enum.at(@major_tonics, sf + 7) <> " major"
   def name(sf, :minor) when sf in -7..7, do: Enum.at(@minor_tonics, sf + 7) <> " minor"
@@ -47,6 +61,8 @@ defmodule DrawMusic.Library.Key do
   @doc """
   URL slug of a key, e.g. `slug(6, :major)` → `"f-sharp-major"`.
   """
+  @spec slug(t()) :: String.t()
+  @spec slug(-7..7, :major | :minor) :: String.t()
   def slug(%__MODULE__{sf: sf, mode: mode}), do: slug(sf, mode)
 
   def slug(sf, mode) do
@@ -61,6 +77,7 @@ defmodule DrawMusic.Library.Key do
   @doc """
   `{:ok, {sf, mode}}` for a key slug, or `:error` for an unknown slug.
   """
+  @spec from_slug(String.t()) :: {:ok, {-7..7, :major | :minor}} | :error
   def from_slug(slug) when is_binary(slug) do
     Enum.find_value(@keys, :error, fn {sf, mode} ->
       if slug(sf, mode) == slug, do: {:ok, {sf, mode}}

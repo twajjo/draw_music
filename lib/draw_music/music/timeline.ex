@@ -3,15 +3,19 @@ defmodule DrawMusic.Music.Timeline do
   The score laid out on one absolute time axis (ticks from the start of the
   piece), and back again into measures.
 
-  An *entry* is `%{kind: :note | :rest, start: tick, ticks: length, event: struct}`.
-  Edits work on entries, then `rebar/3` re-flows them into measures: an
-  entry crossing a bar line is split into tied notes (or consecutive rests),
-  and measures are appended when the music runs past the last one.
+  Notes and rests on that axis are `DrawMusic.Music.Entry` structs. Edits
+  work on entries, then `rebar/3` re-flows them into measures: an entry
+  crossing a bar line is split into tied notes (or consecutive rests), and
+  measures are appended when the music runs past the last one.
   """
 
-  alias DrawMusic.Music.{Context, Duration, Measure, Note, Rest, Score}
+  alias DrawMusic.Music.{Context, Duration, Entry, Measure, Note, Rest, Score}
+
+  @typedoc "A measure's first tick and length in ticks."
+  @type bar :: {non_neg_integer(), pos_integer()}
 
   @doc "`{start, capacity}` of each measure."
+  @spec bars(Score.t() | non_neg_integer(), Context.t()) :: [bar()]
   def bars(%Score{measures: measures}, ctx), do: bars(length(measures), ctx)
 
   def bars(count, %Context{} = ctx) when is_integer(count) do
@@ -25,9 +29,11 @@ defmodule DrawMusic.Music.Timeline do
   end
 
   @doc "Tick at which the score ends."
+  @spec end_tick(Score.t(), Context.t()) :: non_neg_integer()
   def end_tick(%Score{measures: measures}, ctx), do: Context.span(ctx, length(measures))
 
   @doc "All notes and rests as entries, in measure order."
+  @spec flatten(Score.t(), Context.t()) :: [Entry.t()]
   def flatten(%Score{measures: measures} = score, ctx) do
     score
     |> bars(ctx)
@@ -38,11 +44,12 @@ defmodule DrawMusic.Music.Timeline do
   end
 
   @doc "Entry for an event placed in a measure starting at `bar_start`."
+  @spec entry(Note.t() | Rest.t(), non_neg_integer()) :: Entry.t()
   def entry(%Note{} = note, bar_start),
-    do: %{kind: :note, start: bar_start + note.offset, ticks: Note.ticks(note), event: note}
+    do: %Entry{kind: :note, start: bar_start + note.offset, ticks: Note.ticks(note), event: note}
 
   def entry(%Rest{} = rest, bar_start),
-    do: %{kind: :rest, start: bar_start + rest.offset, ticks: Rest.ticks(rest), event: rest}
+    do: %Entry{kind: :rest, start: bar_start + rest.offset, ticks: Rest.ticks(rest), event: rest}
 
   @doc """
   Re-flows entries into the score's measures (keeping measure ids and count,
@@ -50,6 +57,8 @@ defmodule DrawMusic.Music.Timeline do
   fits in one bar; otherwise its length is split at bar lines and into note
   values, the pieces tied together. The first piece keeps the entry's id.
   """
+  @spec rebar(Score.t(), Context.t(), [Entry.t()]) ::
+          {:ok, Score.t()} | {:error, :before_start | :unrepresentable}
   def rebar(%Score{} = score, %Context{} = ctx, entries) do
     with :ok <- check_starts(entries) do
       last = entries |> Enum.map(&(&1.start + &1.ticks)) |> Enum.max(fn -> 0 end)

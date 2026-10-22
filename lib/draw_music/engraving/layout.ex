@@ -3,23 +3,11 @@ defmodule DrawMusic.Engraving.Layout do
   Engraves a score: the position of everything drawn, in staff spaces with
   y pointing down.
 
-  `layout/3` returns `%{width, height, systems}`. Each system has:
-
-    * `index` and `y`, where its treble staff's top line sits on the page;
-    * `width`;
-    * `measures`: the geometry that maps between ticks and x, as
-      `%{index, x, width, start_tick, capacity, content_x, scale}`. Tick
-      `t` of the measure lies at `content_x + (t - start_tick) * scale`;
-    * `items`, positioned relative to the system's treble top line:
-      * `%{type: :glyph, role, glyph, x, y}`. `role` is `:clef`, `:key`,
-        `:time`, `:notehead` (with `id`), `:accidental`, `:dot`, `:flag` or
-        `:rest` (with `id`, nil for a whole-bar rest on an empty staff);
-      * `%{type: :line, role, x1, y1, x2, y2, thickness}`. `role` is
-        `:staff`, `:ledger`, `:stem` (with `dir`) or `:barline`;
-      * `%{type: :beam, x1, y1, x2, y2, thickness}`: a beam whose edge runs
-        along the line, extending by `thickness` (positive is downwards);
-      * `%{type: :tie, x1, x2, y, dir}`: an arc bulging `dir` (`:up` or `:down`);
-      * `%{type: :brace, x, y1, y2}`.
+  `layout/3` returns a `DrawMusic.Engraving.Engraved`: systems
+  (`DrawMusic.Engraving.System`) stacked down the page, each with the
+  geometry of its measures (`DrawMusic.Engraving.MeasureGeometry`) and the
+  items drawn in it (`DrawMusic.Engraving.Item`), positioned relative to
+  the system's treble top line.
 
   Options:
 
@@ -29,7 +17,23 @@ defmodule DrawMusic.Engraving.Layout do
     * `spacing`: staff spaces per quarter note (default 8).
   """
 
-  alias DrawMusic.Engraving.{Notes, Smufl, Staff}
+  alias DrawMusic.Engraving.{
+    Anchor,
+    Beam,
+    Brace,
+    Engraved,
+    Glyph,
+    Header,
+    Item,
+    Line,
+    MeasureGeometry,
+    Notes,
+    Smufl,
+    Staff,
+    System,
+    Tie
+  }
+
   alias DrawMusic.Music.{Context, Duration, Measure, Score, Timeline}
 
   @spacing 8
@@ -43,8 +47,11 @@ defmodule DrawMusic.Engraving.Layout do
 
   @digit_glyphs ~w(timeSig0 timeSig1 timeSig2 timeSig3 timeSig4 timeSig5 timeSig6 timeSig7 timeSig8 timeSig9)a
 
+  @type option :: {:width, :infinity | number()} | {:spacing, number()}
+
   # A score with no measures (e.g. imported from an empty file) is drawn
   # as one empty bar.
+  @spec layout(Score.t(), Context.t(), [option()]) :: Engraved.t()
   def layout(score, ctx, opts \\ [])
 
   def layout(%Score{measures: []} = score, ctx, opts),
@@ -56,19 +63,22 @@ defmodule DrawMusic.Engraving.Layout do
     last = length(score.measures) - 1
     tied_in = tied_in(score)
 
+    # Each measure at its natural width; systems place and stretch them.
     measures =
       score.measures
       |> Enum.zip(Timeline.bars(score, ctx))
       |> Enum.with_index()
       |> Enum.map(fn {{measure, {start, capacity}}, index} ->
-        %{
-          measure: measure,
-          index: index,
-          start_tick: start,
-          capacity: capacity,
-          scale: scale,
-          width: @left_pad + capacity * scale + @right_pad
-        }
+        {measure,
+         %MeasureGeometry{
+           index: index,
+           x: 0.0,
+           width: @left_pad + capacity * scale + @right_pad,
+           start_tick: start,
+           capacity: capacity,
+           content_x: @left_pad,
+           scale: scale
+         }}
       end)
 
     {systems, anchors} =
@@ -77,23 +87,28 @@ defmodule DrawMusic.Engraving.Layout do
       |> Enum.with_index()
       |> Enum.map_reduce(%{}, fn {group, index}, anchors ->
         {system, system_anchors} = system(group, index, width, ctx, tied_in, last)
-
-        {system,
-         Map.merge(
-           anchors,
-           Map.new(system_anchors, fn {id, a} -> {id, Map.put(a, :system, index)} end)
-         )}
+        located = Map.new(system_anchors, fn {id, anchor} -> {id, %{anchor | system: index}} end)
+        {system, Map.merge(anchors, located)}
       end)
 
     {systems, height} = systems |> add_ties(score, anchors) |> stack()
-    %{width: systems |> Enum.map(& &1.width) |> Enum.max(), height: height, systems: systems}
+
+    %Engraved{
+      width: systems |> Enum.map(& &1.width) |> Enum.max(),
+      height: height,
+      systems: systems
+    }
   end
 
   @doc "x of absolute tick `tick` in the measure laid out as `geom`."
-  def x_of(geom, tick), do: geom.content_x + (tick - geom.start_tick) * geom.scale
+  @spec x_of(MeasureGeometry.t(), number()) :: float()
+  def x_of(%MeasureGeometry{} = geom, tick),
+    do: geom.content_x + (tick - geom.start_tick) * geom.scale
 
   @doc "Absolute tick at `x` in the measure laid out as `geom` (not snapped to a grid)."
-  def tick_at(geom, x), do: geom.start_tick + (x - geom.content_x) / geom.scale
+  @spec tick_at(MeasureGeometry.t(), number()) :: float()
+  def tick_at(%MeasureGeometry{} = geom, x),
+    do: geom.start_tick + (x - geom.content_x) / geom.scale
 
   ## Systems
 
@@ -105,34 +120,32 @@ defmodule DrawMusic.Engraving.Layout do
       measure, [] ->
         [[measure]]
 
-      measure, [current | done] = systems ->
-        used =
-          header(ctx, length(systems) == 1).width + Enum.sum_by(current, & &1.width) +
-            measure.width
-
+      {_m, geom} = measure, [current | done] = systems ->
+        used = header(ctx, length(systems) == 1).width + natural_width(current) + geom.width
         if used <= width, do: [current ++ [measure] | done], else: [[measure] | systems]
     end)
     |> Enum.reverse()
   end
 
+  defp natural_width(group), do: Enum.sum_by(group, fn {_m, geom} -> geom.width end)
+
   defp system(group, index, width, ctx, tied_in, last) do
     header = header(ctx, index == 0)
-    natural = Enum.sum_by(group, & &1.width)
-    factor = stretch(width, header.width, natural, List.last(group).index == last)
+    natural = natural_width(group)
+    {_m, last_geom} = List.last(group)
+    factor = stretch(width, header.width, natural, last_geom.index == last)
 
     {placed, system_width} =
-      Enum.map_reduce(group, header.width, fn m, x ->
+      Enum.map_reduce(group, header.width, fn {measure, natural_geom}, x ->
         geom = %{
-          index: m.index,
-          x: x,
-          width: m.width * factor,
-          start_tick: m.start_tick,
-          capacity: m.capacity,
-          content_x: x + @left_pad * factor,
-          scale: m.scale * factor
+          natural_geom
+          | x: x,
+            width: natural_geom.width * factor,
+            content_x: x + @left_pad * factor,
+            scale: natural_geom.scale * factor
         }
 
-        {{m.measure, geom}, x + geom.width}
+        {{measure, geom}, x + geom.width}
       end)
 
     {note_items, anchors} =
@@ -148,7 +161,7 @@ defmodule DrawMusic.Engraving.Layout do
       header.items ++
         staff_lines(header.line_x, system_width) ++ barlines(geoms, last) ++ note_items
 
-    {%{index: index, width: system_width, measures: geoms, items: items}, anchors}
+    {%System{index: index, width: system_width, measures: geoms, items: items}, anchors}
   end
 
   defp stretch(:infinity, _header, _natural, _last?), do: 1.0
@@ -161,7 +174,6 @@ defmodule DrawMusic.Engraving.Layout do
   ## Header: brace, clefs, key and time signatures
 
   defp header(ctx, first?) do
-    bottom = Staff.bottom()
     line_x = brace_width() + 0.3
     clef_x = line_x + 0.8
 
@@ -174,13 +186,12 @@ defmodule DrawMusic.Engraving.Layout do
     {key, key_end} = key_signature(ctx.sf, key_x)
     {time, time_end} = if first?, do: time_signature(ctx, key_end), else: {[], key_end}
 
-    %{
+    %Header{
       items:
         [
-          %{type: :brace, x: 0, y1: 0, y2: bottom},
+          %Brace{x: 0, y1: 0, y2: Staff.bottom()},
           barline(line_x, Smufl.default("thinBarlineThickness"))
-        ] ++
-          clefs ++ key ++ time,
+        ] ++ clefs ++ key ++ time,
       line_x: line_x,
       width: time_end + 1.0
     }
@@ -240,7 +251,7 @@ defmodule DrawMusic.Engraving.Layout do
 
     for staff <- [:treble, :bass], line <- 0..4 do
       y = Staff.top(staff) + line
-      %{type: :line, role: :staff, x1: x1, y1: y, x2: x2, y2: y, thickness: thickness}
+      %Line{role: :staff, x1: x1, y1: y, x2: x2, y2: y, thickness: thickness}
     end
   end
 
@@ -263,15 +274,7 @@ defmodule DrawMusic.Engraving.Layout do
   end
 
   defp barline(x, thickness),
-    do: %{
-      type: :line,
-      role: :barline,
-      x1: x,
-      y1: 0,
-      x2: x,
-      y2: Staff.bottom(),
-      thickness: thickness
-    }
+    do: %Line{role: :barline, x1: x, y1: 0, x2: x, y2: Staff.bottom(), thickness: thickness}
 
   ## Ties
 
@@ -302,24 +305,31 @@ defmodule DrawMusic.Engraving.Layout do
   # Ties curve away from the stem. One crossing a system break is drawn as
   # two halves: to the end of the first system, and from the start of the
   # next system's first measure.
-  defp tie_items(from, to, systems) do
+  defp tie_items(%Anchor{} = from, %Anchor{} = to, systems) do
     dir = if from.dir == :up, do: :down, else: :up
     dy = if dir == :down, do: @tie_offset, else: -@tie_offset
 
     if from.system == to.system do
-      [{from.system, tie(from.x1 + @tie_gap, to.x0 - @tie_gap, from.y + dy, dir)}]
+      [
+        {from.system,
+         %Tie{x1: from.x1 + @tie_gap, x2: to.x0 - @tie_gap, y: from.y + dy, dir: dir}}
+      ]
     else
       source = Enum.at(systems, from.system)
       target = Enum.at(systems, to.system)
 
       [
-        {from.system, tie(from.x1 + @tie_gap, source.width, from.y + dy, dir)},
-        {to.system, tie(hd(target.measures).content_x - 1.0, to.x0 - @tie_gap, to.y + dy, dir)}
+        {from.system, %Tie{x1: from.x1 + @tie_gap, x2: source.width, y: from.y + dy, dir: dir}},
+        {to.system,
+         %Tie{
+           x1: hd(target.measures).content_x - 1.0,
+           x2: to.x0 - @tie_gap,
+           y: to.y + dy,
+           dir: dir
+         }}
       ]
     end
   end
-
-  defp tie(x1, x2, y, dir), do: %{type: :tie, x1: x1, x2: x2, y: y, dir: dir}
 
   ## Vertical stacking
 
@@ -332,21 +342,22 @@ defmodule DrawMusic.Engraving.Layout do
         above = max(@margin, -top + 1.0)
         below = max(@margin, bottom - Staff.bottom() + 1.0)
         system_y = y + above
-        {Map.put(system, :y, system_y), system_y + Staff.bottom() + below + @system_gap}
+        {%{system | y: system_y}, system_y + Staff.bottom() + below + @system_gap}
       end)
 
     {systems, bottom - @system_gap}
   end
 
-  defp y_range(%{type: :glyph, glyph: glyph, y: y}) do
+  @spec y_range(Item.t()) :: [number()]
+  defp y_range(%Glyph{glyph: glyph, y: y}) do
     {_x0, y0, _x1, y1} = Smufl.bbox(glyph)
     [y - y1, y - y0]
   end
 
-  defp y_range(%{type: :line, y1: y1, y2: y2}), do: [y1, y2]
-  defp y_range(%{type: :beam} = b), do: [b.y1, b.y2, b.y1 + b.thickness, b.y2 + b.thickness]
-  defp y_range(%{type: :tie, y: y}), do: [y - 1, y + 1]
-  defp y_range(%{type: :brace, y1: y1, y2: y2}), do: [y1, y2]
+  defp y_range(%Line{y1: y1, y2: y2}), do: [y1, y2]
+  defp y_range(%Beam{} = b), do: [b.y1, b.y2, b.y1 + b.thickness, b.y2 + b.thickness]
+  defp y_range(%Tie{y: y}), do: [y - 1, y + 1]
+  defp y_range(%Brace{y1: y1, y2: y2}), do: [y1, y2]
 
-  defp glyph(role, glyph, x, y), do: %{type: :glyph, role: role, glyph: glyph, x: x, y: y}
+  defp glyph(role, glyph, x, y), do: %Glyph{role: role, glyph: glyph, x: x, y: y}
 end

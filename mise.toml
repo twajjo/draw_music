@@ -3,6 +3,12 @@ erlang = "29.1.2"
 elixir = "1.20.4-otp-29"
 node = "23.8.0"
 
+[env]
+# Where the CSS/JS imports of Elixir-provided packages (daisyUI, Phoenix,
+# LiveView, colocated hooks) resolve. mix sets this for its tailwind and
+# esbuild runs; this gives editors and bare CLI runs the same view.
+NODE_PATH = "{{config_root}}/deps:{{config_root}}/_build/dev"
+
 [tasks.setup]
 description = "Fetch deps, create and migrate the database, build assets"
 run = "mix setup"

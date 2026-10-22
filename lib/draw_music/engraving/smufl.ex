@@ -47,23 +47,29 @@ defmodule DrawMusic.Engraving.Smufl do
   @defaults metadata["engravingDefaults"]
 
   @doc "The glyphs available."
+  @spec glyphs() :: [atom()]
   def glyphs, do: @glyphs
 
   @doc "The character that draws `glyph` in Bravura."
+  @spec char(atom()) :: String.t()
   def char(glyph), do: Map.fetch!(@chars, glyph)
 
   @doc "Bounding box `{x0, y0, x1, y1}` of `glyph` (SW corner, NE corner)."
+  @spec bbox(atom()) :: {number(), number(), number(), number()}
   def bbox(glyph), do: Map.fetch!(@bboxes, glyph)
 
   @doc "Width of `glyph`."
+  @spec width(atom()) :: number()
   def width(glyph) do
     {x0, _y0, x1, _y1} = bbox(glyph)
     x1 - x0
   end
 
   @doc "A named anchor of `glyph`, such as `\"stemUpSE\"`, as `{x, y}`; nil if it has none."
+  @spec anchor(atom(), String.t()) :: {number(), number()} | nil
   def anchor(glyph, name), do: Map.get(@anchors, {glyph, name})
 
   @doc "An engraving default, such as `\"staffLineThickness\"`."
+  @spec default(String.t()) :: number() | [String.t()]
   def default(name) when is_binary(name), do: Map.fetch!(@defaults, name)
 end

@@ -13,6 +13,8 @@ defmodule DrawMusic.Music.Stems do
   @middle %{treble: 34, bass: 22}
 
   @doc "`:up` or `:down` for one voice's notes on `steps` of `staff`."
+  @spec direction(Note.staff(), [integer(), ...]) :: :up | :down
+  @spec direction(Note.staff(), [integer(), ...], pos_integer(), pos_integer()) :: :up | :down
   def direction(staff, steps) when is_list(steps) and steps != [] do
     middle = Map.fetch!(@middle, staff)
     above = Enum.max(steps) - middle

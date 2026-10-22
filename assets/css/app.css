@@ -2,12 +2,14 @@
    https://tailwindcss.com/docs/configuration */
 
 @import "tailwindcss" source(none);
-@import "phoenix-colocated/draw_music/colocated.css";
+/* The app uses no colocated CSS (Phoenix.LiveView.ColocatedCSS), so the
+   generator's import of "phoenix-colocated/draw_music/colocated.css" and its
+   @source line for _build/dev/phoenix-colocated are left out: that file only
+   resolves through mix's NODE_PATH, and failed for editors and bare
+   Tailwind runs. Restore both if colocated CSS is ever added. */
 @source "../css";
 @source "../js";
 @source "../../lib/draw_music_web";
-/* Required for Tailwind to automatically pick up changes in colocated CSS files in dev */
-@source "../../_build/dev/phoenix-colocated/draw_music/*/";
 
 /* A Tailwind plugin that makes "hero-#{ICON}" classes available.
    The heroicons installation itself is managed by your mix.exs */

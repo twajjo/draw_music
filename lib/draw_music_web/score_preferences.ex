@@ -12,12 +12,14 @@ defmodule DrawMusicWeb.ScorePreferences do
   alias DrawMusic.Accounts
 
   @doc "The preferences form for the socket's user."
+  @spec form(DrawMusic.Accounts.Scope.t()) :: Phoenix.HTML.Form.t()
   def form(scope), do: scope |> Accounts.change_user_preferences() |> to_form()
 
   @doc """
   Applies a `set_score_layout` or `set_score_ink` event's params to the
   user's preferences; returns the socket.
   """
+  @spec apply_event(String.t(), map(), Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
   def apply_event("set_score_layout", %{"layout" => layout}, socket),
     do: update(socket, %{score_layout: layout})
 

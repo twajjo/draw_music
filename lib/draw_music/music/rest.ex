@@ -18,6 +18,16 @@ defmodule DrawMusic.Music.Rest do
     field :dots, :integer, default: 0
   end
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          staff: DrawMusic.Music.Note.staff(),
+          voice: 1..4,
+          offset: non_neg_integer(),
+          value: Duration.value(),
+          dots: 0..2
+        }
+
+  @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(rest, attrs) do
     rest
     |> cast(attrs, [:id, :staff, :voice, :offset, :value, :dots])
@@ -28,5 +38,6 @@ defmodule DrawMusic.Music.Rest do
   end
 
   @doc "Length in ticks."
+  @spec ticks(t()) :: pos_integer()
   def ticks(%__MODULE__{value: value, dots: dots}), do: Duration.ticks(value, dots)
 end

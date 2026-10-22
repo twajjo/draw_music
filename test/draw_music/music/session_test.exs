@@ -8,17 +8,8 @@ defmodule DrawMusic.Music.SessionTest do
   @ctx %Context{}
 
   defp place(session, spn, offset) do
-    {step, alter} = pitch!(spn)
-
-    Session.edit(session, fn score, ctx ->
-      Editing.place_note(score, ctx, 0, %{
-        staff: :treble,
-        offset: offset,
-        value: :quarter,
-        step: step,
-        alter: alter
-      })
-    end)
+    at = placement(spn, %{staff: :treble, offset: offset, value: :quarter})
+    Session.edit(session, &Editing.place_note(&1, &2, 0, at))
   end
 
   setup do

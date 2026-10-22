@@ -12,6 +12,7 @@ defmodule DrawMusicWeb.LibraryComponents do
   alias DrawMusic.Library.Key
 
   @doc "Every key as select options, grouped into major and minor, valued by slug."
+  @spec key_options() :: [{String.t(), [{String.t(), String.t()}]}]
   def key_options do
     for {label, mode} <- [{"Major", :major}, {"Minor", :minor}] do
       {label, for(sf <- -7..7, do: {Key.name(sf, mode), Key.slug(sf, mode)})}
@@ -19,6 +20,7 @@ defmodule DrawMusicWeb.LibraryComponents do
   end
 
   @doc "Path of a version's score view."
+  @spec version_path(Ecto.UUID.t(), Key.t(), pos_integer()) :: String.t()
   def version_path(composition_id, %Key{} = key, number),
     do: ~p"/compositions/#{composition_id}/#{Key.slug(key)}/v/#{number}"
 
@@ -26,6 +28,7 @@ defmodule DrawMusicWeb.LibraryComponents do
   attr :id, :string, required: true
   attr :composition, :map, required: true
 
+  @spec composition_row(map()) :: Phoenix.LiveView.Rendered.t()
   def composition_row(assigns) do
     ~H"""
     <article
@@ -59,6 +62,7 @@ defmodule DrawMusicWeb.LibraryComponents do
   attr :composition, :map, required: true
   attr :version, :map, required: true, doc: "the version being shown, with its key"
 
+  @spec version_picker(map()) :: Phoenix.LiveView.Rendered.t()
   def version_picker(assigns) do
     ~H"""
     <details id={@id} class="dropdown dropdown-end">
@@ -88,6 +92,7 @@ defmodule DrawMusicWeb.LibraryComponents do
   end
 
   @doc "The composition's credits on one line."
+  @spec credits(DrawMusic.Library.Composition.t()) :: String.t()
   def credits(composition) do
     [composition.composer, composition.arranger && "arr. #{composition.arranger}"]
     |> Enum.reject(&(&1 in [nil, ""]))

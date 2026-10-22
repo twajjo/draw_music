@@ -7,13 +7,12 @@ defmodule DrawMusic.Music.Beaming do
   end a group. A pickup measure's beats are counted back from its end.
   """
 
-  alias DrawMusic.Music.{Context, Duration, Measure}
+  alias DrawMusic.Music.{BeamGroup, Context, Duration, Measure}
 
   @doc """
-  Beam groups of measure `index`, as
-  `[%{staff: staff, voice: voice, offsets: [offset, ...]}]`, each with at
-  least two notes or chords.
+  Beam groups of measure `index`, each with at least two notes or chords.
   """
+  @spec groups(Measure.t(), Context.t(), non_neg_integer()) :: [BeamGroup.t()]
   def groups(%Measure{} = measure, %Context{} = ctx, index) do
     shift = Context.measure_ticks(ctx) - Context.capacity(ctx, index)
     span = Context.beam_group_ticks(ctx)
@@ -26,7 +25,7 @@ defmodule DrawMusic.Music.Beaming do
 
     for {staff, voice} <- lines,
         offsets <- line_groups(measure, staff, voice, &div(&1 + shift, span)),
-        do: %{staff: staff, voice: voice, offsets: offsets}
+        do: %BeamGroup{staff: staff, voice: voice, offsets: offsets}
   end
 
   defp line_groups(measure, staff, voice, beat_of) do

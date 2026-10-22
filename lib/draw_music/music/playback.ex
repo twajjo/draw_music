@@ -4,12 +4,13 @@ defmodule DrawMusic.Music.Playback do
   its start and length in ticks and seconds.
   """
 
-  alias DrawMusic.Music.{Context, Duration, Note, Pitch, Score, Timeline}
+  alias DrawMusic.Music.{Context, Duration, Note, Pitch, PlaybackEvent, Score, Sound, Timeline}
 
   @doc """
-  Sounds as `%{ids, staff, midi, start, ticks}`, ordered by start: a tied
-  chain sounds once, for its total length.
+  The score's sounds, ordered by start: a tied chain sounds once, for its
+  total length.
   """
+  @spec sounds(Score.t(), Context.t()) :: [Sound.t()]
   def sounds(%Score{} = score, %Context{} = ctx) do
     notes = for %{kind: :note} = entry <- Timeline.flatten(score, ctx), do: entry
     by_id = Map.new(notes, &{&1.event.id, &1})
@@ -26,7 +27,7 @@ defmodule DrawMusic.Music.Playback do
   defp chain(head, by_id) do
     {ids, ticks} = follow(head, by_id, [], 0)
 
-    %{
+    %Sound{
       ids: ids,
       staff: head.event.staff,
       midi: Note.midi(head.event),
@@ -54,13 +55,15 @@ defmodule DrawMusic.Music.Playback do
   `:from` and `:to` (ticks) limit playback to sounds starting in that span;
   times are relative to `:from`.
   """
+  @spec events(Score.t(), Context.t(), from: non_neg_integer(), to: non_neg_integer()) ::
+          [PlaybackEvent.t()]
   def events(%Score{} = score, %Context{} = ctx, opts \\ []) do
     from = Keyword.get(opts, :from, 0)
     to = Keyword.get(opts, :to)
     seconds_per_tick = 60 / (ctx.tempo_bpm * Duration.ppq())
 
     for sound <- sounds(score, ctx), sound.start >= from, is_nil(to) or sound.start < to do
-      %{
+      %PlaybackEvent{
         ids: sound.ids,
         midi: sound.midi,
         frequency: Pitch.frequency(sound.midi),

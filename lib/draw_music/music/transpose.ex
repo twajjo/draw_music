@@ -8,11 +8,17 @@ defmodule DrawMusic.Music.Transpose do
 
   alias DrawMusic.Music.{Note, Pitch, Score}
 
+  @typedoc "A key as its key signature (-7..7) and mode."
+  @type key :: {-7..7, :major | :minor}
+
   @doc """
   Transposes `score` from key `{sf, mode}` to key `{sf, mode}`. `direction`
   is `:nearest` (the smaller move, up on a tritone), `:up` or `:down`.
   Returns `{:error, :out_of_range}` if a note would leave A0–C8.
   """
+  @spec to_key(Score.t(), key(), key()) :: {:ok, Score.t()} | {:error, :out_of_range}
+  @spec to_key(Score.t(), key(), key(), :nearest | :up | :down) ::
+          {:ok, Score.t()} | {:error, :out_of_range}
   def to_key(%Score{} = score, {from_sf, from_mode}, {to_sf, to_mode}, direction \\ :nearest) do
     {from_letter, from_pc} = Pitch.tonic(from_sf, from_mode)
     {to_letter, to_pc} = Pitch.tonic(to_sf, to_mode)

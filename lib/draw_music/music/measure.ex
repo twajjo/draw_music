@@ -14,6 +14,9 @@ defmodule DrawMusic.Music.Measure do
     embeds_many :rests, Rest, on_replace: :delete
   end
 
+  @type t :: %__MODULE__{id: Ecto.UUID.t() | nil, notes: [Note.t()], rests: [Rest.t()]}
+
+  @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(measure, attrs) do
     measure
     |> cast(attrs, [:id])
@@ -22,5 +25,6 @@ defmodule DrawMusic.Music.Measure do
   end
 
   @doc "An empty measure with a fresh id."
+  @spec new() :: t()
   def new, do: %__MODULE__{id: Ecto.UUID.generate(), notes: [], rests: []}
 end

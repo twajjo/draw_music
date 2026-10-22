@@ -6,8 +6,13 @@ defmodule DrawMusicWeb.EditorCommands do
   atoms.
   """
 
-  alias DrawMusic.Music.{Duration, Editing, Note, Pitch, Timeline}
-  alias DrawMusicWeb.EditorPalette
+  alias DrawMusic.Music.{Clipboard, Context, Duration, Editing, Note, Pitch, Score, Timeline}
+  alias DrawMusicWeb.{ContextMenu, EditorPalette}
+
+  @typedoc "An edit for `DrawMusic.Music.Session.edit/2`."
+  @type edit ::
+          (Score.t(), Context.t() ->
+             {:ok, Score.t()} | {:ok, Score.t(), term()} | {:error, Editing.reason()})
 
   # {scale steps, semitones} of the intervals offered in the menu.
   @intervals %{
@@ -26,6 +31,7 @@ defmodule DrawMusicWeb.EditorCommands do
   }
 
   @doc "Drops picked-up notes `steps` scale steps away, with `alter` if a modifier was held."
+  @spec drop([Ecto.UUID.t()], integer(), -2..2 | nil) :: edit()
   def drop(ids, steps, alter) do
     fn score, ctx ->
       with {:ok, score} <- Editing.move_steps(score, ctx, ids, steps),
@@ -40,6 +46,8 @@ defmodule DrawMusicWeb.EditorCommands do
   Moves notes up or down (`dir`) by a scale `"step"`, `"semitone"`,
   `"octave"` or a named `"interval"` (m2 … P8).
   """
+  @spec transpose([Ecto.UUID.t()], String.t(), String.t()) :: edit()
+  @spec transpose([Ecto.UUID.t()], String.t(), String.t(), String.t() | nil) :: edit()
   def transpose(ids, by, dir, interval \\ nil) do
     sign = if dir == "down", do: -1, else: 1
 
@@ -68,6 +76,7 @@ defmodule DrawMusicWeb.EditorCommands do
   """
   # Split, length, dot and make-rest act on the right-clicked note's whole
   # chord, which must stay one chord.
+  @spec menu(String.t(), map(), ContextMenu.t(), boolean()) :: edit()
   def menu("split", _params, menu, _insert?),
     do: &Editing.split(&1, &2, Editing.chord_ids(&1, &2, menu.id))
 
@@ -163,6 +172,7 @@ defmodule DrawMusicWeb.EditorCommands do
   the clipboard covers first makes room, so existing music from `at` on
   moves right.
   """
+  @spec paste(Clipboard.t(), non_neg_integer()) :: edit()
   def paste(clipboard, at) do
     length = clipboard.entries |> Enum.map(&(&1.start + &1.ticks)) |> Enum.max(fn -> 0 end)
     staves = clipboard.entries |> Enum.map(& &1.event.staff) |> Enum.uniq()

@@ -19,10 +19,24 @@ defmodule DrawMusic.Accounts.User do
     timestamps(type: :utc_datetime)
   end
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          email: String.t() | nil,
+          password: String.t() | nil,
+          hashed_password: String.t() | nil,
+          confirmed_at: DateTime.t() | nil,
+          authenticated_at: DateTime.t() | nil,
+          score_layout: :strip | :page,
+          score_ink_dark: String.t() | nil,
+          inserted_at: DateTime.t() | nil,
+          updated_at: DateTime.t() | nil
+        }
+
   @doc """
   A changeset for the score display preferences. The dark-mode ink must be
   a `#rrggbb` color readable on black: a WCAG contrast ratio of at least 7:1.
   """
+  @spec preferences_changeset(t(), map()) :: Ecto.Changeset.t()
   def preferences_changeset(user, attrs) do
     user
     |> cast(attrs, [:score_layout, :score_ink_dark])
@@ -60,6 +74,8 @@ defmodule DrawMusic.Accounts.User do
       uniqueness of the email, useful when displaying live validations.
       Defaults to `true`.
   """
+  @spec email_changeset(t(), map()) :: Ecto.Changeset.t()
+  @spec email_changeset(t(), map(), keyword()) :: Ecto.Changeset.t()
   def email_changeset(user, attrs, opts \\ []) do
     user
     |> cast(attrs, [:email])
@@ -108,6 +124,8 @@ defmodule DrawMusic.Accounts.User do
       validations on a LiveView form), this option can be set to `false`.
       Defaults to `true`.
   """
+  @spec password_changeset(t(), map()) :: Ecto.Changeset.t()
+  @spec password_changeset(t(), map(), keyword()) :: Ecto.Changeset.t()
   def password_changeset(user, attrs, opts \\ []) do
     user
     |> cast(attrs, [:password])
@@ -146,6 +164,7 @@ defmodule DrawMusic.Accounts.User do
   @doc """
   Confirms the account by setting `confirmed_at`.
   """
+  @spec confirm_changeset(t()) :: Ecto.Changeset.t()
   def confirm_changeset(user) do
     now = DateTime.utc_now(:second)
     change(user, confirmed_at: now)
@@ -157,6 +176,7 @@ defmodule DrawMusic.Accounts.User do
   If there is no user or the user doesn't have a password, we call
   `Bcrypt.no_user_verify/0` to avoid timing attacks.
   """
+  @spec valid_password?(t() | nil, String.t()) :: boolean()
   def valid_password?(%DrawMusic.Accounts.User{hashed_password: hashed_password}, password)
       when is_binary(hashed_password) and byte_size(password) > 0 do
     Bcrypt.verify_pass(password, hashed_password)

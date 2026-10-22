@@ -4,21 +4,26 @@ defmodule DrawMusic.MusicHelpers do
   pitch notation, e.g. `"F#4"`.
   """
 
-  alias DrawMusic.Music.{Editing, Pitch, Timeline}
+  alias DrawMusic.Music.{Editing, Pitch, Placement, Timeline}
 
   def pitch!(spn) do
     {:ok, pitch} = Pitch.parse(spn)
     pitch
   end
 
-  @doc "Places a note and returns `{score, id}`."
+  @doc """
+  Places a note and returns `{score, id}`. `attrs` are `DrawMusic.Music.Placement`
+  fields (staff, offset, value, and optionally dots and voice).
+  """
   def note!(score, ctx, index, spn, attrs) do
-    {step, alter} = pitch!(spn)
-
-    {:ok, score, id} =
-      Editing.place_note(score, ctx, index, Map.merge(%{step: step, alter: alter}, attrs))
-
+    {:ok, score, id} = Editing.place_note(score, ctx, index, placement(spn, attrs))
     {score, id}
+  end
+
+  @doc "A `DrawMusic.Music.Placement` from Placement fields, pitched at `spn` if given."
+  def placement(spn \\ nil, attrs) do
+    pitch = if spn, do: Enum.zip([:step, :alter], Tuple.to_list(pitch!(spn))), else: []
+    struct!(Placement, Map.merge(Map.new(pitch), attrs))
   end
 
   @doc "All notes as `{measure_index, offset, spn, value, dots}`, in order."

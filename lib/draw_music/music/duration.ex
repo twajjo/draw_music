@@ -18,6 +18,9 @@ defmodule DrawMusic.Music.Duration do
     sixty_fourth: 60
   ]
   @values Keyword.keys(@base)
+
+  @typedoc "A note value, whole through 64th."
+  @type value :: :whole | :half | :quarter | :eighth | :sixteenth | :thirty_second | :sixty_fourth
   @flags %{eighth: 1, sixteenth: 2, thirty_second: 3, sixty_fourth: 4}
 
   # Every value/dots combination, longest first.
@@ -28,12 +31,16 @@ defmodule DrawMusic.Music.Duration do
                end)
               |> Enum.sort_by(fn {_v, _d, ticks} -> ticks end, :desc)
 
+  @spec ppq() :: pos_integer()
   def ppq, do: @ppq
 
   @doc "Note values, longest first."
+  @spec values() :: [value()]
   def values, do: @values
 
   @doc "Length of `value` with `dots` (0..2) in ticks."
+  @spec ticks(value()) :: pos_integer()
+  @spec ticks(value(), 0..2) :: pos_integer()
   def ticks(value, dots \\ 0) when dots in 0..2 do
     base = Keyword.fetch!(@base, value)
 
@@ -45,9 +52,11 @@ defmodule DrawMusic.Music.Duration do
   end
 
   @doc "Number of flags (or beams) the value takes: 0 for quarter and longer."
+  @spec flags(value()) :: 0..4
   def flags(value), do: Map.get(@flags, value, 0)
 
   @doc "Eighths and shorter can be beamed."
+  @spec beamable?(value()) :: boolean()
   def beamable?(value), do: flags(value) > 0
 
   @doc """
@@ -55,6 +64,7 @@ defmodule DrawMusic.Music.Duration do
   first. Returns `{:error, :unrepresentable}` when no combination of values
   adds up to it.
   """
+  @spec decompose(non_neg_integer()) :: {:ok, [{value(), 0..2}]} | {:error, :unrepresentable}
   def decompose(0), do: {:ok, []}
 
   def decompose(ticks) when is_integer(ticks) and ticks > 0 do

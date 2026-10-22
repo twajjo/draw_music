@@ -33,7 +33,24 @@ defmodule DrawMusic.Library.Composition do
     timestamps(type: :utc_datetime)
   end
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          name: String.t() | nil,
+          subtitle: String.t() | nil,
+          composer: String.t() | nil,
+          arranger: String.t() | nil,
+          lyricist: String.t() | nil,
+          copyright: String.t() | nil,
+          notes: String.t() | nil,
+          user_id: Ecto.UUID.t() | nil,
+          user: DrawMusic.Accounts.User.t() | Ecto.Association.NotLoaded.t(),
+          keys: [Key.t()] | Ecto.Association.NotLoaded.t(),
+          inserted_at: DateTime.t() | nil,
+          updated_at: DateTime.t() | nil
+        }
+
   @doc false
+  @spec changeset(t(), map(), Scope.t()) :: Ecto.Changeset.t()
   def changeset(composition, attrs, %Scope{} = scope) do
     composition
     |> cast(attrs, [:name, :notes | @credit_fields])

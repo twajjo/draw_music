@@ -36,23 +36,33 @@ defmodule DrawMusic.Music.Pitch do
   @min_midi 21
   @max_midi 108
 
+  @spec min_midi() :: 21
   def min_midi, do: @min_midi
+  @spec max_midi() :: 108
   def max_midi, do: @max_midi
+  @spec in_range?(integer()) :: boolean()
   def in_range?(midi), do: midi in @min_midi..@max_midi
 
+  @spec letter(integer()) :: 0..6
   def letter(step), do: Integer.mod(step, 7)
+  @spec octave(integer()) :: integer()
   def octave(step), do: Integer.floor_div(step, 7)
+  @spec step(0..6, integer()) :: integer()
   def step(letter, octave), do: octave * 7 + letter
 
   @doc "MIDI number of the step with no accidental."
+  @spec natural_midi(integer()) :: integer()
   def natural_midi(step), do: 12 * (octave(step) + 1) + elem(@semis, letter(step))
 
+  @spec midi(integer(), integer()) :: integer()
   def midi(step, alter), do: natural_midi(step) + alter
 
   @doc "Equal-tempered frequency in Hz, A4 = 440."
+  @spec frequency(number()) :: float()
   def frequency(midi), do: 440.0 * :math.pow(2, (midi - 69) / 12)
 
   @doc "SPN name, e.g. `name(28, 1)` → `\"C♯4\"`."
+  @spec name(integer(), integer()) :: String.t()
   def name(step, alter) do
     elem(@letter_names, letter(step)) <>
       Map.fetch!(@accidental_names, alter) <>
@@ -63,6 +73,7 @@ defmodule DrawMusic.Music.Pitch do
   Parses SPN into `{:ok, {step, alter}}`. Accepts Unicode accidentals
   (♯ ♭ 𝄪 𝄫 ♮) and ASCII ones (`#`, `b`, `##`/`x`, `bb`), e.g. `"Bb3"`.
   """
+  @spec parse(String.t()) :: {:ok, {integer(), -2..2}} | {:error, :invalid_pitch}
   def parse(name) when is_binary(name) do
     with [_, letter, accidental, octave] <-
            Regex.run(~r/^([A-Ga-g])(##|#|♯|x|𝄪|bb|b|♭|𝄫|♮)?(-?\d)$/u, String.trim(name)),
@@ -79,6 +90,7 @@ defmodule DrawMusic.Music.Pitch do
   end
 
   @doc "The alteration the key signature `sf` gives `letter`: -1, 0 or 1."
+  @spec key_alter(-7..7, 0..6) :: -1..1
   def key_alter(sf, letter) when sf > 0,
     do: if(letter in Enum.take(@sharp_order, sf), do: 1, else: 0)
 
@@ -88,6 +100,7 @@ defmodule DrawMusic.Music.Pitch do
   def key_alter(0, _letter), do: 0
 
   @doc "Tonic of a key as `{letter, pitch_class}`, e.g. `tonic(-1, :minor)` is D."
+  @spec tonic(-7..7, :major | :minor) :: {0..6, 0..11}
   def tonic(sf, :major), do: {Integer.mod(4 * sf, 7), Integer.mod(7 * sf, 12)}
   def tonic(sf, :minor), do: {Integer.mod(5 + 4 * sf, 7), Integer.mod(9 + 7 * sf, 12)}
 
@@ -96,6 +109,7 @@ defmodule DrawMusic.Music.Pitch do
   own note when there is one, otherwise a natural, otherwise sharps in sharp
   keys and flats in flat keys.
   """
+  @spec spell(integer(), -7..7) :: {integer(), -2..2}
   def spell(midi, sf) do
     pc = Integer.mod(midi, 12)
 

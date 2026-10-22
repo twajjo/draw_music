@@ -9,6 +9,7 @@ defmodule DrawMusicWeb.VersionLookup do
   alias DrawMusic.Library
   alias DrawMusic.Library.{Key, Version}
 
+  @spec fetch!(DrawMusic.Accounts.Scope.t(), map()) :: Version.t()
   def fetch!(scope, %{"id" => id, "key" => slug, "number" => number}) do
     with {:ok, key} <- Key.from_slug(slug),
          {:ok, id} <- Ecto.UUID.cast(id),

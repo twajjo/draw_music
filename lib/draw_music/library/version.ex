@@ -38,6 +38,24 @@ defmodule DrawMusic.Library.Version do
     timestamps(type: :utc_datetime)
   end
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          number: pos_integer() | nil,
+          label: String.t() | nil,
+          time_num: pos_integer(),
+          time_den: pos_integer(),
+          time_symbol: :none | :common | :cut,
+          tempo_bpm: pos_integer(),
+          tempo_text: String.t() | nil,
+          pickup_ticks: non_neg_integer(),
+          instrument: 0..127,
+          score: Score.t(),
+          key_id: Ecto.UUID.t() | nil,
+          key: Key.t() | Ecto.Association.NotLoaded.t(),
+          inserted_at: DateTime.t() | nil,
+          updated_at: DateTime.t() | nil
+        }
+
   @fields [
     :label,
     :time_num,
@@ -55,6 +73,7 @@ defmodule DrawMusic.Library.Version do
   `%DrawMusic.Music.Score{}` (from the editor) or as params (from storage or
   an imported file), which are validated.
   """
+  @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(version, attrs) do
     version
     |> cast(attrs, @fields)

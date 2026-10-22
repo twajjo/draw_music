@@ -30,6 +30,7 @@ defmodule DrawMusicWeb.ScoreExport do
   @credit_size 1.6
 
   @doc "The SVG document for a version with its key and composition loaded."
+  @spec svg(Version.t()) :: String.t()
   def svg(%Version{key: %Key{composition: %Composition{} = composition}} = version) do
     layout = Layout.layout(version.score, Context.from_version(version), width: page_width())
     lines = credit_lines(composition)
@@ -103,6 +104,8 @@ defmodule DrawMusicWeb.ScoreExport do
   defp strip_root_markers(svg), do: String.replace(svg, ~r/ phx-r(?=[\s>\/])/, "")
 
   @doc "Download filename, e.g. `Waltz - G major - v2.svg` (or `.mid`)."
+  @spec filename(Version.t()) :: String.t()
+  @spec filename(Version.t(), String.t()) :: String.t()
   def filename(
         %Version{key: %Key{composition: composition} = key, number: number},
         extension \\ "svg"

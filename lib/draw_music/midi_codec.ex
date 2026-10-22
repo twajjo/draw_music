@@ -24,8 +24,8 @@ defmodule DrawMusic.MidiCodec do
 
   import Bitwise, only: [<<<: 2]
 
-  alias DrawMusic.Library.{Composition, Key, Version}
-  alias DrawMusic.Music.{Context, Editing, Note, Pitch, Playback, Score, Timeline}
+  alias DrawMusic.Library.{Composition, Import, Key, Version}
+  alias DrawMusic.Music.{Context, Editing, Entry, Note, Pitch, Playback, Score, Timeline}
   alias ExMidi.MidiFile
 
   @ppq 960
@@ -51,6 +51,7 @@ defmodule DrawMusic.MidiCodec do
   ## Export
 
   @doc "Encodes a version (with key and composition loaded) as a .mid binary."
+  @spec export(Version.t()) :: {:ok, binary()} | {:error, term()}
   def export(%Version{key: %Key{composition: %Composition{} = composition}} = version) do
     score = version.score || Score.new()
     ctx = Context.from_version(version)
@@ -97,7 +98,8 @@ defmodule DrawMusic.MidiCodec do
   end
 
   defp payload(composition, version) do
-    %{
+    %Import{
+      name: composition.name,
       composition: Map.take(composition, @credit_fields),
       key: %{sf: version.key.sf, mode: version.key.mode},
       version:
@@ -156,10 +158,13 @@ defmodule DrawMusic.MidiCodec do
   ## Import
 
   @doc """
-  Reads a .mid file into import attrs for `DrawMusic.Library.import_score/4`:
-  `%{name: name, composition: map, key: map, version: map}`. The name comes
-  from the first track name, else `filename` without its extension.
+  Reads a .mid file into a `DrawMusic.Library.Import` for
+  `DrawMusic.Library.import_score/4`. The name comes from the first track
+  name, else `filename` without its extension.
   """
+  @spec import(Path.t(), String.t()) ::
+          {:ok, Import.t()}
+          | {:error, :invalid_midi | :smpte_unsupported | :unrepresentable | :before_start}
   def import(path, filename) do
     case MidiFile.read(path) do
       {:midi_file, _format, division, tracks} when division < 0x8000 ->
@@ -218,7 +223,7 @@ defmodule DrawMusic.MidiCodec do
   end
 
   defp from_payload(payload, name) do
-    %{
+    %Import{
       name: name,
       composition: known(payload["composition"], @credit_fields),
       key: known(payload["key"], [:sf, :mode]),
@@ -256,7 +261,7 @@ defmodule DrawMusic.MidiCodec do
 
     with {:ok, score} <- Timeline.rebar(Score.new(), ctx, entries) do
       {:ok,
-       %{
+       %Import{
          name: name,
          composition: %{},
          key: %{sf: sf, mode: mode},
@@ -401,7 +406,7 @@ defmodule DrawMusic.MidiCodec do
         alter: alter
       }
 
-      %{kind: :note, start: start, ticks: ticks, event: note}
+      %Entry{kind: :note, start: start, ticks: ticks, event: note}
     end
   end
 end

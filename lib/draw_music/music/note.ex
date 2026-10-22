@@ -28,6 +28,22 @@ defmodule DrawMusic.Music.Note do
     field :tie_to, :binary_id
   end
 
+  @typedoc "A staff of the grand staff."
+  @type staff :: :treble | :bass
+
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          staff: staff(),
+          voice: 1..4,
+          offset: non_neg_integer(),
+          value: Duration.value(),
+          dots: 0..2,
+          step: integer(),
+          alter: -2..2,
+          tie_to: Ecto.UUID.t() | nil
+        }
+
+  @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(note, attrs) do
     note
     |> cast(attrs, [:id, :staff, :voice, :offset, :value, :dots, :step, :alter, :tie_to])
@@ -51,8 +67,10 @@ defmodule DrawMusic.Music.Note do
   end
 
   @doc "Sounding pitch as a MIDI number."
+  @spec midi(t()) :: integer()
   def midi(%__MODULE__{step: step, alter: alter}), do: Pitch.midi(step, alter)
 
   @doc "Length in ticks."
+  @spec ticks(t()) :: pos_integer()
   def ticks(%__MODULE__{value: value, dots: dots}), do: Duration.ticks(value, dots)
 end

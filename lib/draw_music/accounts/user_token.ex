@@ -1,7 +1,7 @@
 defmodule DrawMusic.Accounts.UserToken do
   use Ecto.Schema
   import Ecto.Query
-  alias DrawMusic.Accounts.UserToken
+  alias DrawMusic.Accounts.{User, UserToken}
 
   @hash_algorithm :sha256
   @rand_size 32
@@ -24,6 +24,17 @@ defmodule DrawMusic.Accounts.UserToken do
     timestamps(type: :utc_datetime, updated_at: false)
   end
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          token: binary() | nil,
+          context: String.t() | nil,
+          sent_to: String.t() | nil,
+          authenticated_at: DateTime.t() | nil,
+          user_id: Ecto.UUID.t() | nil,
+          user: DrawMusic.Accounts.User.t() | Ecto.Association.NotLoaded.t(),
+          inserted_at: DateTime.t() | nil
+        }
+
   @doc """
   Generates a token that will be stored in a signed place,
   such as session or cookie. As they are signed, those
@@ -43,6 +54,7 @@ defmodule DrawMusic.Accounts.UserToken do
   and devices in the UI and allow users to explicitly expire any
   session they deem invalid.
   """
+  @spec build_session_token(User.t()) :: {binary(), t()}
   def build_session_token(user) do
     token = :crypto.strong_rand_bytes(@rand_size)
     dt = user.authenticated_at || DateTime.utc_now(:second)
@@ -57,6 +69,7 @@ defmodule DrawMusic.Accounts.UserToken do
   The token is valid if it matches the value in the database and it has
   not expired (after @session_validity_in_days).
   """
+  @spec verify_session_token_query(binary()) :: {:ok, Ecto.Query.t()}
   def verify_session_token_query(token) do
     query =
       from token in by_token_and_context_query(token, "session"),
@@ -80,6 +93,7 @@ defmodule DrawMusic.Accounts.UserToken do
   Users can easily adapt the existing code to provide other types of delivery methods,
   for example, by phone numbers.
   """
+  @spec build_email_token(User.t(), String.t()) :: {String.t(), t()}
   def build_email_token(user, context) do
     build_hashed_token(user, context, user.email)
   end
@@ -106,6 +120,7 @@ defmodule DrawMusic.Accounts.UserToken do
   database. This function also checks whether the token has expired. The context
   of a magic link token is always "login".
   """
+  @spec verify_magic_link_token_query(String.t()) :: {:ok, Ecto.Query.t()} | :error
   def verify_magic_link_token_query(token) do
     case Base.url_decode64(token, padding: false) do
       {:ok, decoded_token} ->
@@ -136,6 +151,7 @@ defmodule DrawMusic.Accounts.UserToken do
   database and if it has not expired (after @change_email_validity_in_days).
   The context must always start with "change:".
   """
+  @spec verify_change_email_token_query(String.t(), String.t()) :: {:ok, Ecto.Query.t()} | :error
   def verify_change_email_token_query(token, "change:" <> _ = context) do
     case Base.url_decode64(token, padding: false) do
       {:ok, decoded_token} ->

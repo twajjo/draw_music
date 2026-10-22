@@ -7,16 +7,9 @@ defmodule DrawMusic.Music.EditingTest do
 
   @ctx %Context{}
 
-  defp place(score, index, spn, attrs) do
-    {step, alter} = pitch!(spn)
-
-    Editing.place_note(
-      score,
-      @ctx,
-      index,
-      Map.merge(%{staff: :treble, step: step, alter: alter}, attrs)
-    )
-  end
+  defp place(score, index, spn, attrs),
+    do:
+      Editing.place_note(score, @ctx, index, placement(spn, Map.merge(%{staff: :treble}, attrs)))
 
   defp voices(score) do
     for m <- score.measures, n <- m.notes, do: {n.offset, n.value, n.voice}
@@ -264,7 +257,12 @@ defmodule DrawMusic.Music.EditingTest do
 
     test "a rest becomes two rests" do
       {:ok, score, id} =
-        Editing.place_rest(Score.new(), @ctx, 0, %{staff: :treble, offset: 0, value: :quarter})
+        Editing.place_rest(
+          Score.new(),
+          @ctx,
+          0,
+          placement(%{staff: :treble, offset: 0, value: :quarter})
+        )
 
       {:ok, score, _ids} = Editing.split(score, @ctx, id)
       assert rests(score) == [{0, 0, :eighth, 0}, {0, 480, :eighth, 0}]
@@ -321,7 +319,12 @@ defmodule DrawMusic.Music.EditingTest do
 
     test "a rest becomes a note on the given step" do
       {:ok, score, id} =
-        Editing.place_rest(Score.new(), @ctx, 0, %{staff: :treble, offset: 960, value: :half})
+        Editing.place_rest(
+          Score.new(),
+          @ctx,
+          0,
+          placement(%{staff: :treble, offset: 960, value: :half})
+        )
 
       {step, alter} = pitch!("E4")
       {:ok, score, _note_id} = Editing.to_note(score, @ctx, id, step, alter)
@@ -451,20 +454,32 @@ defmodule DrawMusic.Music.EditingTest do
 
     test "chord_ids finds the whole chord" do
       {:ok, s, ids} =
-        Editing.place_chord(Score.new(), @ctx, 0, %{staff: :treble, offset: 0, value: :quarter}, [
-          pitch!("C4"),
-          pitch!("E4")
-        ])
+        Editing.place_chord(
+          Score.new(),
+          @ctx,
+          0,
+          placement(%{staff: :treble, offset: 0, value: :quarter}),
+          [
+            pitch!("C4"),
+            pitch!("E4")
+          ]
+        )
 
       assert Enum.sort(Editing.chord_ids(s, @ctx, hd(ids))) == Enum.sort(ids)
     end
 
     test "set_value and split change a whole chord" do
       {:ok, s, ids} =
-        Editing.place_chord(Score.new(), @ctx, 0, %{staff: :treble, offset: 0, value: :quarter}, [
-          pitch!("C4"),
-          pitch!("E4")
-        ])
+        Editing.place_chord(
+          Score.new(),
+          @ctx,
+          0,
+          placement(%{staff: :treble, offset: 0, value: :quarter}),
+          [
+            pitch!("C4"),
+            pitch!("E4")
+          ]
+        )
 
       {:ok, half} = Editing.set_value(s, @ctx, ids, :half, 0)
       assert Enum.map(notes(half), &elem(&1, 3)) == [:half, :half]
@@ -475,10 +490,16 @@ defmodule DrawMusic.Music.EditingTest do
 
     test "to_rest turns a whole chord into one rest" do
       {:ok, s, ids} =
-        Editing.place_chord(Score.new(), @ctx, 0, %{staff: :treble, offset: 0, value: :quarter}, [
-          pitch!("C4"),
-          pitch!("E4")
-        ])
+        Editing.place_chord(
+          Score.new(),
+          @ctx,
+          0,
+          placement(%{staff: :treble, offset: 0, value: :quarter}),
+          [
+            pitch!("C4"),
+            pitch!("E4")
+          ]
+        )
 
       {:ok, s, _rest} = Editing.to_rest(s, @ctx, ids)
       assert notes(s) == []
