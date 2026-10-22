@@ -12,6 +12,7 @@ defmodule DrawMusic.Library.Key do
 
   @major_tonics ~w(C♭ G♭ D♭ A♭ E♭ B♭ F C G D A E B F♯ C♯)
   @minor_tonics ~w(A♭ E♭ B♭ F C G D A E B F♯ C♯ G♯ D♯ A♯)
+  @keys for sf <- -7..7, mode <- [:major, :minor], do: {sf, mode}
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -42,4 +43,27 @@ defmodule DrawMusic.Library.Key do
   def name(%__MODULE__{sf: sf, mode: mode}), do: name(sf, mode)
   def name(sf, :major) when sf in -7..7, do: Enum.at(@major_tonics, sf + 7) <> " major"
   def name(sf, :minor) when sf in -7..7, do: Enum.at(@minor_tonics, sf + 7) <> " minor"
+
+  @doc """
+  URL slug of a key, e.g. `slug(6, :major)` → `"f-sharp-major"`.
+  """
+  def slug(%__MODULE__{sf: sf, mode: mode}), do: slug(sf, mode)
+
+  def slug(sf, mode) do
+    sf
+    |> name(mode)
+    |> String.replace("♯", "-sharp")
+    |> String.replace("♭", "-flat")
+    |> String.replace(" ", "-")
+    |> String.downcase()
+  end
+
+  @doc """
+  `{:ok, {sf, mode}}` for a key slug, or `:error` for an unknown slug.
+  """
+  def from_slug(slug) when is_binary(slug) do
+    Enum.find_value(@keys, :error, fn {sf, mode} ->
+      if slug(sf, mode) == slug, do: {:ok, {sf, mode}}
+    end)
+  end
 end

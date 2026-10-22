@@ -22,6 +22,12 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
   - The name comes from the MIDI track name (FF 03), falling back to the filename, and the user can edit it.
   - On a name collision the user chooses: **Cancel** · **Replace** (delete all versions, store as v1) · **New version** · **New composition with a different name** (re-checked).
 - **Rendering:** server-rendered SVG function components with **Bravura** (SMuFL) glyphs, on a **grid**: x = ticks (proportional spacing, zoomable), y = diatonic staff positions.
+- **Score layout is a user preference** (decided 2026-10-22):
+  - **Strip** (default): the whole song as one long, scrolling grand staff.
+  - **Page:** measures wrapped into systems, like printed sheet music.
+  - Both come from one layout engine, and editing works the same in both.
+  - SVG export is always page layout.
+  - Details are in `plans/phase-3-rendering.md`.
 - **Range:** a continuous pitch grid from A0 to C8. It covers above the treble staff, the treble staff, the gap between the staves, the bass staff, and below it.
   - The drawing staff comes from the clicked position: inside a staff, that staff; above or below, the nearest staff with ledger lines; in the gap, the closer staff.
   - No 8va signs.

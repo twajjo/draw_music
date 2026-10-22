@@ -30,7 +30,8 @@ defmodule DrawMusic.Library.Version do
     field :pickup_ticks, :integer, default: 0
     # General MIDI program number used for playback; 0 = acoustic grand piano.
     field :instrument, :integer, default: 0
-    embeds_one :score, Score, on_replace: :update, defaults_to_struct: true
+    # Scores are always replaced whole (the editor saves a new %Score{}).
+    embeds_one :score, Score, on_replace: :delete, defaults_to_struct: true
 
     belongs_to :key, Key
 

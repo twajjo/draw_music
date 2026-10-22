@@ -132,6 +132,16 @@ defmodule DrawMusic.Library.ValidationsTest do
     end
   end
 
+  test "Key.slug/2 and Key.from_slug/1 round-trip every key" do
+    for sf <- -7..7, mode <- [:major, :minor] do
+      assert Key.from_slug(Key.slug(sf, mode)) == {:ok, {sf, mode}}
+    end
+
+    assert Key.slug(6, :major) == "f-sharp-major"
+    assert Key.slug(-2, :minor) == "g-minor"
+    assert Key.from_slug("h-major") == :error
+  end
+
   test "Key.name/2 names keys from the key signature" do
     assert Key.name(0, :major) == "C major"
     assert Key.name(0, :minor) == "A minor"

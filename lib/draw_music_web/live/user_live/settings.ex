@@ -3,7 +3,10 @@ defmodule DrawMusicWeb.UserLive.Settings do
 
   on_mount {DrawMusicWeb.UserAuth, :require_sudo_mode}
 
+  import DrawMusicWeb.SettingsComponents
+
   alias DrawMusic.Accounts
+  alias DrawMusicWeb.ScorePreferences
 
   @impl true
   def render(assigns) do
@@ -65,6 +68,39 @@ defmodule DrawMusicWeb.UserLive.Settings do
           Save Password
         </.button>
       </.form>
+
+      <div class="divider" />
+
+      <section id="appearance" class="space-y-4">
+        <.header>
+          Appearance
+          <:subtitle>
+            Follow your system, or always use light or dark (saved in this browser)
+          </:subtitle>
+        </.header>
+        <Layouts.theme_toggle />
+      </section>
+
+      <div class="divider" />
+
+      <section id="score-display" class="space-y-4">
+        <.header>
+          Score display
+          <:subtitle>How scores are laid out, and the notation color in dark mode</:subtitle>
+        </.header>
+        <div class="space-y-2">
+          <p class="text-sm font-medium">Layout</p>
+          <.layout_toggle id="settings-layout" layout={@current_scope.user.score_layout} />
+        </div>
+        <div class="space-y-2">
+          <p class="text-sm font-medium">Dark mode ink</p>
+          <.ink_picker
+            id="settings-ink"
+            color={@current_scope.user.score_ink_dark}
+            form={@preferences_form}
+          />
+        </div>
+      </section>
     </Layouts.app>
     """
   end
@@ -93,12 +129,16 @@ defmodule DrawMusicWeb.UserLive.Settings do
       |> assign(:current_email, user.email)
       |> assign(:email_form, to_form(email_changeset))
       |> assign(:password_form, to_form(password_changeset))
+      |> assign(:preferences_form, ScorePreferences.form(socket.assigns.current_scope))
       |> assign(:trigger_submit, false)
 
     {:ok, socket}
   end
 
   @impl true
+  def handle_event(event, params, socket) when event in ~w(set_score_layout set_score_ink),
+    do: {:noreply, ScorePreferences.apply_event(event, params, socket)}
+
   def handle_event("validate_email", params, socket) do
     %{"user" => user_params} = params
 

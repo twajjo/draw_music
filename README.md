@@ -1,18 +1,24 @@
 # DrawMusic
 
-To start your Phoenix server:
+Paint music onto a grand staff, hear it, and keep it: compositions are
+stored per user in numbered versions, in any key, and download as MIDI
+or print-ready SVG.
 
-* Run `mix setup` to install and setup dependencies
-* Start Phoenix endpoint with `mix phx.server` or inside IEx with `iex -S mix phx.server`
+## Setup
 
-Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
+The toolchain (Erlang, Elixir, Node) is pinned in `mise.toml`.
 
-Ready to run in production? Please [check our deployment guides](https://phoenix.hexdocs.pm/deployment.html).
+```sh
+mise install
+mise run setup     # deps, database, assets
+mise run server    # http://localhost:4000
+```
 
-## Learn more
+`mise run test` runs the tests; `mise run precommit` compiles with warnings
+as errors, formats, runs Credo and the tests.
 
-* Official website: https://www.phoenixframework.org/
-* Guides: https://phoenix.hexdocs.pm/overview.html
-* Docs: https://phoenix.hexdocs.pm
-* Forum: https://elixirforum.com/c/phoenix-forum
-* Source: https://github.com/phoenixframework/phoenix
+## Docs
+
+- `plans/draw-music-plan.md`: the overall design and phases
+- `plans/phase-3-rendering.md`: score engraving and display
+- `THIRD_PARTY_NOTICES.md`: fonts and data we ship

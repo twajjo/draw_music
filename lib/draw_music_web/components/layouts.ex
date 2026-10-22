@@ -12,20 +12,18 @@ defmodule DrawMusicWeb.Layouts do
   embed_templates "layouts/*"
 
   @doc """
-  Renders your app layout.
-
-  This function is typically invoked from every template,
-  and it often contains your application menu, sidebar,
-  or similar.
+  The app layout: the header (wordmark, navigation, theme toggle and
+  account links) above the page content.
 
   ## Examples
 
-      <Layouts.app flash={@flash}>
+      <Layouts.app flash={@flash} current_scope={@current_scope}>
         <h1>Content</h1>
       </Layouts.app>
 
   """
   attr :flash, :map, required: true, doc: "the map of flash messages"
+  attr :wide, :boolean, default: false, doc: "use the full window width (e.g. for a score)"
 
   attr :current_scope, :map,
     default: nil,
@@ -35,35 +33,40 @@ defmodule DrawMusicWeb.Layouts do
 
   def app(assigns) do
     ~H"""
-    <header class="navbar px-4 sm:px-6 lg:px-8">
-      <div class="flex-1">
-        <a href="/" class="flex-1 flex w-fit items-center gap-2">
-          <img src={~p"/images/logo.svg"} width="36" />
-          <span class="text-sm font-semibold">v{Application.spec(:phoenix, :vsn)}</span>
-        </a>
-      </div>
-      <div class="flex-none">
-        <ul class="flex flex-column px-1 space-x-4 items-center">
-          <li>
-            <a href="https://phoenixframework.org/" class="btn btn-ghost">Website</a>
-          </li>
-          <li>
-            <a href="https://github.com/phoenixframework/phoenix" class="btn btn-ghost">GitHub</a>
-          </li>
-          <li>
-            <.theme_toggle />
-          </li>
-          <li>
-            <a href="https://phoenix.hexdocs.pm/overview.html" class="btn btn-primary">
-              Get Started <span aria-hidden="true">&rarr;</span>
-            </a>
-          </li>
-        </ul>
+    <header
+      id="app-header"
+      class="flex flex-nowrap items-center gap-4 whitespace-nowrap border-b border-base-300 px-4 py-2 sm:px-6 lg:px-8"
+    >
+      <.link
+        navigate={~p"/"}
+        class="flex shrink-0 items-center gap-2 text-lg font-semibold tracking-tight transition-opacity hover:opacity-80"
+      >
+        <.icon name="hero-musical-note" class="size-6 text-primary" />
+        <span class="hidden sm:inline">DrawMusic</span>
+      </.link>
+
+      <nav :if={@current_scope} class="flex items-center gap-1 text-sm">
+        <.link id="nav-new" navigate={~p"/"} class="btn btn-ghost btn-sm">New</.link>
+        <.link id="nav-compositions" navigate={~p"/compositions"} class="btn btn-ghost btn-sm">
+          Compositions
+        </.link>
+      </nav>
+
+      <div class="ml-auto flex items-center gap-2 text-sm">
+        <%= if @current_scope do %>
+          <.account_menu user={@current_scope.user} />
+        <% else %>
+          <.link href={~p"/users/log-in"} class="btn btn-ghost btn-sm">Log in</.link>
+          <.link href={~p"/users/register"} class="btn btn-primary btn-sm">Register</.link>
+        <% end %>
       </div>
     </header>
 
-    <main class="px-4 py-20 sm:px-6 lg:px-8">
-      <div class="mx-auto max-w-2xl space-y-4">
+    <main
+      class={["score-colors px-4 sm:px-6 lg:px-8", if(@wide, do: "py-6", else: "py-20")]}
+      style={score_ink_style(@current_scope)}
+    >
+      <div class={["mx-auto space-y-4", if(@wide, do: "max-w-none", else: "max-w-2xl")]}>
         {render_slot(@inner_block)}
       </div>
     </main>
@@ -71,6 +74,82 @@ defmodule DrawMusicWeb.Layouts do
     <.flash_group flash={@flash} />
     """
   end
+
+  @doc """
+  The signed-in user's menu: the display theme, Settings and Log out,
+  behind a button showing the user's email. Clicking elsewhere closes it.
+  """
+  attr :user, :map, required: true
+
+  def account_menu(assigns) do
+    ~H"""
+    <div class="relative">
+      <button
+        id="account-menu-button"
+        type="button"
+        class="btn btn-ghost btn-sm gap-1 font-normal"
+        aria-haspopup="menu"
+        phx-click={
+          JS.toggle(
+            to: "#account-menu",
+            in: {"transition ease-out duration-150", "opacity-0 scale-95", "opacity-100 scale-100"},
+            out: {"transition ease-in duration-100", "opacity-100 scale-100", "opacity-0 scale-95"}
+          )
+        }
+      >
+        <.icon name="hero-user-circle" class="size-5" />
+        <span class="hidden max-w-56 truncate md:inline">{@user.email}</span>
+        <.icon name="hero-chevron-down-micro" class="size-4 opacity-60" />
+      </button>
+      <div
+        id="account-menu"
+        role="menu"
+        class="absolute right-0 z-30 mt-2 hidden w-64 space-y-1 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
+        phx-click-away={
+          JS.hide(
+            to: "#account-menu",
+            transition:
+              {"transition ease-in duration-100", "opacity-100 scale-100", "opacity-0 scale-95"}
+          )
+        }
+      >
+        <p class="truncate px-2 pb-1 text-xs opacity-60 md:hidden">{@user.email}</p>
+        <div class="flex items-center justify-between px-2 py-1">
+          <span class="text-sm">Theme</span>
+          <.theme_toggle />
+        </div>
+        <div class="border-t border-base-300" />
+        <.link
+          id="account-menu-settings"
+          href={~p"/users/settings"}
+          role="menuitem"
+          class="flex items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors hover:bg-base-200"
+        >
+          <.icon name="hero-cog-6-tooth" class="size-4" /> Settings
+        </.link>
+        <.link
+          id="account-menu-log-out"
+          href={~p"/users/log-out"}
+          method="delete"
+          role="menuitem"
+          class="flex items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors hover:bg-base-200"
+        >
+          <.icon name="hero-arrow-right-start-on-rectangle" class="size-4" /> Log out
+        </.link>
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
+  The `style` carrying the user's dark-mode score ink (see `.score-colors`
+  in `app.css`); nil when signed out or unset. The value is validated as
+  `#rrggbb` when saved.
+  """
+  def score_ink_style(%{user: %{score_ink_dark: "#" <> _ = color}}),
+    do: "--score-ink-dark: #{color}"
+
+  def score_ink_style(_scope), do: nil
 
   @doc """
   Shows the flash group with standard titles and content.

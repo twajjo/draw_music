@@ -6,7 +6,7 @@ defmodule DrawMusic.Accounts do
   import Ecto.Query, warn: false
   alias DrawMusic.Repo
 
-  alias DrawMusic.Accounts.{User, UserNotifier, UserToken}
+  alias DrawMusic.Accounts.{Scope, User, UserNotifier, UserToken}
 
   ## Database getters
 
@@ -165,6 +165,25 @@ defmodule DrawMusic.Accounts do
     user
     |> User.password_changeset(attrs)
     |> update_user_and_delete_all_tokens()
+  end
+
+  ## Preferences
+
+  @doc """
+  Returns an `%Ecto.Changeset{}` for the user's score display preferences.
+  """
+  def change_user_preferences(%Scope{user: user}, attrs \\ %{}) do
+    User.preferences_changeset(user, attrs)
+  end
+
+  @doc """
+  Updates the user's score display preferences: `score_layout` (`:strip` or
+  `:page`) and `score_ink_dark` (a `#rrggbb` color readable on black).
+  """
+  def update_user_preferences(%Scope{user: user}, attrs) do
+    user
+    |> User.preferences_changeset(attrs)
+    |> Repo.update()
   end
 
   ## Session

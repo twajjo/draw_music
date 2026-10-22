@@ -103,3 +103,23 @@
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
 /* This file is for your main application CSS */
+
+/* Bravura (SIL OFL 1.1, see priv/static/fonts/OFL.txt) draws the notation. */
+@font-face {
+  font-family: "Bravura";
+  src: url("/fonts/Bravura.woff2") format("woff2");
+  font-display: block;
+}
+
+/* Score colors. Traditional: black on white. Dark: the user's chosen ink
+   (--score-ink-dark, set inline on the same element by Layouts.app; white
+   by default) on black. */
+.score-colors {
+  --score-ink: #000;
+  --score-paper: #fff;
+}
+
+[data-theme=dark] .score-colors {
+  --score-ink: var(--score-ink-dark, #fff);
+  --score-paper: #000;
+}

@@ -11,7 +11,42 @@ defmodule DrawMusic.Accounts.User do
     field :confirmed_at, :utc_datetime
     field :authenticated_at, :utc_datetime, virtual: true
 
+    # Score display preferences: one long staff or page-style systems, and
+    # the notation color in dark mode (nil: white).
+    field :score_layout, Ecto.Enum, values: [:strip, :page], default: :strip
+    field :score_ink_dark, :string
+
     timestamps(type: :utc_datetime)
+  end
+
+  @doc """
+  A changeset for the score display preferences. The dark-mode ink must be
+  a `#rrggbb` color readable on black: a WCAG contrast ratio of at least 7:1.
+  """
+  def preferences_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:score_layout, :score_ink_dark])
+    |> validate_required([:score_layout])
+    |> update_change(:score_ink_dark, &String.downcase/1)
+    |> validate_format(:score_ink_dark, ~r/^#[0-9a-f]{6}$/,
+      message: "must be a color like #ffcc66"
+    )
+    |> validate_change(:score_ink_dark, fn :score_ink_dark, color ->
+      if Regex.match?(~r/^#[0-9a-f]{6}$/, color) and contrast_on_black(color) < 7,
+        do: [score_ink_dark: "is too dark to read on black"],
+        else: []
+    end)
+  end
+
+  # WCAG 2 contrast ratio of a #rrggbb color against black.
+  defp contrast_on_black("#" <> hex) do
+    [r, g, b] =
+      for <<channel::binary-size(2) <- hex>> do
+        c = String.to_integer(channel, 16) / 255
+        if c <= 0.04045, do: c / 12.92, else: :math.pow((c + 0.055) / 1.055, 2.4)
+      end
+
+    (0.2126 * r + 0.7152 * g + 0.0722 * b + 0.05) / 0.05
   end
 
   @doc """

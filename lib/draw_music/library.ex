@@ -139,6 +139,19 @@ defmodule DrawMusic.Library do
   end
 
   @doc """
+  Gets version `number` of one of the user's compositions in the key
+  `{sf, mode}`, with `key` and `key.composition` loaded. Raises
+  `Ecto.NoResultsError` if not found.
+  """
+  def get_version_by_number!(%Scope{} = scope, composition_id, {sf, mode}, number) do
+    scope
+    |> owned_versions()
+    |> where([v, k, c], c.id == ^composition_id and k.sf == ^sf and k.mode == ^mode)
+    |> where([v], v.number == ^number)
+    |> Repo.one!()
+  end
+
+  @doc """
   Returns a changeset for tracking version changes in forms.
   """
   def change_version(%Version{} = version, attrs \\ %{}), do: Version.changeset(version, attrs)

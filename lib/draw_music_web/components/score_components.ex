@@ -1,0 +1,142 @@
+defmodule DrawMusicWeb.ScoreComponents do
+  @moduledoc """
+  Draws an engraved score (see `DrawMusic.Engraving.Layout`) as SVG.
+
+  Glyphs are Bravura text, one em being four staff spaces. Everything is
+  painted in the current color: on screen the score's `color` is the
+  `--score-ink` CSS variable, which follows the light/dark theme; the SVG
+  export sets it to black.
+  """
+
+  use Phoenix.Component
+
+  alias DrawMusic.Engraving.Smufl
+
+  # SMuFL fonts are scaled so that one em is four staff spaces.
+  @font_size 4
+  @padding 1
+  # Page layout width in staff spaces: about A4's printable width at a
+  # 1.75 mm staff space.
+  @page_width 104
+
+  @doc "System width for page layout, in staff spaces."
+  def page_width, do: @page_width
+
+  @doc "Layout options for a user's preferred score layout (`:strip` or `:page`)."
+  def layout_width(:page), do: @page_width
+  def layout_width(:strip), do: :infinity
+
+  @doc "The score as an SVG element sized at `space` pixels per staff space."
+  attr :id, :string, required: true
+  attr :layout, :map, required: true
+  attr :space, :integer, default: 10, doc: "pixels per staff space"
+  attr :class, :any, default: nil
+
+  def score(assigns) do
+    assigns = assign(assigns, :padding, @padding)
+
+    ~H"""
+    <svg
+      id={@id}
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox={"#{-@padding} 0 #{n(@layout.width + 2 * @padding)} #{n(@layout.height)}"}
+      width={n((@layout.width + 2 * @padding) * @space)}
+      height={n(@layout.height * @space)}
+      style="color: var(--score-ink)"
+      class={@class}
+      role="img"
+      aria-label="Score"
+    >
+      <.systems layout={@layout} />
+    </svg>
+    """
+  end
+
+  @doc "The systems of a layout, in staff-space units, painted in `currentColor`."
+  attr :layout, :map, required: true
+
+  def systems(assigns) do
+    assigns = assign(assigns, :font_size, @font_size)
+
+    ~H"""
+    <g
+      :for={system <- @layout.systems}
+      id={"system-#{system.index}"}
+      transform={"translate(0 #{n(system.y)})"}
+      font-family="Bravura"
+      font-size={@font_size}
+      fill="currentColor"
+    >
+      <.item :for={item <- system.items} item={item} />
+    </g>
+    """
+  end
+
+  attr :item, :map, required: true
+
+  defp item(%{item: %{type: :glyph}} = assigns) do
+    ~H"""
+    <text id={dom_id(@item)} x={n(@item.x)} y={n(@item.y)}>{Smufl.char(@item.glyph)}</text>
+    """
+  end
+
+  defp item(%{item: %{type: :line}} = assigns) do
+    ~H"""
+    <line
+      x1={n(@item.x1)}
+      y1={n(@item.y1)}
+      x2={n(@item.x2)}
+      y2={n(@item.y2)}
+      stroke="currentColor"
+      stroke-width={n(@item.thickness)}
+    />
+    """
+  end
+
+  defp item(%{item: %{type: :beam}} = assigns) do
+    ~H"""
+    <polygon points={beam_points(@item)} />
+    """
+  end
+
+  defp item(%{item: %{type: :tie}} = assigns) do
+    ~H"""
+    <path d={tie_path(@item)} />
+    """
+  end
+
+  # The brace glyph is one staff tall at the normal size; scale the font so
+  # it spans the grand staff.
+  defp item(%{item: %{type: :brace}} = assigns) do
+    ~H"""
+    <text x={n(@item.x)} y={n(@item.y2)} font-size={n(@item.y2 - @item.y1)}>
+      {Smufl.char(:brace)}
+    </text>
+    """
+  end
+
+  defp dom_id(%{role: :notehead, id: id}), do: "note-#{id}"
+  defp dom_id(%{role: :rest, id: id}) when is_binary(id), do: "rest-#{id}"
+  defp dom_id(_item), do: nil
+
+  defp beam_points(%{x1: x1, y1: y1, x2: x2, y2: y2, thickness: t}) do
+    Enum.map_join([{x1, y1}, {x2, y2}, {x2, y2 + t}, {x1, y1 + t}], " ", fn {x, y} ->
+      "#{n(x)},#{n(y)}"
+    end)
+  end
+
+  # Two quadratic curves between the endpoints: the outer one bulges `dir`,
+  # the inner one a little less, leaving the tie its midpoint thickness.
+  defp tie_path(%{x1: x1, x2: x2, y: y, dir: dir}) do
+    sign = if dir == :down, do: 1, else: -1
+    height = (x2 - x1) |> Kernel.*(0.2) |> max(0.6) |> min(1.8)
+    inner = height - 2 * Smufl.default("tieMidpointThickness")
+    mid = (x1 + x2) / 2
+
+    "M#{n(x1)} #{n(y)} Q#{n(mid)} #{n(y + sign * height)} #{n(x2)} #{n(y)} " <>
+      "Q#{n(mid)} #{n(y + sign * inner)} #{n(x1)} #{n(y)}Z"
+  end
+
+  defp n(x) when is_integer(x), do: x
+  defp n(x) when is_float(x), do: Float.round(x, 3)
+end

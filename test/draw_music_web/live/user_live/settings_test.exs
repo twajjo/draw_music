@@ -209,4 +209,32 @@ defmodule DrawMusicWeb.UserLive.SettingsTest do
       assert message == "You must log in to access this page."
     end
   end
+
+  describe "score display" do
+    setup %{conn: conn} do
+      user = user_fixture()
+      %{conn: log_in_user(conn, user), user: user}
+    end
+
+    test "a swatch saves the dark-mode ink and the layout toggle saves the layout",
+         %{conn: conn, user: user} do
+      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+
+      lv |> element("#settings-ink-ffbf47") |> render_click()
+      lv |> element("#settings-layout-page") |> render_click()
+
+      user = Accounts.get_user!(user.id)
+      assert user.score_ink_dark == "#ffbf47"
+      assert user.score_layout == :page
+    end
+
+    test "a custom color too dark to read on black is refused", %{conn: conn, user: user} do
+      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+
+      lv |> form("#settings-ink-custom", %{color: "#202020"}) |> render_submit()
+
+      assert has_element?(lv, "#settings-ink .text-error")
+      assert Accounts.get_user!(user.id).score_ink_dark == nil
+    end
+  end
 end

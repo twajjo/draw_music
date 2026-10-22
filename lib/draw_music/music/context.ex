@@ -1,12 +1,19 @@
 defmodule DrawMusic.Music.Context do
   @moduledoc """
-  The settings a score is read against: key, time signature, pickup and
-  tempo. They live on the version, not in the score itself.
+  The settings a score is read against: key, time signature (and how it is
+  written: digits, common or cut time), pickup and tempo. They live on the
+  version, not in the score itself.
   """
 
   alias DrawMusic.Music.Duration
 
-  defstruct sf: 0, mode: :major, time_num: 4, time_den: 4, pickup_ticks: 0, tempo_bpm: 100
+  defstruct sf: 0,
+            mode: :major,
+            time_num: 4,
+            time_den: 4,
+            time_symbol: :none,
+            pickup_ticks: 0,
+            tempo_bpm: 100
 
   @doc "Builds a context from a version with its key loaded."
   def from_version(%{key: %{sf: sf, mode: mode}} = version) do
@@ -15,6 +22,7 @@ defmodule DrawMusic.Music.Context do
       mode: mode,
       time_num: version.time_num,
       time_den: version.time_den,
+      time_symbol: version.time_symbol,
       pickup_ticks: version.pickup_ticks,
       tempo_bpm: version.tempo_bpm
     }

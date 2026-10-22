@@ -17,12 +17,6 @@ defmodule DrawMusicWeb.Router do
     plug :accepts, ["json"]
   end
 
-  scope "/", DrawMusicWeb do
-    pipe_through :browser
-
-    get "/", PageController, :home
-  end
-
   # Other scopes may use custom stacks.
   # scope "/api", DrawMusicWeb do
   #   pipe_through :api
@@ -54,9 +48,17 @@ defmodule DrawMusicWeb.Router do
       on_mount: [{DrawMusicWeb.UserAuth, :require_authenticated}] do
       live "/users/settings", UserLive.Settings, :edit
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
+
+      # The signed-in user's own compositions. The main page is a blank,
+      # unsaved composition.
+      live "/", EditorLive, :new
+      live "/compositions", LibraryLive, :index
+      live "/compositions/new", NewCompositionLive, :new
+      live "/compositions/:id/:key/v/:number", EditorLive, :show
     end
 
     post "/users/update-password", UserSessionController, :update_password
+    get "/compositions/:id/:key/v/:number/score.svg", ExportController, :svg
   end
 
   scope "/", DrawMusicWeb do
