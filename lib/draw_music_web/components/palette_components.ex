@@ -350,11 +350,16 @@ defmodule DrawMusicWeb.PaletteComponents do
     [
       "join-item relative grid h-10 w-10 cursor-pointer place-items-center border border-base-300",
       "transition-all duration-150 focus-visible:outline-2 focus-visible:outline-primary",
-      if(pressed,
-        do: "z-10 -translate-y-0.5 bg-[var(--score-ink)] text-[var(--score-paper)] shadow-md",
-        else: "bg-[var(--score-paper)] text-[var(--score-ink)] hover:-translate-y-px"
-      )
+      piece_state_class(pressed)
     ]
+  end
+
+  defp piece_state_class(true = _pressed) do
+    "z-10 -translate-y-0.5 bg-[var(--score-ink)] text-[var(--score-paper)] shadow-md"
+  end
+
+  defp piece_state_class(_pressed) do
+    "bg-[var(--score-paper)] text-[var(--score-ink)] hover:-translate-y-px"
   end
 
   defp chip_class(selected) do

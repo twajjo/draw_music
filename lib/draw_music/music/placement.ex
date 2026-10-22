@@ -18,6 +18,6 @@ defmodule DrawMusic.Music.Placement do
           dots: 0..2,
           step: integer() | nil,
           alter: -2..2,
-          voice: 1..4 | nil
+          voice: DrawMusic.Music.Note.voice() | nil
         }
 end

@@ -40,6 +40,7 @@ defmodule DrawMusicWeb.EditorLive do
   }
 
   @draft_measures 4
+  @menu_events ~w(split set_value toggle_menu_dot to_rest to_note tie_next untie menu_delete transpose reverse)
 
   @impl true
   def render(assigns) do
@@ -176,22 +177,26 @@ defmodule DrawMusicWeb.EditorLive do
   ## Palette
 
   @impl true
-  def handle_event("arm", %{"kind" => kind, "value" => value}, socket),
-    do: {:noreply, arm(socket, EditorPalette.arm(socket.assigns.armed, kind, value))}
+  def handle_event("arm", %{"kind" => kind, "value" => value}, socket) do
+    {:noreply, arm(socket, EditorPalette.arm(socket.assigns.armed, kind, value))}
+  end
 
-  def handle_event("lock", %{"kind" => kind, "value" => value}, socket),
-    do: {:noreply, arm(socket, EditorPalette.arm(socket.assigns.armed, kind, value, true))}
+  def handle_event("lock", %{"kind" => kind, "value" => value}, socket) do
+    {:noreply, arm(socket, EditorPalette.arm(socket.assigns.armed, kind, value, true))}
+  end
 
   def handle_event("arm_value", %{"value" => value}, socket) do
     kind = Atom.to_string(socket.assigns.row_kind)
     {:noreply, arm(socket, EditorPalette.arm(socket.assigns.armed, kind, value))}
   end
 
-  def handle_event("arm_chord", params, socket),
-    do: {:noreply, arm(socket, EditorPalette.arm_chord(socket.assigns.armed, params))}
+  def handle_event("arm_chord", params, socket) do
+    {:noreply, arm(socket, EditorPalette.arm_chord(socket.assigns.armed, params))}
+  end
 
-  def handle_event("arm_tie", _params, socket),
-    do: {:noreply, assign(socket, :armed, EditorPalette.arm_tie())}
+  def handle_event("arm_tie", _params, socket) do
+    {:noreply, assign(socket, :armed, EditorPalette.arm_tie())}
+  end
 
   def handle_event("disarm", _params, socket), do: {:noreply, assign(socket, :armed, nil)}
 
@@ -208,8 +213,9 @@ defmodule DrawMusicWeb.EditorLive do
     {:noreply, edit(socket, &Editing.set_dots(&1, &2, ids, dots))}
   end
 
-  def handle_event("toggle_dot", _params, socket),
-    do: {:noreply, assign(socket, :armed, EditorPalette.toggle_dot(socket.assigns.armed))}
+  def handle_event("toggle_dot", _params, socket) do
+    {:noreply, assign(socket, :armed, EditorPalette.toggle_dot(socket.assigns.armed))}
+  end
 
   def handle_event("set_accidental", %{"alter" => name}, socket) do
     case {EditorPalette.alter(name), socket.assigns.armed} do
@@ -225,21 +231,22 @@ defmodule DrawMusicWeb.EditorLive do
     end
   end
 
-  def handle_event("toggle_insert", _params, socket),
-    do: {:noreply, assign(socket, :insert?, !socket.assigns.insert?)}
+  def handle_event("toggle_insert", _params, socket) do
+    {:noreply, assign(socket, :insert?, !socket.assigns.insert?)}
+  end
 
   ## Placing
 
   def handle_event("place", params, %{assigns: %{armed: %{} = armed}} = socket) do
     insert? = socket.assigns.insert?
 
-    with {:ok, target} <- EditorPlacement.parse(params),
-         {:ok, socket} <-
-           apply_edit(socket, &EditorPlacement.place(&1, &2, armed, target, insert?)) do
-      {:noreply, disarm_unless_locked(socket)}
-    else
-      :error -> {:noreply, put_flash(socket, :error, error_message(:invalid))}
-      {:error, socket} -> {:noreply, socket}
+    case EditorPlacement.parse(params) do
+      {:ok, target} ->
+        result = apply_edit(socket, &EditorPlacement.place(&1, &2, armed, target, insert?))
+        {:noreply, placed(result)}
+
+      :error ->
+        {:noreply, put_flash(socket, :error, error_message(:invalid))}
     end
   end
 
@@ -247,8 +254,9 @@ defmodule DrawMusicWeb.EditorLive do
 
   ## Selection
 
-  def handle_event("select", %{"ids" => [id], "add" => true}, socket) when is_binary(id),
-    do: {:noreply, update(socket, :session, &Session.toggle(&1, id))}
+  def handle_event("select", %{"ids" => [id], "add" => true}, socket) when is_binary(id) do
+    {:noreply, update(socket, :session, &Session.toggle(&1, id))}
+  end
 
   def handle_event("select", %{"ids" => ids} = params, socket) when is_list(ids) do
     ids = Enum.filter(ids, &is_binary/1)
@@ -262,18 +270,20 @@ defmodule DrawMusicWeb.EditorLive do
     {:noreply, assign(socket, :session, Session.select(session, ids, false))}
   end
 
-  def handle_event("clear_selection", _params, socket),
-    do: {:noreply, update(socket, :session, &Session.clear_selection/1)}
+  def handle_event("clear_selection", _params, socket) do
+    {:noreply, update(socket, :session, &Session.clear_selection/1)}
+  end
 
-  def handle_event("set_last_click", %{"at" => at}, socket) when is_integer(at) and at >= 0,
-    do: {:noreply, assign(socket, :last_click, at)}
+  def handle_event("set_last_click", %{"at" => at}, socket) when is_integer(at) and at >= 0 do
+    {:noreply, assign(socket, :last_click, at)}
+  end
 
   ## Changing the selection
 
   # ↑/↓ by scale step (Shift: octave, Ctrl: semitone); ←/→ by beat.
   def handle_event("move", %{"dir" => dir}, socket) when dir in ~w(left right) do
     ids = selected_ids(socket)
-    beats = if dir == "left", do: -1, else: 1
+    beats = beats(dir)
     {:noreply, edit_selection(socket, &Editing.shift(&1, &2, ids, beats))}
   end
 
@@ -291,16 +301,20 @@ defmodule DrawMusicWeb.EditorLive do
 
   def handle_event("cut", _params, socket) do
     ids = selected_ids(socket)
-    {:noreply, socket |> copy() |> edit_selection(&Editing.delete(&1, &2, ids))}
+
+    {:noreply,
+     socket
+     |> copy()
+     |> edit_selection(&Editing.delete(&1, &2, ids))}
   end
 
   def handle_event(
         "paste",
         params,
         %{assigns: %{session: %{clipboard: %{} = clipboard}}} = socket
-      ),
-      do:
-        {:noreply, edit(socket, EditorCommands.paste(clipboard, paste_at(socket, params["at"])))}
+      ) do
+    {:noreply, edit(socket, EditorCommands.paste(clipboard, paste_at(socket, params["at"])))}
+  end
 
   def handle_event("paste", _params, socket), do: {:noreply, socket}
 
@@ -315,10 +329,7 @@ defmodule DrawMusicWeb.EditorLive do
 
   def handle_event("tie", %{"from" => from, "to" => to}, socket)
       when is_binary(from) and is_binary(to) do
-    case apply_edit(socket, &Editing.tie(&1, &2, from, to)) do
-      {:ok, socket} -> {:noreply, disarm_unless_locked(socket)}
-      {:error, socket} -> {:noreply, socket}
-    end
+    {:noreply, placed(apply_edit(socket, &Editing.tie(&1, &2, from, to)))}
   end
 
   ## Context menu
@@ -334,48 +345,58 @@ defmodule DrawMusicWeb.EditorLive do
   def handle_event("close_menu", _params, socket), do: {:noreply, assign(socket, :menu, nil)}
 
   def handle_event("menu_copy", _params, %{assigns: %{menu: %{} = menu}} = socket) do
-    socket = socket |> update(:session, &Session.select(&1, menu.ids, false)) |> copy()
-    {:noreply, assign(socket, :menu, nil)}
+    {:noreply,
+     socket
+     |> select_menu_events(menu)
+     |> copy()
+     |> assign(:menu, nil)}
   end
 
   def handle_event("menu_cut", _params, %{assigns: %{menu: %{} = menu}} = socket) do
-    socket = socket |> update(:session, &Session.select(&1, menu.ids, false)) |> copy()
-    {:noreply, socket |> edit(&Editing.delete(&1, &2, menu.ids)) |> assign(:menu, nil)}
+    {:noreply,
+     socket
+     |> select_menu_events(menu)
+     |> copy()
+     |> edit(&Editing.delete(&1, &2, menu.ids))
+     |> assign(:menu, nil)}
   end
 
   def handle_event(event, params, %{assigns: %{menu: %{} = menu}} = socket)
-      when event in ~w(split set_value toggle_menu_dot to_rest to_note tie_next untie menu_delete transpose reverse) do
+      when event in @menu_events do
     fun = EditorCommands.menu(event, params, menu, socket.assigns.insert?)
-    {:noreply, socket |> edit(fun) |> assign(:menu, nil)}
+
+    {:noreply,
+     socket
+     |> edit(fun)
+     |> assign(:menu, nil)}
   end
 
   ## Measures
 
   def handle_event("insert_measure", %{"index" => index}, socket) do
-    case Integer.parse(to_string(index)) do
-      {index, ""} ->
-        {:noreply, edit(socket, &Editing.insert_measure(&1, &2, index))}
-
-      _ ->
-        {:noreply, socket}
+    case parse_index(index) do
+      {:ok, index} -> {:noreply, edit(socket, &Editing.insert_measure(&1, &2, index))}
+      :error -> {:noreply, socket}
     end
   end
 
   def handle_event("delete_measure", %{"index" => index}, socket) do
-    case Integer.parse(to_string(index)) do
-      {index, ""} -> {:noreply, edit(socket, &Editing.delete_measure(&1, &2, index))}
-      _ -> {:noreply, socket}
+    case parse_index(index) do
+      {:ok, index} -> {:noreply, edit(socket, &Editing.delete_measure(&1, &2, index))}
+      :error -> {:noreply, socket}
     end
   end
 
-  def handle_event("add_measure", _params, socket),
-    do: {:noreply, edit(socket, fn score, _ctx -> Editing.append_measure(score) end)}
+  def handle_event("add_measure", _params, socket) do
+    {:noreply, edit(socket, fn score, _ctx -> Editing.append_measure(score) end)}
+  end
 
   ## Saving
 
   # On the draft, Save means "save as a new composition".
-  def handle_event("save", _params, %{assigns: %{version: %Version{id: nil}}} = socket),
-    do: {:noreply, open_save_as(socket)}
+  def handle_event("save", _params, %{assigns: %{version: %Version{id: nil}}} = socket) do
+    {:noreply, open_save_as(socket)}
+  end
 
   def handle_event("save", _params, socket) do
     %{current_scope: scope, version: version, session: session} = socket.assigns
@@ -407,8 +428,9 @@ defmodule DrawMusicWeb.EditorLive do
 
   def handle_event("open_save_as", _params, socket), do: {:noreply, open_save_as(socket)}
 
-  def handle_event("close_save_as", _params, socket),
-    do: {:noreply, assign(socket, :save_as_form, nil)}
+  def handle_event("close_save_as", _params, socket) do
+    {:noreply, assign(socket, :save_as_form, nil)}
+  end
 
   def handle_event("validate_save_as", %{"composition" => params}, socket) do
     changeset = Library.change_composition(socket.assigns.current_scope, %Composition{}, params)
@@ -417,15 +439,14 @@ defmodule DrawMusicWeb.EditorLive do
 
   def handle_event("save_as", %{"composition" => params}, socket) do
     %{current_scope: scope, session: %{ctx: ctx}} = socket.assigns
+    key_attrs = %{sf: ctx.sf, mode: ctx.mode}
 
-    case Library.create_composition(
-           scope,
-           params,
-           %{sf: ctx.sf, mode: ctx.mode},
-           version_attrs(socket)
-         ) do
+    case Library.create_composition(scope, params, key_attrs, version_attrs(socket)) do
       {:ok, saved} ->
-        {:noreply, socket |> assign(:save_as_form, nil) |> saved_and_open(saved, "Saved")}
+        {:noreply,
+         socket
+         |> assign(:save_as_form, nil)
+         |> saved_and_open(saved, "Saved")}
 
       {:error, %Ecto.Changeset{data: %Composition{}} = changeset} ->
         {:noreply, assign(socket, :save_as_form, to_form(changeset, action: :insert))}
@@ -442,40 +463,28 @@ defmodule DrawMusicWeb.EditorLive do
     {:noreply, assign(socket, :settings_form, to_form(params, as: :settings))}
   end
 
-  def handle_event("close_settings", _params, socket),
-    do: {:noreply, assign(socket, :settings_form, nil)}
+  def handle_event("close_settings", _params, socket) do
+    {:noreply, assign(socket, :settings_form, nil)}
+  end
 
   # Settings apply at once; a new key is confirmed in the transpose dialog.
   def handle_event("apply_settings", %{"settings" => params}, socket) do
-    with {:ok, key, fields} <- EditorSettings.validate(params),
-         {:ok, session} <- EditorSettings.apply(socket.assigns.session, fields) do
-      pending = if key != {session.ctx.sf, session.ctx.mode}, do: key
-      tempo_text = EditorSettings.tempo_text(params["tempo_text"])
+    case EditorSettings.validate(params) do
+      {:ok, key, fields} ->
+        {:noreply, apply_settings(socket, params, key, fields)}
 
-      # The marking lives beside the session; changing it is still unsaved work.
-      session =
-        if tempo_text != socket.assigns.tempo_text, do: %{session | dirty?: true}, else: session
-
-      {:noreply,
-       socket
-       |> assign(session: session, settings_form: nil, pending_key: pending)
-       |> assign(:tempo_text, tempo_text)
-       |> assign_layout()}
-    else
-      {:error, errors} when is_list(errors) ->
+      {:error, errors} ->
         form = to_form(params, as: :settings, errors: errors, action: :validate)
         {:noreply, assign(socket, :settings_form, form)}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, error_message(reason))}
 
       :error ->
         {:noreply, socket}
     end
   end
 
-  def handle_event("cancel_transpose", _params, socket),
-    do: {:noreply, assign(socket, :pending_key, nil)}
+  def handle_event("cancel_transpose", _params, socket) do
+    {:noreply, assign(socket, :pending_key, nil)}
+  end
 
   def handle_event(
         "transpose_key",
@@ -490,7 +499,11 @@ defmodule DrawMusicWeb.EditorLive do
     case Transpose.to_key(session.score, from, {sf, mode}, String.to_existing_atom(dir)) do
       {:ok, score} ->
         session = Session.change_context(session, %{session.ctx | sf: sf, mode: mode}, score)
-        {:noreply, in_new_key(assign(socket, :session, session), sf, mode)}
+
+        {:noreply,
+         socket
+         |> assign(:session, session)
+         |> in_new_key(sf, mode)}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, error_message(reason))}
@@ -501,36 +514,55 @@ defmodule DrawMusicWeb.EditorLive do
 
   # The browser plays the events (Tone.js) and highlights each note as it
   # sounds; Play while playing stops.
-  def handle_event("play", _params, %{assigns: %{playing?: true}} = socket),
-    do: {:noreply, socket |> assign(:playing?, false) |> push_event("stop", %{})}
+  def handle_event("play", _params, %{assigns: %{playing?: true}} = socket) do
+    {:noreply,
+     socket
+     |> assign(:playing?, false)
+     |> push_event("stop", %{})}
+  end
 
   def handle_event("play", _params, socket) do
     %{session: session} = socket.assigns
-    events = Playback.events(session.score, session.ctx, from: play_from(session))
 
-    if events == [] do
-      {:noreply, socket}
-    else
-      payload = %PlaybackPayload{events: events}
-      {:noreply, socket |> assign(:playing?, true) |> push_event("play", payload)}
+    case Playback.events(session.score, session.ctx, from: play_from(session)) do
+      [] ->
+        {:noreply, socket}
+
+      events ->
+        {:noreply,
+         socket
+         |> assign(:playing?, true)
+         |> push_event("play", %PlaybackPayload{events: events})}
     end
   end
 
-  def handle_event("playback_ended", _params, socket),
-    do: {:noreply, assign(socket, :playing?, false)}
+  def handle_event("playback_ended", _params, socket) do
+    {:noreply, assign(socket, :playing?, false)}
+  end
 
   ## History
 
-  def handle_event("undo", _params, socket),
-    do: {:noreply, socket |> update(:session, &Session.undo/1) |> assign_layout()}
+  def handle_event("undo", _params, socket) do
+    {:noreply,
+     socket
+     |> update(:session, &Session.undo/1)
+     |> assign_layout()}
+  end
 
-  def handle_event("redo", _params, socket),
-    do: {:noreply, socket |> update(:session, &Session.redo/1) |> assign_layout()}
+  def handle_event("redo", _params, socket) do
+    {:noreply,
+     socket
+     |> update(:session, &Session.redo/1)
+     |> assign_layout()}
+  end
 
   ## Preferences
 
   def handle_event("set_score_layout" = event, params, socket) do
-    {:noreply, event |> ScorePreferences.apply_event(params, socket) |> assign_layout()}
+    {:noreply,
+     event
+     |> ScorePreferences.apply_event(params, socket)
+     |> assign_layout()}
   end
 
   # Events from the browser that don't fit the current state (a menu action
@@ -545,7 +577,11 @@ defmodule DrawMusicWeb.EditorLive do
   defp apply_edit(socket, fun) do
     case Session.edit(socket.assigns.session, fun) do
       {:ok, session, _extra} ->
-        {:ok, socket |> clear_flash() |> assign(:session, session) |> assign_layout()}
+        {:ok,
+         socket
+         |> clear_flash()
+         |> assign(:session, session)
+         |> assign_layout()}
 
       {:error, reason} ->
         {:error, put_flash(socket, :error, error_message(reason))}
@@ -553,7 +589,14 @@ defmodule DrawMusicWeb.EditorLive do
   end
 
   # `apply_edit/2` when the outcome doesn't matter beyond the socket.
-  defp edit(socket, fun), do: socket |> apply_edit(fun) |> elem(1)
+  defp edit(socket, fun) do
+    {_outcome, socket} = apply_edit(socket, fun)
+    socket
+  end
+
+  # A placement or tie that worked disarms the palette unless it's locked.
+  defp placed({:ok, socket}), do: disarm_unless_locked(socket)
+  defp placed({:error, socket}), do: socket
 
   # Edits the selection; with nothing selected there is nothing to do.
   defp edit_selection(socket, fun) do
@@ -584,6 +627,16 @@ defmodule DrawMusicWeb.EditorLive do
   defp disarm_unless_locked(%{assigns: %{armed: %{locked?: true}}} = socket), do: socket
   defp disarm_unless_locked(socket), do: assign(socket, :armed, nil)
 
+  defp beats("left"), do: -1
+  defp beats("right"), do: 1
+
+  defp parse_index(index) do
+    case Integer.parse(to_string(index)) do
+      {index, ""} -> {:ok, index}
+      _ -> :error
+    end
+  end
+
   defp selected_ids(socket), do: MapSet.to_list(socket.assigns.session.selection)
 
   # Playback starts at the earliest selected event, else at the beginning.
@@ -603,16 +656,12 @@ defmodule DrawMusicWeb.EditorLive do
     Enum.find_value(score.measures, fn m -> Enum.find(m.notes ++ m.rests, &(&1.id == id)) end)
   end
 
-  # Right-clicking a selected event opens the menu for the whole selection.
-  defp menu_for(socket, event, params) do
-    selection = socket.assigns.session.selection
+  defp select_menu_events(socket, %ContextMenu{ids: ids}) do
+    update(socket, :session, &Session.select(&1, ids, false))
+  end
 
-    {kind, ids} =
-      cond do
-        MapSet.member?(selection, event.id) -> {:selection, MapSet.to_list(selection)}
-        match?(%Note{}, event) -> {:note, [event.id]}
-        true -> {:rest, [event.id]}
-      end
+  defp menu_for(socket, event, params) do
+    {kind, ids} = menu_target(socket.assigns.session.selection, event)
 
     step =
       case EditorPlacement.parse(Map.merge(%{"measure" => 0, "offset" => 0}, params)) do
@@ -622,6 +671,17 @@ defmodule DrawMusicWeb.EditorLive do
 
     %ContextMenu{id: event.id, ids: ids, kind: kind, x: params["x"], y: params["y"], step: step}
   end
+
+  # Right-clicking a selected event opens the menu for the whole selection.
+  defp menu_target(selection, event) do
+    case MapSet.member?(selection, event.id) do
+      true -> {:selection, MapSet.to_list(selection)}
+      false -> {event_kind(event), [event.id]}
+    end
+  end
+
+  defp event_kind(%Note{}), do: :note
+  defp event_kind(_rest), do: :rest
 
   defp copy(socket) do
     %{session: session} = socket.assigns
@@ -655,10 +715,40 @@ defmodule DrawMusicWeb.EditorLive do
     |> Enum.max(fn -> 0 end)
   end
 
+  ## Settings helpers
+
+  defp apply_settings(socket, params, key, fields) do
+    case EditorSettings.apply(socket.assigns.session, fields) do
+      {:ok, session} ->
+        tempo_text = EditorSettings.tempo_text(params["tempo_text"])
+
+        socket
+        |> assign(
+          session: with_tempo_text(session, tempo_text, socket.assigns.tempo_text),
+          settings_form: nil,
+          pending_key: pending_key(key, session.ctx)
+        )
+        |> assign(:tempo_text, tempo_text)
+        |> assign_layout()
+
+      {:error, reason} ->
+        put_flash(socket, :error, error_message(reason))
+    end
+  end
+
+  # The marking lives beside the session; changing it is still unsaved work.
+  defp with_tempo_text(session, same, same), do: session
+  defp with_tempo_text(session, _new, _old), do: %{session | dirty?: true}
+
+  # A key other than the current one waits for the transpose dialog.
+  defp pending_key({sf, mode}, %Context{sf: sf, mode: mode}), do: nil
+  defp pending_key(key, _ctx), do: key
+
   ## Saving helpers
 
-  defp version_attrs(socket),
-    do: EditorSettings.version_attrs(socket.assigns.session, socket.assigns.tempo_text)
+  defp version_attrs(socket) do
+    EditorSettings.version_attrs(socket.assigns.session, socket.assigns.tempo_text)
+  end
 
   defp open_save_as(socket) do
     changeset = Library.change_composition(socket.assigns.current_scope, %Composition{})
@@ -667,8 +757,9 @@ defmodule DrawMusicWeb.EditorLive do
 
   # A key change on a saved version is stored as a new version in that key;
   # on the draft it just applies.
-  defp in_new_key(%{assigns: %{version: %Version{id: nil}}} = socket, _sf, _mode),
-    do: assign_layout(socket)
+  defp in_new_key(%{assigns: %{version: %Version{id: nil}}} = socket, _sf, _mode) do
+    assign_layout(socket)
+  end
 
   defp in_new_key(socket, sf, mode) do
     %{current_scope: scope, composition: composition} = socket.assigns
@@ -686,8 +777,9 @@ defmodule DrawMusicWeb.EditorLive do
     |> push_navigate(to: version_path(saved.key.composition.id, saved.key, saved.number))
   end
 
-  defp changeset_message(%Ecto.Changeset{errors: [{field, {message, _opts}} | _]}),
-    do: "Couldn't save: #{Phoenix.Naming.humanize(field)} #{message}"
+  defp changeset_message(%Ecto.Changeset{errors: [{field, {message, _opts}} | _]}) do
+    "Couldn't save: #{Phoenix.Naming.humanize(field)} #{message}"
+  end
 
   defp changeset_message(_changeset), do: "Couldn't save"
 
@@ -698,8 +790,7 @@ defmodule DrawMusicWeb.EditorLive do
     assign(socket, :engraved, Layout.layout(session.score, session.ctx, width: width))
   end
 
-  defp export_path(version, extension),
-    do:
-      version_path(version.key.composition.id, version.key, version.number) <>
-        "/score.#{extension}"
+  defp export_path(version, extension) do
+    version_path(version.key.composition.id, version.key, version.number) <> "/score.#{extension}"
+  end
 end

@@ -39,17 +39,19 @@ defmodule DrawMusic.Music.Timeline do
     |> bars(ctx)
     |> Enum.zip(measures)
     |> Enum.flat_map(fn {{start, _capacity}, measure} ->
-      Enum.map(measure.notes, &entry(&1, start)) ++ Enum.map(measure.rests, &entry(&1, start))
+      Enum.map(measure.notes ++ measure.rests, &entry(&1, start))
     end)
   end
 
   @doc "Entry for an event placed in a measure starting at `bar_start`."
   @spec entry(Note.t() | Rest.t(), non_neg_integer()) :: Entry.t()
-  def entry(%Note{} = note, bar_start),
-    do: %Entry{kind: :note, start: bar_start + note.offset, ticks: Note.ticks(note), event: note}
+  def entry(%Note{} = note, bar_start) do
+    %Entry{kind: :note, start: bar_start + note.offset, ticks: Note.ticks(note), event: note}
+  end
 
-  def entry(%Rest{} = rest, bar_start),
-    do: %Entry{kind: :rest, start: bar_start + rest.offset, ticks: Rest.ticks(rest), event: rest}
+  def entry(%Rest{} = rest, bar_start) do
+    %Entry{kind: :rest, start: bar_start + rest.offset, ticks: Rest.ticks(rest), event: rest}
+  end
 
   @doc """
   Re-flows entries into the score's measures (keeping measure ids and count,
@@ -60,25 +62,39 @@ defmodule DrawMusic.Music.Timeline do
   @spec rebar(Score.t(), Context.t(), [Entry.t()]) ::
           {:ok, Score.t()} | {:error, :before_start | :unrepresentable}
   def rebar(%Score{} = score, %Context{} = ctx, entries) do
-    with :ok <- check_starts(entries) do
-      last = entries |> Enum.map(&(&1.start + &1.ticks)) |> Enum.max(fn -> 0 end)
-      measures = grow(score.measures, ctx, last)
-      bars = measures |> length() |> bars(ctx) |> Enum.with_index()
+    measures = grow(score.measures, ctx, last_tick(entries))
 
-      with {:ok, pieces} <- pieces(entries, bars) do
-        {:ok, %{score | measures: assemble(measures, pieces)}}
-      end
+    bars =
+      measures
+      |> length()
+      |> bars(ctx)
+      |> Enum.with_index()
+
+    with :ok <- check_starts(entries),
+         {:ok, pieces} <- pieces(entries, bars) do
+      {:ok, %{score | measures: assemble(measures, pieces)}}
     end
   end
 
+  defp last_tick(entries) do
+    entries
+    |> Enum.map(&(&1.start + &1.ticks))
+    |> Enum.max(fn -> 0 end)
+  end
+
   defp check_starts(entries) do
-    if Enum.any?(entries, &(&1.start < 0)), do: {:error, :before_start}, else: :ok
+    case Enum.find(entries, &(&1.start < 0)) do
+      nil -> :ok
+      _early -> {:error, :before_start}
+    end
   end
 
   defp grow(measures, ctx, last) do
-    if Context.span(ctx, length(measures)) >= last,
-      do: measures,
-      else: grow(measures ++ [Measure.new()], ctx, last)
+    if Context.span(ctx, length(measures)) >= last do
+      measures
+    else
+      grow(measures ++ [Measure.new()], ctx, last)
+    end
   end
 
   defp pieces(entries, bars) do
@@ -90,22 +106,16 @@ defmodule DrawMusic.Music.Timeline do
     end)
   end
 
-  defp entry_pieces(entry, bars) do
-    case segments(entry.start, entry.ticks, bars) do
-      [{index, offset, len}] when len == entry.ticks ->
-        if keeps_value?(entry),
-          do: {:ok, [{index, %{entry.event | offset: offset}}]},
-          else: split(entry, [{index, offset, len}])
-
-      segments ->
-        split(entry, segments)
+  # An entry inside one bar keeps its value when that value is its length.
+  defp entry_pieces(%{ticks: ticks} = entry, bars) do
+    case {segments(entry.start, ticks, bars), written_ticks(entry.event)} do
+      {[{index, offset, ^ticks}], ^ticks} -> {:ok, [{index, %{entry.event | offset: offset}}]}
+      {segments, _written} -> split(entry, segments)
     end
   end
 
-  defp keeps_value?(%{event: %{value: value, dots: dots}, ticks: ticks}) when not is_nil(value),
-    do: Duration.ticks(value, dots) == ticks
-
-  defp keeps_value?(_entry), do: false
+  defp written_ticks(%{value: nil}), do: nil
+  defp written_ticks(%{value: value, dots: dots}), do: Duration.ticks(value, dots)
 
   defp segments(_start, 0, _bars), do: []
 
@@ -142,11 +152,9 @@ defmodule DrawMusic.Music.Timeline do
     parts
   end
 
+  # Each piece but the first gets a fresh id; tied notes chain through them.
   defp build(%{event: %Note{} = note}, parts) do
-    ids = [
-      note.id || Ecto.UUID.generate() | Enum.map(tl(parts), fn _ -> Ecto.UUID.generate() end)
-    ]
-
+    ids = piece_ids(note, parts)
     next_ids = tl(ids) ++ [note.tie_to]
 
     for {{index, offset, value, dots}, id, next} <- Enum.zip([parts, ids, next_ids]) do
@@ -155,13 +163,13 @@ defmodule DrawMusic.Music.Timeline do
   end
 
   defp build(%{event: %Rest{} = rest}, parts) do
-    ids = [
-      rest.id || Ecto.UUID.generate() | Enum.map(tl(parts), fn _ -> Ecto.UUID.generate() end)
-    ]
-
-    for {{index, offset, value, dots}, id} <- Enum.zip(parts, ids) do
+    for {{index, offset, value, dots}, id} <- Enum.zip(parts, piece_ids(rest, parts)) do
       {index, %{rest | id: id, offset: offset, value: value, dots: dots}}
     end
+  end
+
+  defp piece_ids(event, [_first | rest]) do
+    [event.id || Ecto.UUID.generate() | Enum.map(rest, fn _ -> Ecto.UUID.generate() end)]
   end
 
   defp assemble(measures, pieces) do
@@ -170,18 +178,15 @@ defmodule DrawMusic.Music.Timeline do
     measures
     |> Enum.with_index()
     |> Enum.map(fn {measure, index} ->
-      events = Map.get(by_index, index, [])
+      {notes, rests} =
+        by_index
+        |> Map.get(index, [])
+        |> Enum.split_with(&match?(%Note{}, &1))
 
       %{
         measure
-        | notes:
-            events
-            |> Enum.filter(&match?(%Note{}, &1))
-            |> Enum.sort_by(&{&1.offset, &1.staff, &1.voice, &1.step}),
-          rests:
-            events
-            |> Enum.filter(&match?(%Rest{}, &1))
-            |> Enum.sort_by(&{&1.offset, &1.staff, &1.voice})
+        | notes: Enum.sort_by(notes, &{&1.offset, &1.staff, &1.voice, &1.step}),
+          rests: Enum.sort_by(rests, &{&1.offset, &1.staff, &1.voice})
       }
     end)
   end

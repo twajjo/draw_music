@@ -10,7 +10,10 @@ defmodule DrawMusicWeb.EditorComponents do
   import DrawMusicWeb.CoreComponents, only: [icon: 1, input: 1]
 
   alias DrawMusic.Engraving.Smufl
-  alias DrawMusicWeb.{BarControl, ScoreComponents}
+  alias DrawMusicWeb.{BarControl, LibraryComponents, ScoreComponents}
+
+  # Bar controls sit this far above a system's top line (staff spaces).
+  @controls_raise 2.2
 
   @lengths [
     {:whole, :noteWhole, "Whole"},
@@ -60,8 +63,6 @@ defmodule DrawMusicWeb.EditorComponents do
 
   @spec settings_panel(map()) :: Phoenix.LiveView.Rendered.t()
   def settings_panel(assigns) do
-    assigns = assign(assigns, :key_options, DrawMusicWeb.LibraryComponents.key_options())
-
     ~H"""
     <div class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
       <div
@@ -77,28 +78,7 @@ defmodule DrawMusicWeb.EditorComponents do
           phx-submit="apply_settings"
           class="mt-4 grid gap-x-4 sm:grid-cols-2"
         >
-          <.input field={@form[:key]} type="select" label="Key" options={@key_options} />
-          <div class="flex items-end gap-2">
-            <.input
-              field={@form[:time_num]}
-              type="number"
-              label="Time"
-              min="1"
-              max="32"
-              class="input w-20"
-            />
-            <span class="pb-3 text-lg">/</span>
-            <.input field={@form[:time_den]} type="select" options={~w(1 2 4 8 16 32 64)} />
-          </div>
-          <.input
-            field={@form[:time_symbol]}
-            type="select"
-            label="Written as"
-            options={[{"Numbers", "none"}, {"Common time (4/4)", "common"}, {"Cut time (2/2)", "cut"}]}
-          />
-          <.input field={@form[:pickup_beats]} type="number" label="Pickup beats" min="0" />
-          <.input field={@form[:tempo_bpm]} type="number" label="Tempo (BPM)" min="20" max="400" />
-          <.input field={@form[:tempo_text]} label="Tempo marking" placeholder="Allegro" />
+          <LibraryComponents.score_settings_fields form={@form} />
           <div class="flex justify-end gap-2 pt-2 sm:col-span-2">
             <button type="button" phx-click="close_settings" class="btn btn-ghost">Cancel</button>
             <button type="submit" class="btn btn-primary">Apply</button>
@@ -318,9 +298,9 @@ defmodule DrawMusicWeb.EditorComponents do
       for system <- assigns.engraved.systems, m <- system.measures do
         %BarControl{
           index: m.index,
-          left: (m.x + padding) / total * 100,
-          top: max(system.y - 2.2, 0) / assigns.engraved.height * 100,
-          end_left: (m.x + m.width + padding) / total * 100
+          left: percent(m.x + padding, total),
+          top: percent(max(system.y - @controls_raise, 0), assigns.engraved.height),
+          end_left: percent(m.x + m.width + padding, total)
         }
       end
 
@@ -372,10 +352,13 @@ defmodule DrawMusicWeb.EditorComponents do
     """
   end
 
+  defp percent(part, whole), do: part / whole * 100
+
   defp filled_bars(score) do
     for {m, i} <- Enum.with_index(score.measures),
         m.notes != [] or m.rests != [],
-        into: MapSet.new(),
-        do: i
+        into: MapSet.new() do
+      i
+    end
   end
 end

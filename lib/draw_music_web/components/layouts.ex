@@ -149,8 +149,9 @@ defmodule DrawMusicWeb.Layouts do
   `#rrggbb` when saved.
   """
   @spec score_ink_style(DrawMusic.Accounts.Scope.t() | nil) :: String.t() | nil
-  def score_ink_style(%{user: %{score_ink_dark: "#" <> _ = color}}),
-    do: "--score-ink-dark: #{color}"
+  def score_ink_style(%{user: %{score_ink_dark: "#" <> _ = color}}) do
+    "--score-ink-dark: #{color}"
+  end
 
   def score_ink_style(_scope), do: nil
 

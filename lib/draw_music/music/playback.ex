@@ -6,6 +6,8 @@ defmodule DrawMusic.Music.Playback do
 
   alias DrawMusic.Music.{Context, Duration, Note, Pitch, PlaybackEvent, Score, Sound, Timeline}
 
+  @seconds_per_minute 60
+
   @doc """
   The score's sounds, ordered by start: a tied chain sounds once, for its
   total length.
@@ -60,7 +62,7 @@ defmodule DrawMusic.Music.Playback do
   def events(%Score{} = score, %Context{} = ctx, opts \\ []) do
     from = Keyword.get(opts, :from, 0)
     to = Keyword.get(opts, :to)
-    seconds_per_tick = 60 / (ctx.tempo_bpm * Duration.ppq())
+    seconds_per_tick = @seconds_per_minute / (ctx.tempo_bpm * Duration.ppq())
 
     for sound <- sounds(score, ctx), sound.start >= from, is_nil(to) or sound.start < to do
       %PlaybackEvent{

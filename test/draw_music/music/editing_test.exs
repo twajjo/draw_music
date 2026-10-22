@@ -300,6 +300,14 @@ defmodule DrawMusic.Music.EditingTest do
 
       assert Editing.set_value(score, @ctx, id, :half, 0) == {:error, :overlap}
     end
+
+    @tag timeout: 1_000
+    test "rejects more than two dots rather than retrying forever" do
+      {score, id} =
+        note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
+
+      assert_raise FunctionClauseError, fn -> Editing.set_value(score, @ctx, [id], :half, 3) end
+    end
   end
 
   describe "to_rest/3 and to_note/5" do

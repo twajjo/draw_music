@@ -60,8 +60,9 @@ defmodule DrawMusic.Music.Session do
 
   @doc "Replaces the context (and the score re-read against it), undoably."
   @spec change_context(t(), Context.t(), Score.t()) :: t()
-  def change_context(%__MODULE__{} = session, %Context{} = ctx, %Score{} = score),
-    do: record(session, score, ctx)
+  def change_context(%__MODULE__{} = session, %Context{} = ctx, %Score{} = score) do
+    record(session, score, ctx)
+  end
 
   @doc "Steps back one change; does nothing at the start of the history."
   @spec undo(t()) :: t()
@@ -102,16 +103,25 @@ defmodule DrawMusic.Music.Session do
   @doc "Selects `ids` (unknown ones are ignored), adding to the selection when `add?`."
   @spec select(t(), [Ecto.UUID.t()], boolean()) :: t()
   def select(%__MODULE__{} = session, ids, add?) do
-    known = session |> event_ids() |> MapSet.intersection(MapSet.new(ids))
-    %{session | selection: if(add?, do: MapSet.union(session.selection, known), else: known)}
+    known =
+      session
+      |> event_ids()
+      |> MapSet.intersection(MapSet.new(ids))
+
+    %{session | selection: selected(session.selection, known, add?)}
   end
+
+  defp selected(current, known, true = _add?), do: MapSet.union(current, known)
+  defp selected(_current, known, false), do: known
 
   @doc "Adds `id` to the selection, or removes it if already selected."
   @spec toggle(t(), Ecto.UUID.t()) :: t()
   def toggle(%__MODULE__{} = session, id) do
-    if MapSet.member?(session.selection, id),
-      do: %{session | selection: MapSet.delete(session.selection, id)},
-      else: select(session, [id], true)
+    if MapSet.member?(session.selection, id) do
+      %{session | selection: MapSet.delete(session.selection, id)}
+    else
+      select(session, [id], true)
+    end
   end
 
   @spec clear_selection(t()) :: t()
@@ -135,6 +145,7 @@ defmodule DrawMusic.Music.Session do
     |> prune_selection()
   end
 
-  defp prune_selection(session),
-    do: %{session | selection: MapSet.intersection(session.selection, event_ids(session))}
+  defp prune_selection(session) do
+    %{session | selection: MapSet.intersection(session.selection, event_ids(session))}
+  end
 end

@@ -22,6 +22,12 @@ defmodule DrawMusic.Music.Chords do
     add9: [{0, 0}, {2, 4}, {4, 7}, {8, 14}]
   }
 
+  @steps_per_third 2
+  @triad 3
+  @seventh_chord 4
+  @dominant 5
+  @leading_tone 7
+
   @typedoc "A chord quality from the catalog."
   @type quality ::
           :major
@@ -68,27 +74,31 @@ defmodule DrawMusic.Music.Chords do
           {:ok, [pitch()]} | {:error, :out_of_range}
   def diatonic(sf, mode, root_step, opts \\ []) do
     {tonic, _pc} = Pitch.tonic(sf, mode)
-    degree = Integer.mod(Pitch.letter(root_step) - tonic, 7) + 1
-    size = if Keyword.get(opts, :seventh, false), do: 4, else: 3
+    degree_of = &(Integer.mod(Pitch.letter(&1) - tonic, Pitch.steps_per_octave()) + 1)
+    root_degree = degree_of.(root_step)
 
-    for k <- 0..(size - 1) do
-      step = root_step + 2 * k
-      letter = Pitch.letter(step)
-      {step, Pitch.key_alter(sf, letter) + leading_tone(mode, degree, letter, tonic)}
+    for third <- 0..(chord_size(Keyword.get(opts, :seventh, false)) - 1) do
+      step = root_step + @steps_per_third * third
+      key_alter = Pitch.key_alter(sf, Pitch.letter(step))
+      {step, key_alter + harmonic_minor_raise(mode, root_degree, degree_of.(step))}
     end
     |> checked()
   end
 
-  defp leading_tone(:minor, degree, letter, tonic) when degree in [5, 7],
-    do: if(Integer.mod(letter - tonic, 7) == 6, do: 1, else: 0)
+  defp chord_size(true = _seventh?), do: @seventh_chord
+  defp chord_size(false), do: @triad
 
-  defp leading_tone(_mode, _degree, _letter, _tonic), do: 0
+  defp harmonic_minor_raise(:minor, root_degree, @leading_tone)
+       when root_degree in [@dominant, @leading_tone] do
+    1
+  end
+
+  defp harmonic_minor_raise(_mode, _root_degree, _degree), do: 0
 
   defp checked(pitches) do
-    if Enum.all?(pitches, fn {step, alter} ->
-         alter in -2..2 and Pitch.in_range?(Pitch.midi(step, alter))
-       end),
-       do: {:ok, pitches},
-       else: {:error, :out_of_range}
+    case Enum.reject(pitches, fn {step, alter} -> Pitch.playable?(step, alter) end) do
+      [] -> {:ok, pitches}
+      _out_of_range -> {:error, :out_of_range}
+    end
   end
 end

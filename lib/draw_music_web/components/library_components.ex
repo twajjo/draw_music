@@ -7,9 +7,10 @@ defmodule DrawMusicWeb.LibraryComponents do
   use DrawMusicWeb, :verified_routes
   use Phoenix.Component
 
-  import DrawMusicWeb.CoreComponents, only: [icon: 1]
+  import DrawMusicWeb.CoreComponents, only: [icon: 1, input: 1]
 
   alias DrawMusic.Library.Key
+  alias DrawMusic.Music.Context
 
   @doc "Every key as select options, grouped into major and minor, valued by slug."
   @spec key_options() :: [{String.t(), [{String.t(), String.t()}]}]
@@ -19,10 +20,59 @@ defmodule DrawMusicWeb.LibraryComponents do
     end
   end
 
+  @doc """
+  A score's settings inputs: key, time signature, tempo and pickup. The
+  caller's form lays them out; see `DrawMusicWeb.EditorSettings`.
+  """
+  attr :form, Phoenix.HTML.Form, required: true
+
+  @spec score_settings_fields(map()) :: Phoenix.LiveView.Rendered.t()
+  def score_settings_fields(assigns) do
+    assigns =
+      assign(assigns,
+        key_options: key_options(),
+        time_denominators: Context.time_denominators(),
+        max_time_num: Context.max_time_num(),
+        tempo_range: Context.tempo_range()
+      )
+
+    ~H"""
+    <.input field={@form[:key]} type="select" label="Key" options={@key_options} />
+    <div class="flex items-end gap-2">
+      <.input
+        field={@form[:time_num]}
+        type="number"
+        label="Time"
+        min="1"
+        max={@max_time_num}
+        class="input w-20"
+      />
+      <span class="pb-3 text-lg">/</span>
+      <.input field={@form[:time_den]} type="select" options={@time_denominators} />
+    </div>
+    <.input
+      field={@form[:time_symbol]}
+      type="select"
+      label="Written as"
+      options={[{"Numbers", "none"}, {"Common time (4/4)", "common"}, {"Cut time (2/2)", "cut"}]}
+    />
+    <.input
+      field={@form[:tempo_bpm]}
+      type="number"
+      label="Tempo (BPM)"
+      min={@tempo_range.first}
+      max={@tempo_range.last}
+    />
+    <.input field={@form[:tempo_text]} label="Tempo marking" placeholder="Allegro" />
+    <.input field={@form[:pickup_beats]} type="number" label="Pickup beats" min="0" />
+    """
+  end
+
   @doc "Path of a version's score view."
   @spec version_path(Ecto.UUID.t(), Key.t(), pos_integer()) :: String.t()
-  def version_path(composition_id, %Key{} = key, number),
-    do: ~p"/compositions/#{composition_id}/#{Key.slug(key)}/v/#{number}"
+  def version_path(composition_id, %Key{} = key, number) do
+    ~p"/compositions/#{composition_id}/#{Key.slug(key)}/v/#{number}"
+  end
 
   @doc "A composition with its credits, keys and versions."
   attr :id, :string, required: true

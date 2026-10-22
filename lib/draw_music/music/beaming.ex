@@ -9,6 +9,9 @@ defmodule DrawMusic.Music.Beaming do
 
   alias DrawMusic.Music.{BeamGroup, Context, Duration, Measure}
 
+  @beamable Enum.filter(Duration.values(), &Duration.beamable?/1)
+  @min_group 2
+
   @doc """
   Beam groups of measure `index`, each with at least two notes or chords.
   """
@@ -24,22 +27,21 @@ defmodule DrawMusic.Music.Beaming do
       |> Enum.sort()
 
     for {staff, voice} <- lines,
-        offsets <- line_groups(measure, staff, voice, &div(&1 + shift, span)),
-        do: %BeamGroup{staff: staff, voice: voice, offsets: offsets}
+        offsets <- line_groups(measure, staff, voice, &div(&1 + shift, span)) do
+      %BeamGroup{staff: staff, voice: voice, offsets: offsets}
+    end
   end
 
   defp line_groups(measure, staff, voice, beat_of) do
     notes =
-      for n <- measure.notes,
-          n.staff == staff,
-          n.voice == voice,
-          do: {n.offset, :note, n.value, n.dots}
+      for n <- measure.notes, n.staff == staff, n.voice == voice do
+        {n.offset, :note, n.value, n.dots}
+      end
 
     rests =
-      for r <- measure.rests,
-          r.staff == staff,
-          r.voice == voice,
-          do: {r.offset, :rest, r.value, r.dots}
+      for r <- measure.rests, r.staff == staff, r.voice == voice do
+        {r.offset, :rest, r.value, r.dots}
+      end
 
     (Enum.uniq_by(notes, &elem(&1, 0)) ++ rests)
     |> Enum.sort()
@@ -48,16 +50,15 @@ defmodule DrawMusic.Music.Beaming do
     |> Enum.reverse()
   end
 
-  defp step({offset, :note, value, dots}, groups, run, beat_of) do
-    cond do
-      not Duration.beamable?(value) -> {close_run(groups, run), []}
-      continues?(run, offset, beat_of) -> {groups, [{offset, value, dots} | run]}
-      true -> {close_run(groups, run), [{offset, value, dots}]}
-    end
+  defp step({offset, :note, value, dots}, groups, run, beat_of) when value in @beamable do
+    extend(groups, run, {offset, value, dots}, continues?(run, offset, beat_of))
   end
 
-  defp step({_offset, :rest, _value, _dots}, groups, run, _beat_of),
-    do: {close_run(groups, run), []}
+  # Rests and unbeamable notes end the run.
+  defp step(_event, groups, run, _beat_of), do: {close_run(groups, run), []}
+
+  defp extend(groups, run, note, true = _continues?), do: {groups, [note | run]}
+  defp extend(groups, run, note, false), do: {close_run(groups, run), [note]}
 
   defp continues?([], _offset, _beat_of), do: false
 
@@ -68,8 +69,14 @@ defmodule DrawMusic.Music.Beaming do
 
   defp close({groups, run}), do: close_run(groups, run)
 
-  defp close_run(groups, run) when length(run) >= 2,
-    do: [run |> Enum.reverse() |> Enum.map(&elem(&1, 0)) | groups]
+  defp close_run(groups, run) when length(run) >= @min_group do
+    offsets =
+      run
+      |> Enum.reverse()
+      |> Enum.map(&elem(&1, 0))
+
+    [offsets | groups]
+  end
 
   defp close_run(groups, _run), do: groups
 end

@@ -8,31 +8,37 @@ defmodule DrawMusic.Music.Duration do
   """
 
   @ppq 960
-  @base [
-    whole: 3840,
-    half: 1920,
-    quarter: 960,
-    eighth: 480,
-    sixteenth: 240,
-    thirty_second: 120,
-    sixty_fourth: 60
-  ]
-  @values Keyword.keys(@base)
+  @quarters_per_whole 4
+  @max_dots 2
 
   @typedoc "A note value, whole through 64th."
   @type value :: :whole | :half | :quarter | :eighth | :sixteenth | :thirty_second | :sixty_fourth
+  @values [:whole, :half, :quarter, :eighth, :sixteenth, :thirty_second, :sixty_fourth]
+  @base Enum.with_index(@values, fn value, halvings ->
+          {value, div(@ppq * @quarters_per_whole, 2 ** halvings)}
+        end)
   @flags %{eighth: 1, sixteenth: 2, thirty_second: 3, sixty_fourth: 4}
 
+  dotted = fn base, dots -> Enum.sum(for dot <- 0..dots, do: div(base, 2 ** dot)) end
+
   # Every value/dots combination, longest first.
-  @candidates (for {value, base} <- @base, dots <- 0..2 do
-                 {value, dots,
-                  base + if(dots >= 1, do: div(base, 2), else: 0) +
-                    if(dots == 2, do: div(base, 4), else: 0)}
+  @candidates (for {value, base} <- @base, dots <- 0..@max_dots do
+                 {value, dots, dotted.(base, dots)}
                end)
               |> Enum.sort_by(fn {_v, _d, ticks} -> ticks end, :desc)
 
+  # Every length is a multiple of the shortest dot increment (a 64th's
+  # quarter). In those units the three shortest lengths are 4, 6 and 7,
+  # whose sums reach every count except these.
+  @unit div(Keyword.fetch!(@base, :sixty_fourth), 2 ** @max_dots)
+  @unreachable_units [1, 2, 3, 5, 9]
+
   @spec ppq() :: pos_integer()
   def ppq, do: @ppq
+
+  @doc "How many dots a value may take."
+  @spec dot_counts() :: Range.t()
+  def dot_counts, do: 0..@max_dots
 
   @doc "Note values, longest first."
   @spec values() :: [value()]
@@ -41,14 +47,9 @@ defmodule DrawMusic.Music.Duration do
   @doc "Length of `value` with `dots` (0..2) in ticks."
   @spec ticks(value()) :: pos_integer()
   @spec ticks(value(), 0..2) :: pos_integer()
-  def ticks(value, dots \\ 0) when dots in 0..2 do
+  def ticks(value, dots \\ 0) when dots in 0..@max_dots do
     base = Keyword.fetch!(@base, value)
-
-    case dots do
-      0 -> base
-      1 -> base + div(base, 2)
-      2 -> base + div(base, 2) + div(base, 4)
-    end
+    Enum.sum(for dot <- 0..dots, do: div(base, 2 ** dot))
   end
 
   @doc "Number of flags (or beams) the value takes: 0 for quarter and longer."
@@ -80,14 +81,7 @@ defmodule DrawMusic.Music.Duration do
     [{value, dots} | take(ticks - len)]
   end
 
-  # All lengths are multiples of 15 ticks. In those units the three shortest
-  # values are 4, 6 and 7, which can make every number from 10 up, plus
-  # 4, 6, 7 and 8 — so only 1, 2, 3, 5 and 9 units are impossible.
-  defp representable?(0), do: true
-  defp representable?(ticks) when rem(ticks, 15) != 0, do: false
-
   defp representable?(ticks) do
-    units = div(ticks, 15)
-    units >= 4 and units not in [5, 9]
+    rem(ticks, @unit) == 0 and div(ticks, @unit) not in @unreachable_units
   end
 end

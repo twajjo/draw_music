@@ -7,7 +7,7 @@ defmodule DrawMusic.Music.Rest do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias DrawMusic.Music.Duration
+  alias DrawMusic.Music.{Duration, Note}
 
   @primary_key {:id, :binary_id, autogenerate: true}
   embedded_schema do
@@ -20,8 +20,8 @@ defmodule DrawMusic.Music.Rest do
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t() | nil,
-          staff: DrawMusic.Music.Note.staff(),
-          voice: 1..4,
+          staff: Note.staff(),
+          voice: Note.voice(),
           offset: non_neg_integer(),
           value: Duration.value(),
           dots: 0..2
@@ -32,9 +32,9 @@ defmodule DrawMusic.Music.Rest do
     rest
     |> cast(attrs, [:id, :staff, :voice, :offset, :value, :dots])
     |> validate_required([:staff, :voice, :offset, :value, :dots])
-    |> validate_inclusion(:voice, 1..4)
+    |> validate_inclusion(:voice, Note.voices())
     |> validate_number(:offset, greater_than_or_equal_to: 0)
-    |> validate_inclusion(:dots, 0..2)
+    |> validate_inclusion(:dots, Duration.dot_counts())
   end
 
   @doc "Length in ticks."

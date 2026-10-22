@@ -111,11 +111,13 @@ defmodule DrawMusicWeb.EditorPalette do
 
   @doc "The character drawn as the cursor for an armed item (nil for the tie tool)."
   @spec cursor_glyph(Armed.t()) :: String.t() | nil
-  def cursor_glyph(%Armed{kind: :note, value: value}),
-    do: Smufl.char(Map.fetch!(@note_glyphs, value))
+  def cursor_glyph(%Armed{kind: :note, value: value}) do
+    Smufl.char(Map.fetch!(@note_glyphs, value))
+  end
 
-  def cursor_glyph(%Armed{kind: :rest, value: value}),
-    do: Smufl.char(Map.fetch!(@rest_glyphs, value))
+  def cursor_glyph(%Armed{kind: :rest, value: value}) do
+    Smufl.char(Map.fetch!(@rest_glyphs, value))
+  end
 
   def cursor_glyph(%Armed{kind: :chord}), do: Smufl.char(:noteheadBlack)
   def cursor_glyph(%Armed{kind: :tie}), do: nil

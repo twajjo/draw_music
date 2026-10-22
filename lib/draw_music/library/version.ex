@@ -12,24 +12,30 @@ defmodule DrawMusic.Library.Version do
   import Ecto.Changeset
 
   alias DrawMusic.Library.Key
-  alias DrawMusic.Music.Score
+  alias DrawMusic.Music.{Context, Score}
 
-  @time_denominators [1, 2, 4, 8, 16, 32, 64]
+  @defaults %Context{}
+  @time_denominators Context.time_denominators()
+  @tempo_range Context.tempo_range()
+  @acoustic_grand_piano 0
+  @max_program 127
+  @max_label_length 120
+  @max_tempo_text_length 60
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   schema "composition_versions" do
     field :number, :integer
     field :label, :string
-    field :time_num, :integer, default: 4
-    field :time_den, :integer, default: 4
-    field :time_symbol, Ecto.Enum, values: [:none, :common, :cut], default: :none
-    field :tempo_bpm, :integer, default: 100
+    field :time_num, :integer, default: @defaults.time_num
+    field :time_den, :integer, default: @defaults.time_den
+    field :time_symbol, Ecto.Enum, values: [:none, :common, :cut], default: @defaults.time_symbol
+    field :tempo_bpm, :integer, default: @defaults.tempo_bpm
     field :tempo_text, :string
     # Length of an opening incomplete (anacrusis) bar, in score ticks; 0 = none.
-    field :pickup_ticks, :integer, default: 0
-    # General MIDI program number used for playback; 0 = acoustic grand piano.
-    field :instrument, :integer, default: 0
+    field :pickup_ticks, :integer, default: @defaults.pickup_ticks
+    # General MIDI program number used for playback.
+    field :instrument, :integer, default: @acoustic_grand_piano
     # Scores are always replaced whole (the editor saves a new %Score{}).
     embeds_one :score, Score, on_replace: :delete, defaults_to_struct: true
 
@@ -79,15 +85,24 @@ defmodule DrawMusic.Library.Version do
     |> cast(attrs, @fields)
     |> put_score(attrs)
     |> validate_required([:number, :time_num, :time_den, :time_symbol, :tempo_bpm, :score])
-    |> validate_length(:label, max: 120)
-    |> validate_length(:tempo_text, max: 60)
-    |> validate_number(:time_num, greater_than_or_equal_to: 1, less_than_or_equal_to: 32)
+    |> validate_length(:label, max: @max_label_length)
+    |> validate_length(:tempo_text, max: @max_tempo_text_length)
+    |> validate_number(:time_num,
+      greater_than_or_equal_to: 1,
+      less_than_or_equal_to: Context.max_time_num()
+    )
     |> validate_inclusion(:time_den, @time_denominators)
     |> validate_time_symbol()
-    |> validate_number(:tempo_bpm, greater_than_or_equal_to: 20, less_than_or_equal_to: 400)
+    |> validate_number(:tempo_bpm,
+      greater_than_or_equal_to: @tempo_range.first,
+      less_than_or_equal_to: @tempo_range.last
+    )
     |> validate_number(:pickup_ticks, greater_than_or_equal_to: 0)
     |> validate_pickup()
-    |> validate_number(:instrument, greater_than_or_equal_to: 0, less_than_or_equal_to: 127)
+    |> validate_number(:instrument,
+      greater_than_or_equal_to: 0,
+      less_than_or_equal_to: @max_program
+    )
     |> unique_constraint([:key_id, :number], name: :composition_versions_key_id_number_index)
   end
 
@@ -103,22 +118,31 @@ defmodule DrawMusic.Library.Version do
     end
   end
 
-  # A pickup bar is shorter than a full measure.
   defp validate_pickup(changeset) do
-    with pickup when is_integer(pickup) and pickup > 0 <- get_field(changeset, :pickup_ticks),
-         num when is_integer(num) <- get_field(changeset, :time_num),
-         den when den in @time_denominators <- get_field(changeset, :time_den),
-         true <- pickup >= div(num * 3840, den) do
+    pickup_error(
+      changeset,
+      get_field(changeset, :pickup_ticks),
+      get_field(changeset, :time_num),
+      get_field(changeset, :time_den)
+    )
+  end
+
+  # A pickup bar is shorter than a full measure of a valid meter.
+  defp pickup_error(changeset, pickup, num, den)
+       when is_integer(pickup) and pickup > 0 and is_integer(num) and den in @time_denominators do
+    if pickup >= Context.measure_ticks(%Context{time_num: num, time_den: den}) do
       add_error(changeset, :pickup_ticks, "must be shorter than a full measure")
     else
-      _ -> changeset
+      changeset
     end
   end
 
-  defp put_score(changeset, %{score: %Score{} = score}), do: put_embed(changeset, :score, score)
+  defp pickup_error(changeset, _pickup, _num, _den), do: changeset
 
-  defp put_score(changeset, %{"score" => %Score{} = score}),
-    do: put_embed(changeset, :score, score)
-
-  defp put_score(changeset, _attrs), do: cast_embed(changeset, :score)
+  defp put_score(changeset, attrs) do
+    case Map.get(attrs, :score, attrs["score"]) do
+      %Score{} = score -> put_embed(changeset, :score, score)
+      _params -> cast_embed(changeset, :score)
+    end
+  end
 end

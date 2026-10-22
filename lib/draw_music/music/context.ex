@@ -7,6 +7,11 @@ defmodule DrawMusic.Music.Context do
 
   alias DrawMusic.Music.Duration
 
+  @time_denominators [1, 2, 4, 8, 16, 32, 64]
+  @max_time_num 32
+  @tempo_range 20..400
+  @beats_per_compound_beat 3
+
   defstruct sf: 0,
             mode: :major,
             time_num: 4,
@@ -25,6 +30,17 @@ defmodule DrawMusic.Music.Context do
           tempo_bpm: pos_integer()
         }
 
+  @doc "Time-signature denominators a score may use."
+  @spec time_denominators() :: [pos_integer()]
+  def time_denominators, do: @time_denominators
+
+  @spec max_time_num() :: pos_integer()
+  def max_time_num, do: @max_time_num
+
+  @doc "Tempos a score may use, in beats per minute."
+  @spec tempo_range() :: Range.t()
+  def tempo_range, do: @tempo_range
+
   @doc "Builds a context from a version with its key loaded."
   @spec from_version(DrawMusic.Library.Version.t()) :: t()
   def from_version(%{key: %{sf: sf, mode: mode}} = version) do
@@ -41,21 +57,22 @@ defmodule DrawMusic.Music.Context do
 
   @doc "Length of a full measure in ticks."
   @spec measure_ticks(t()) :: pos_integer()
-  def measure_ticks(%__MODULE__{time_num: num, time_den: den}),
-    do: div(num * 4 * Duration.ppq(), den)
+  def measure_ticks(%__MODULE__{time_num: num} = ctx), do: num * beat_ticks(ctx)
 
   @doc "One time-signature unit (the denominator's note value) in ticks."
   @spec beat_ticks(t()) :: pos_integer()
-  def beat_ticks(%__MODULE__{time_den: den}), do: div(4 * Duration.ppq(), den)
+  def beat_ticks(%__MODULE__{time_den: den}), do: div(Duration.ticks(:whole), den)
 
   @doc "6/8, 9/8, 12/8 and the like: beats divide into three."
   @spec compound?(t()) :: boolean()
-  def compound?(%__MODULE__{time_num: num}), do: num > 3 and rem(num, 3) == 0
+  def compound?(%__MODULE__{time_num: num}) do
+    num > @beats_per_compound_beat and rem(num, @beats_per_compound_beat) == 0
+  end
 
   @doc "Span that beamed notes are grouped by: the felt beat."
   @spec beam_group_ticks(t()) :: pos_integer()
   def beam_group_ticks(ctx) do
-    if compound?(ctx), do: 3 * beat_ticks(ctx), else: beat_ticks(ctx)
+    if compound?(ctx), do: @beats_per_compound_beat * beat_ticks(ctx), else: beat_ticks(ctx)
   end
 
   @doc "Capacity of measure `index`: the pickup length for an opening pickup bar."

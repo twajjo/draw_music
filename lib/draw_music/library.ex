@@ -234,8 +234,9 @@ defmodule DrawMusic.Library do
   """
   @spec save_as_new_composition(Scope.t(), map(), map(), map()) ::
           {:ok, Version.t()} | {:error, Ecto.Changeset.t()}
-  def save_as_new_composition(%Scope{} = scope, composition_attrs, key_attrs, version_attrs),
-    do: create_composition(scope, composition_attrs, key_attrs, version_attrs)
+  def save_as_new_composition(%Scope{} = scope, composition_attrs, key_attrs, version_attrs) do
+    create_composition(scope, composition_attrs, key_attrs, version_attrs)
+  end
 
   @doc """
   Deletes one version. If it is the only version in its key, the key goes
@@ -375,10 +376,17 @@ defmodule DrawMusic.Library do
     |> Kernel.+(1)
   end
 
-  defp version_count(key_id), do: Version |> where(key_id: ^key_id) |> Repo.aggregate(:count)
+  defp version_count(key_id) do
+    Version
+    |> where(key_id: ^key_id)
+    |> Repo.aggregate(:count)
+  end
 
-  defp key_count(composition_id),
-    do: Key |> where(composition_id: ^composition_id) |> Repo.aggregate(:count)
+  defp key_count(composition_id) do
+    Key
+    |> where(composition_id: ^composition_id)
+    |> Repo.aggregate(:count)
+  end
 
   defp version_summaries do
     from v in Version,

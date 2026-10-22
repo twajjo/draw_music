@@ -1,14 +1,12 @@
 defmodule DrawMusicWeb.EditorSettings do
   @moduledoc """
-  The score settings panel's data (key, time signature, tempo, pickup) and
-  what a save stores. Settings are checked with the `Version` changeset, as
-  on the new composition form.
+  The score settings form's data (key, time signature, tempo, pickup), shared
+  by the editor's settings panel and the new composition form, and what a
+  save stores. Settings are checked with the `Version` changeset.
   """
 
   alias DrawMusic.Library.{Key, Version}
   alias DrawMusic.Music.{Context, Editing, Session}
-
-  @time_denominators ~w(1 2 4 8 16 32 64)
 
   @doc "The settings form's params for a context and tempo marking."
   @spec params(Context.t(), String.t() | nil) :: %{String.t() => String.t()}
@@ -33,7 +31,7 @@ defmodule DrawMusicWeb.EditorSettings do
           {:ok, {-7..7, :major | :minor}, map()} | {:error, keyword()} | :error
   def validate(params) do
     with {:ok, key} <- Key.from_slug(params["key"] || "") do
-      changeset = Version.changeset(%Version{number: 1}, version_params(params))
+      changeset = Version.changeset(%Version{number: 1}, form_attrs(params))
 
       if changeset.valid? do
         fields = Ecto.Changeset.apply_changes(changeset)
@@ -41,25 +39,33 @@ defmodule DrawMusicWeb.EditorSettings do
         {:ok, key,
          Map.take(fields, [:time_num, :time_den, :time_symbol, :tempo_bpm, :pickup_ticks])}
       else
-        {:error, Enum.map(changeset.errors, &form_error/1)}
+        {:error, form_errors(changeset.errors)}
       end
     end
   end
 
-  # The form asks for pickup beats; the version stores ticks.
-  defp form_error({:pickup_ticks, error}), do: {:pickup_beats, error}
-  defp form_error(error), do: error
-
-  defp version_params(params) do
+  @doc "Version attrs from the form's params: the form asks for pickup beats, not ticks."
+  @spec form_attrs(map()) :: %{String.t() => term()}
+  def form_attrs(params) do
     params
     |> Map.take(~w(time_num time_den time_symbol tempo_bpm tempo_text))
     |> Map.put("pickup_ticks", pickup_ticks(params))
   end
 
+  @doc "Version changeset errors keyed by form field."
+  @spec form_errors(keyword()) :: keyword()
+  def form_errors(errors) do
+    Enum.map(errors, fn
+      {:pickup_ticks, error} -> {:pickup_beats, error}
+      error -> error
+    end)
+  end
+
   defp pickup_ticks(params) do
     with {beats, ""} <- Integer.parse(params["pickup_beats"] || ""),
-         den when den in @time_denominators <- params["time_den"] do
-      beats * Context.beat_ticks(%Context{time_den: String.to_integer(den)})
+         {den, ""} <- Integer.parse(params["time_den"] || ""),
+         true <- den in Context.time_denominators() do
+      beats * Context.beat_ticks(%Context{time_den: den})
     else
       _ -> 0
     end
@@ -72,13 +78,15 @@ defmodule DrawMusicWeb.EditorSettings do
   """
   @spec apply(Session.t(), map()) :: {:ok, Session.t()} | {:error, Editing.reason()}
   def apply(%Session{} = session, fields) do
-    ctx = struct(session.ctx, fields)
-    if ctx == session.ctx, do: {:ok, session}, else: rebar(session, ctx)
+    rebar(session, struct(session.ctx, fields))
   end
 
+  defp rebar(%Session{ctx: ctx} = session, ctx), do: {:ok, session}
+
   defp rebar(session, ctx) do
-    with {:ok, score} <- Editing.rebar_to(session.score, session.ctx, ctx),
-         do: {:ok, Session.change_context(session, ctx, score)}
+    with {:ok, score} <- Editing.rebar_to(session.score, session.ctx, ctx) do
+      {:ok, Session.change_context(session, ctx, score)}
+    end
   end
 
   @doc "What a save stores: the score and the settings it is read against."
