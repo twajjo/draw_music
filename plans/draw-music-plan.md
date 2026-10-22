@@ -17,6 +17,20 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
 
 ## Decisions (from interview)
 - **Auth/storage:** `phx.gen.auth` users. Each user has compositions, and each composition has numbered versions. Users can add, rename, update and delete them.
+- **Key and instrumentation set a version apart** (added 2026-10-23; phase 9):
+  - What makes a version distinct is its key *and* its parts, meaning the instruments it's scored for. "D major for flute and piano" is a different version from "D major for piano" and from "C major for flute and piano".
+  - **Terminology:** this plan calls an instrument line a **part**. In the code, `Note.voice` (1–4) already means an independent rhythmic line within one staff, which is a different thing, so the two names stay separate.
+  - Most versions have one part. Several are allowed, e.g. **flute and piano**: a flute staff above the piano's braced grand staff.
+    - The brace joins one instrument's staves (piano treble and bass).
+    - A system bracket and the system's left-hand barline join the different parts.
+    - Barlines run through each part's staves but break between parts.
+    - Part names appear at the start of each system.
+  - Each part has a name, a GM instrument and a staff layout: **grand** (braced treble + bass), **treble**, **bass**, or **treble 8vb** (guitar, which sounds an octave below where it's written).
+  - Parts are listed in score order, top to bottom (e.g. woodwinds above piano). The arrangement name ("for flute and piano") is built from the part names.
+  - **Generation:** a version's key and parts are fixed once saved.
+    - Changing either in the editor (transposing, or adding, removing or re-instrumenting a part) can't overwrite the version.
+    - The save offers only **Save as new version** into the matching key + arrangement, creating it if missing, or **Save as new composition**. This extends today's "changing key saves under the target key".
+    - Changing a part's name, or anything else that isn't part of the identity (tempo, notes, time signature), saves normally.
 - **Editor saves:** **Save** (overwrite current version) · **Save as new version** · **Save as new composition** (name prompt + collision check).
 - **Import:**
   - The name comes from the MIDI track name (FF 03), falling back to the filename, and the user can edit it.
@@ -38,7 +52,28 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
   - ties: mouse-down on the source note, mouse-up on the target, forward or backward;
   - accidentals;
   - chords by stacking notes at the same position or from a catalog;
+  - chord symbols (names) and guitar chord diagrams above the treble staff (see below; phase 10);
   - automatic beaming.
+- **Chord symbols and guitar fingering** (added 2026-10-23; phase 10):
+  - **Why:** a novice may not recognize a stack of notes as a chord. An explicit name such as `Cmaj7` or `G/B` above the staff says it directly, and a guitar diagram shows where to put the fingers.
+  - **What's shown:** a chord lane above the treble staff, aligned to the symbol's offset in ticks. The layout reserves room for it above the highest note or ledger line in each system.
+    - **Name:** the usual lead-sheet short form: the root letter and accidental, then a quality suffix, plus an optional slash bass (`C/E`).
+      - A major chord is the root alone (`C#`); a minor chord adds `m` (`Cm`).
+      - The rest of the catalog uses `dim`, `aug`, `7`, `maj7`, `m7`, `m7♭5`, `sus2`, `sus4`, `add9`.
+      - Accidentals display as ♯/♭.
+    - **Guitar diagram:** a fret grid above the name (standard tuning E A D G B E), with a dot per fretted string, a finger number 1–4 in the dot, `x` for muted strings, `o` for open ones, a barre line, and a base-fret number when it isn't the first fret. Drawn with SMuFL fretboard glyphs (U+E850–U+E85F) so the SVG export matches.
+  - **Display setting** (per version, in score settings): **Off** · **Names** · **Names + guitar diagrams**.
+    - The default is diagrams when any part is a GM guitar (programs 24–31), and names otherwise.
+    - Names go above the system's top staff, and diagrams go above each guitar part's staff. Parts arrive first, in phase 9.
+  - **Entering symbols:**
+    - Placing a chord from the catalog also adds its symbol (on by default, a toggle in the chord menu).
+    - **Name chord** on a selected stack infers the symbol from the notes (new `Chords.identify/1`, the inverse of `build/3`). Inversions become slash chords, and an unrecognized stack is refused with a message.
+    - Typing a symbol (`F#m7b5`, `Bb/D`) on a beat places it; `ChordSymbol.parse/1` accepts ASCII `#`/`b` as well as ♯/♭.
+    - Click a symbol to select it; Delete removes it, and it moves and copies with a selection.
+  - **Fingerings** come from a voicing table, preferably an off-the-shelf data set (candidate: `@tombatossals/chords-db`, guitar JSON; check its license first) converted into a compile-time Elixir table. The first voicing is the default, and the user can step through the alternatives on a selected diagram. A chord with no voicing shows only its name.
+  - **Editing rules:** transposing a selection respells the symbols (`Pitch.transpose/5`) and looks the diagrams up again. Symbols aren't played back, since the notes already sound.
+  - **MIDI:** exported as text meta events (`FF 01`, `chord:<symbol>[|<frets>]`) and read back on import. Other programs ignore them.
+  - **Out of scope for now:** per-note fingering numbers (left-hand 1–4, right-hand p i m a) and tablature staves.
 - **Placing notes:**
   - Pick a value in the palette, then move over the staff. Each new line or space plays a brief tone at that pitch.
   - **Shift** = sharp, **Ctrl or Alt** = flat (on every platform).
@@ -93,6 +128,28 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
 - **Samples are self-hosted.** `mix samples.fetch` downloads them into a gitignored `priv/static/samples/`, together with each set's license file. `mix setup` runs it.
   - Default set: Splendid Grand Piano plus about 12 GM instruments (electric piano, harpsichord, organ, acoustic guitar, violin, cello, flute, clarinet, trumpet, choir, marimba…).
   - More can be added in the task config. The picker shows unfetched instruments as "not installed".
+  - **Measured sizes (2026-10-23):**
+    - MusyngKite instruments are about 1.6–3.0 MB each as `-mp3.js`, so the 12 cost about 31 MB.
+    - The Splendid Grand Piano has about 300 samples (4 velocity layers) at about 75–100 KB each per format. That's about 25 MB for ogg and about the same again for m4a, which Safari needs.
+    - The default set is about 80 MB on disk.
+  - `mix samples.fetch <gm-name>…` adds individual instruments later (decided 2026-10-23).
+  - **For consideration (not scheduled): server fetch on demand, for admins.** An admin picking a "not installed" instrument could have the server download it, instead of someone running the mix task. The work this needs:
+    - **Roles:**
+      - a `role` column on `users` (`user` | `admin`, default `user`) plus a migration;
+      - `Scope` carries the role, and a small policy module, `DrawMusic.Accounts.Policy.allowed?(scope, :fetch_samples)`, holds the rules so templates and handlers ask it instead of checking roles themselves;
+      - a way to make the first admin: `mix users.promote <email>`, or an `ADMIN_EMAILS` runtime config for the release;
+      - no role-management UI at first.
+    - **One fetch module** (`DrawMusic.Samples`) used by both the mix task and the server:
+      - instrument names come only from the GM table and sources from an allowlist, never a URL from the client;
+      - it checks size and type before writing, and copies the license file next to the samples;
+      - a manifest lists the installed instruments.
+    - **Background job:** a supervised task, one per instrument at a time (deduplicated through a `Registry`), with progress sent over PubSub so the picker updates live. If jobs need to survive restarts, use Oban (off-the-shelf) rather than a hand-rolled queue.
+    - **Writable storage:** a release's `priv/static` is read-only and replaced on every deploy. Fetched samples need a configured directory outside the release (`:samples_dir`, e.g. a mounted volume) served at `/samples` by its own `Plug.Static`. This affects Phase 7 whether or not on-demand fetch is built.
+    - **UI:**
+      - admins see "Download" beside a not-installed instrument, then a progress bar;
+      - everyone else sees "Not installed: ask an admin" and plays the synth in its place.
+    - **Limits:** a disk quota and a cap on concurrent fetches. Fetches are logged with the admin's id.
+    - **Tests:** the policy (admin yes, user no), the handlers refusing non-admins, the duplicate-fetch guard, and the manifest update. Network downloads stay behind a stubbed source.
 - **Not used:** midiex (live MIDI ports, maybe later for keyboard input), midi_synth / TuningFork (they make sound on the server, which users can't hear), @tonejs/midi (files are handled on the server).
 - **Attribution:**
   - A Credits page (footer link) and `THIRD_PARTY_NOTICES.md`.
@@ -104,7 +161,14 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
 
 ### Persistence: `DrawMusic.Library`
 - `mix phx.gen.auth Accounts User users --live` (this adds `Scope`; every context function takes it).
-- **Hierarchy:** Composition → Key → Version (built).
+- **Hierarchy:** Composition → Key → Version (built). Phase 9 adds a level: Composition → Key → **Arrangement** → Version.
+  - `composition_arrangements` (phase 9): `key_id`, `parts` (jsonb list: name, instrument, staves).
+    - Unique per key on its instrumentation signature, the ordered list of instrument + staff layout. Part names are left out of the signature.
+    - Versions get `arrangement_id`, and `number` becomes per arrangement.
+    - `version.instrument` moves into the parts.
+    - A migration gives each existing version a one-part arrangement built from its `instrument` with a grand staff, so current numbers carry over.
+    - Delete rules extend the same way: deleting the last version removes the arrangement, then the key, but never the composition's last one.
+    - `save_in_key/4` becomes `save_in_arrangement(scope, composition, key_attrs, parts, version_attrs)`.
   - `compositions`: `user_id`, `name` (citext, unique per user), `subtitle`, `composer` (may differ from the user, e.g. a by-ear transcription), `arranger`, `lyricist`, `copyright`, `notes`.
   - `composition_keys`: `composition_id`, `sf` (−7..7), `mode` (major|minor). Unique per composition, sorted circle-of-fifths.
   - `composition_versions`: `key_id`, `number` (per key), `label`, `time_num`/`time_den`, `time_symbol` (none|common|cut), `tempo_bpm`, `tempo_text`, `pickup_ticks`, `instrument` (GM program), `score` (jsonb; phase 2 swaps `:map` for an embedded `Score`, no migration needed).
@@ -127,8 +191,10 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
 
 ### Music domain (pure): `lib/draw_music/music/`
 - **`Score`:** key (sf −7..7, mode), time_sig, tempo, ppq 960, `measures: [Measure{id, events}]`.
-  - **Note:** id, staff, offset, value, dots, step, accidental, tie_to, chord_name.
+  - **Part** (phase 9): id, name, instrument, staves. `Score.parts` mirrors the arrangement's parts and defaults to one grand-staff part.
+  - **Note:** id, staff, voice, offset, value, dots, step, alter, tie_to; phase 9 adds `part_id`. A staff is then identified by the pair (part, staff).
   - **Rest:** staff, offset, value, dots.
+  - **ChordSymbol** (phase 10): id, offset, root step and alter, quality, optional bass step and alter, optional `frets` (six entries, each muted, open or fret plus finger). It goes in `Measure.chord_symbols`, an embedded list with no migration needed. It replaces the never-built `Note.chord_name`.
   - A list of measures makes inserting and deleting bars a splice; ties reference ids, so they survive.
 - **`Pitch`:** staff step ↔ letter/octave ↔ MIDI number, using the key signature and in-bar accidentals. Frequency is 440·2^((m−69)/12). Import spelling follows the key.
 - **`Duration`:** note value + dots ↔ ticks; splits any length into tied note values.
@@ -205,12 +271,38 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
    - Browser Web MIDI API in the `ScoreEditor` hook (no server-side MIDI).
    - It sends the existing `place` event, so it uses the same editing rules.
    - Browser support varies (Chromium-based browsers; Firefox asks permission; Safari has none), so it's an optional extra.
+9. **Parts and arrangements** (added 2026-10-23; not started; design under Decisions). It comes before chord symbols because it changes the database schema, and the guitar diagrams attach to guitar parts:
+   - Library: the `composition_arrangements` table plus a data migration; versions numbered per arrangement; `save_in_arrangement`; delete rules; the composition list grouped as key, then arrangement, then versions.
+   - Domain: `Part`, `Note.part_id`, and `Editing` that works per part, including range limits per part.
+   - Rendering: systems stacked from the parts, with the bracket, braces, part names, barlines broken between parts, and the 8vb treble clef.
+   - Editor:
+     - a parts dialog to add, remove, reorder and re-instrument parts, which forces a new version;
+     - placing notes on whichever part's staff is under the pointer;
+     - the save menu following the generation rule.
+   - Playback: one smplr instrument per part.
+   - MIDI: a format 1 file with one track per part, each with its own program change and track name. On import each track becomes a part, and two tracks with the same program on treble and bass ranges merge into one grand-staff part.
+10. **Chord symbols and guitar fingering** (added 2026-10-23; not started; design under Decisions):
+    - domain: `ChordSymbol` (struct, parse, format), `Chords.identify/1`, the voicing table, and `Editing` operations to add, remove, move and transpose symbols;
+    - rendering: the chord lane and fret diagrams in `ScoreComponents` and the SVG export, plus the layout's headroom;
+    - editor: catalog auto-symbol toggle, Name chord, typed entry, voicing stepper, and the display setting;
+    - MIDI text-event export and import.
 
 ## Verification
 - **`mix test`:**
   - VLQ against the spec table; the writer matches the spec's example bytes; MIDI round trips.
   - Editing rules: ties across bars, measure_full, range limits, transpose and shift.
   - Beaming and stems; Library collision paths.
+  - Chord symbols:
+    - `identify` round-trips `build` for every quality and root, and turns inversions into slash chords;
+    - `parse`/`format` round-trip;
+    - transposing respells (C → D♭ keeps flats in flat keys);
+    - MIDI text events round-trip.
+  - Arrangements:
+    - Changing the key or the parts on a saved version can't overwrite it; it saves as a new version under the matching arrangement, created on demand.
+    - Renaming a part saves in place.
+    - The same instrumentation under a different part name is the same arrangement.
+    - The migration keeps existing version numbers.
+    - A flute + piano MIDI file round-trips with two parts.
   - LiveView tests via `render_hook` and `file_input`.
 - **Manual:**
   - Paint notes and listen.
