@@ -73,6 +73,11 @@ export default {
     }
     window.addEventListener("popstate", this.onPopState)
     this.syncGuard()
+
+    // Playback: the server sends timed events; we sound and highlight them.
+    this.playTimers = []
+    this.handleEvent("play", ({events}) => this.playEvents(events))
+    this.handleEvent("stop", () => this.stopPlayback())
     this.onLinkClick = (e) => {
       const link = e.target.closest && e.target.closest("a[href]")
       if (!link || !this.dirty() || link.hasAttribute("download")) return
@@ -112,6 +117,7 @@ export default {
     window.removeEventListener("pointerdown", this.onFirstGesture)
     window.removeEventListener("beforeunload", this.onBeforeUnload)
     window.removeEventListener("popstate", this.onPopState)
+    this.stopPlayback()
     document.removeEventListener("click", this.onLinkClick, true)
     this.setPageCursor(null)
   },
@@ -323,6 +329,7 @@ export default {
 
     // ↑/↓: a scale step (Shift: an octave, Ctrl: a semitone); ←/→: a beat.
     const dirs = {ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right"}
+    if (e.key === " " && !ctrl) return send("play")
     if (dirs[e.key]) {
       const by = e.shiftKey ? "octave" : ctrl ? "semitone" : "step"
       return send("move", {dir: dirs[e.key], by})
@@ -430,5 +437,42 @@ export default {
 
   play(midi) {
     if (this.synth) this.synth.triggerAttackRelease(Tone.Frequency(midi, "midi"), 0.12)
+  },
+
+  // Sounds `events` ({ids, midi, start, duration} in seconds) on a
+  // polyphonic synth and lights each note while it sounds.
+  async playEvents(events) {
+    this.stopPlayback()
+    await Tone.start()
+    if (!this.player) {
+      this.player = new Tone.PolySynth(Tone.Synth, {
+        oscillator: {type: "triangle"},
+        envelope: {attack: 0.01, decay: 0.2, sustain: 0.5, release: 0.4},
+      }).toDestination()
+    }
+
+    const now = Tone.now() + 0.05
+    let end = 0
+    for (const ev of events) {
+      this.player.triggerAttackRelease(Tone.Frequency(ev.midi, "midi"), ev.duration, now + ev.start)
+      this.playTimers.push(setTimeout(() => this.highlight(ev.ids, true), ev.start * 1000))
+      this.playTimers.push(setTimeout(() => this.highlight(ev.ids, false), (ev.start + ev.duration) * 1000))
+      end = Math.max(end, ev.start + ev.duration)
+    }
+    this.playTimers.push(setTimeout(() => {
+      this.stopPlayback()
+      this.pushEvent("playback_ended", {})
+    }, end * 1000 + 100))
+  },
+
+  stopPlayback() {
+    this.playTimers.forEach(clearTimeout)
+    this.playTimers = []
+    if (this.player) this.player.releaseAll()
+    this.el.querySelectorAll(".playing").forEach((el) => el.classList.remove("playing"))
+  },
+
+  highlight(ids, on) {
+    for (const id of ids) document.getElementById(`note-${id}`)?.classList.toggle("playing", on)
   },
 }

@@ -126,7 +126,11 @@
   --score-selection: #7cc4ff;
 }
 
-/* Selected notes and rests in the editor. */
+/* Selected notes and rests in the editor; notes sounding during playback. */
 #score .selected {
   fill: var(--score-selection);
+}
+
+#score .playing {
+  fill: var(--color-warning);
 }

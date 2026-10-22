@@ -52,6 +52,7 @@ defmodule DrawMusicWeb.PaletteComponents do
   attr :can_undo?, :boolean, default: false
   attr :can_redo?, :boolean, default: false
   attr :mode, :atom, default: :major, doc: "the key's mode, for chord numerals"
+  attr :playing?, :boolean, default: false
   slot :trailing, doc: "extra controls at the right end (e.g. save)"
 
   def palette(assigns) do
@@ -186,6 +187,23 @@ defmodule DrawMusicWeb.PaletteComponents do
         ]}
       >
         Insert
+      </button>
+
+      <button
+        id="palette-play"
+        type="button"
+        title={
+          if @playing?, do: "Stop (Space)", else: "Play from the selection, or from the start (Space)"
+        }
+        aria-pressed={to_string(@playing?)}
+        phx-click="play"
+        class={[
+          "btn btn-sm gap-1 transition-colors",
+          if(@playing?, do: "btn-warning", else: "btn-ghost")
+        ]}
+      >
+        <.icon name={if @playing?, do: "hero-stop-solid", else: "hero-play-solid"} class="size-4" />
+        {if @playing?, do: "Stop", else: "Play"}
       </button>
 
       <div class="ml-auto flex items-center gap-1">

@@ -102,9 +102,12 @@ defmodule DrawMusicWeb.ScoreExport do
   # That is fine in HTML but not in XML, which a standalone SVG must be.
   defp strip_root_markers(svg), do: String.replace(svg, ~r/ phx-r(?=[\s>\/])/, "")
 
-  @doc "Download filename, e.g. `Waltz - G major - v2.svg`."
-  def filename(%Version{key: %Key{composition: composition} = key, number: number}),
-    do: "#{composition.name} - #{Key.name(key)} - v#{number}.svg"
+  @doc "Download filename, e.g. `Waltz - G major - v2.svg` (or `.mid`)."
+  def filename(
+        %Version{key: %Key{composition: composition} = key, number: number},
+        extension \\ "svg"
+      ),
+      do: "#{composition.name} - #{Key.name(key)} - v#{number}.#{extension}"
 
   defp credit_lines(composition) do
     [

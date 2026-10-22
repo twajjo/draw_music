@@ -59,6 +59,7 @@ defmodule DrawMusicWeb.Router do
 
     post "/users/update-password", UserSessionController, :update_password
     get "/compositions/:id/:key/v/:number/score.svg", ExportController, :svg
+    get "/compositions/:id/:key/v/:number/score.mid", ExportController, :mid
   end
 
   scope "/", DrawMusicWeb do

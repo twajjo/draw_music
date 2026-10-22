@@ -25,7 +25,7 @@ defmodule DrawMusicWeb.EditorLive do
   alias DrawMusic.Engraving.Layout
   alias DrawMusic.Library
   alias DrawMusic.Library.{Composition, Key, Version}
-  alias DrawMusic.Music.{Context, Editing, Note, Score, Session, Timeline, Transpose}
+  alias DrawMusic.Music.{Context, Editing, Note, Playback, Score, Session, Timeline, Transpose}
 
   alias DrawMusicWeb.{
     EditorCommands,
@@ -59,11 +59,20 @@ defmodule DrawMusicWeb.EditorLive do
           <.button
             :if={@version.id}
             id="download-svg"
-            href={svg_path(@version)}
+            href={export_path(@version, "svg")}
             download
             class="btn btn-sm"
           >
             <.icon name="hero-arrow-down-tray" class="size-4" /> SVG
+          </.button>
+          <.button
+            :if={@version.id}
+            id="download-mid"
+            href={export_path(@version, "mid")}
+            download
+            class="btn btn-sm"
+          >
+            <.icon name="hero-arrow-down-tray" class="size-4" /> MIDI
           </.button>
         </div>
       </header>
@@ -75,6 +84,7 @@ defmodule DrawMusicWeb.EditorLive do
         can_undo?={@session.undo != []}
         can_redo?={@session.redo != []}
         mode={@session.ctx.mode}
+        playing?={@playing?}
       >
         <:trailing>
           <.save_menu dirty?={@session.dirty?} saved?={@version.id != nil} />
@@ -143,7 +153,7 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign(:version, version)
      |> assign(:session, Session.new(version.score, Context.from_version(version)))
      |> assign(armed: nil, row_kind: :note, insert?: false, last_click: nil, menu: nil)
-     |> assign(save_as_form: nil, settings_form: nil, pending_key: nil)
+     |> assign(save_as_form: nil, settings_form: nil, pending_key: nil, playing?: false)
      # The tempo marking isn't part of the score's Context; it's saved beside it.
      |> assign(:tempo_text, version.tempo_text)
      |> assign_layout()}
@@ -485,6 +495,27 @@ defmodule DrawMusicWeb.EditorLive do
     end
   end
 
+  ## Playback
+
+  # The browser plays the events (Tone.js) and highlights each note as it
+  # sounds; Play while playing stops.
+  def handle_event("play", _params, %{assigns: %{playing?: true}} = socket),
+    do: {:noreply, socket |> assign(:playing?, false) |> push_event("stop", %{})}
+
+  def handle_event("play", _params, socket) do
+    %{session: session} = socket.assigns
+    events = Playback.events(session.score, session.ctx, from: play_from(session))
+
+    if events == [] do
+      {:noreply, socket}
+    else
+      {:noreply, socket |> assign(:playing?, true) |> push_event("play", %{events: events})}
+    end
+  end
+
+  def handle_event("playback_ended", _params, socket),
+    do: {:noreply, assign(socket, :playing?, false)}
+
   ## History
 
   def handle_event("undo", _params, socket),
@@ -550,6 +581,15 @@ defmodule DrawMusicWeb.EditorLive do
   defp disarm_unless_locked(socket), do: assign(socket, :armed, nil)
 
   defp selected_ids(socket), do: MapSet.to_list(socket.assigns.session.selection)
+
+  # Playback starts at the earliest selected event, else at the beginning.
+  defp play_from(%Session{} = session) do
+    session.score
+    |> Timeline.flatten(session.ctx)
+    |> Enum.filter(&(&1.event.id in session.selection))
+    |> Enum.map(& &1.start)
+    |> Enum.min(fn -> 0 end)
+  end
 
   defp selected_events(%Session{score: score, selection: selection}) do
     for m <- score.measures, event <- m.notes ++ m.rests, event.id in selection, do: event
@@ -654,6 +694,8 @@ defmodule DrawMusicWeb.EditorLive do
     assign(socket, :engraved, Layout.layout(session.score, session.ctx, width: width))
   end
 
-  defp svg_path(version),
-    do: version_path(version.key.composition.id, version.key, version.number) <> "/score.svg"
+  defp export_path(version, extension),
+    do:
+      version_path(version.key.composition.id, version.key, version.number) <>
+        "/score.#{extension}"
 end

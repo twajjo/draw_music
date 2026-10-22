@@ -192,7 +192,9 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
 3. Read-only rendering + SVG export.
 4. Editing.
 5. Audio + play mode.
+   - **Demo slice done (2026-10-22):** a Play/Stop button (and Space) that plays from the selection or the start through a built-in Tone.js synth, highlighting notes as they sound. Still to do: sampled instruments, the instrument picker, `mix samples.fetch` and the Credits page.
 6. Library upload/import dialog + `.mid` download.
+   - **`.mid` download done in the demo slice.** Still to do: upload/import and the collision dialog.
 7. **Deployment** (added 2026-10-22; not started):
    - `mix phx.gen.release` (with a Dockerfile);
    - runtime config for `DATABASE_URL`, `SECRET_KEY_BASE`, `PHX_HOST`, `PHX_SERVER`, and release migrations;

@@ -91,6 +91,16 @@ defmodule DrawMusicWeb.EditorLiveTest do
       assert body =~ ~s(id="system-1")
     end
 
+    test "MIDI download is a Standard MIDI File", %{conn: conn, scope: scope} do
+      {version, _note_id} = version_with_note(scope)
+      conn = get(conn, path(version) <> "/score.mid")
+
+      assert response_content_type(conn, :mid) =~ "audio/midi"
+      assert [disposition] = get_resp_header(conn, "content-disposition")
+      assert disposition =~ ".mid"
+      assert <<"MThd", _rest::binary>> = response(conn, 200)
+    end
+
     test "is not available for someone else's version", %{conn: conn} do
       {theirs, _id} = version_with_note(user_scope_fixture())
       assert_error_sent 404, fn -> get(conn, path(theirs) <> "/score.svg") end
