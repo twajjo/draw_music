@@ -296,6 +296,21 @@ defmodule DrawMusic.Samples do
   defp installed_in?(%Manifest{splendid: %{}}, %Instrument{program: 0}), do: true
   defp installed_in?(manifest, instrument), do: Map.has_key?(manifest.soundfonts, instrument.stem)
 
+  @doc "The programs whose samples are on this server. Option `dir:`."
+  @spec installed(keyword()) :: MapSet.t(0..127)
+  def installed(opts \\ []) do
+    manifest = Manifest.read(dir(opts))
+    for i <- @instruments, installed_in?(manifest, i), into: MapSet.new(), do: i.program
+  end
+
+  @doc """
+  An item's place inside the samples directory (and under `/samples`): a
+  soundfont file, or the Splendid set's folder.
+  """
+  @spec relative_path(item()) :: String.t()
+  def relative_path(:splendid), do: @splendid_dir
+  def relative_path(%Instrument{stem: stem}), do: "#{@soundfont_dir}/#{stem}-mp3.js"
+
   @doc "Whether the Splendid Grand Piano set is on this server. Option `dir:`."
   @spec splendid?(keyword()) :: boolean()
   def splendid?(opts \\ []), do: match?(%Manifest{splendid: %{}}, Manifest.read(dir(opts)))
@@ -327,13 +342,13 @@ defmodule DrawMusic.Samples do
 
   defp dir(opts), do: Keyword.get_lazy(opts, :dir, &samples_dir/0)
 
-  defp fetch_item(%Instrument{stem: stem}, manifest, dir) do
-    folder = set_folder(dir, @soundfont_dir, @soundfont_license)
-    path = Path.join(folder, "#{stem}-mp3.js")
+  defp fetch_item(%Instrument{stem: stem} = instrument, manifest, dir) do
+    set_folder(dir, @soundfont_dir, @soundfont_license)
+    path = Path.join(dir, relative_path(instrument))
 
     case complete(path, manifest.soundfonts[stem]) do
       {:ok, bytes} -> {:ok, bytes}
-      :missing -> download(@soundfont_base <> "#{stem}-mp3.js", path)
+      :missing -> download(@soundfont_base <> Path.basename(path), path)
     end
   end
 

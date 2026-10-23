@@ -34,6 +34,7 @@ defmodule DrawMusicWeb.EditorLive do
     EditorPalette,
     EditorPlacement,
     EditorSettings,
+    InstrumentSource,
     PlaybackPayload,
     ScorePreferences,
     VersionLookup
@@ -115,6 +116,7 @@ defmodule DrawMusicWeb.EditorLive do
           data-geometry={Jason.encode!(EditorGeometry.encode(@engraved, @session.ctx))}
           data-armed={Jason.encode!(EditorGeometry.armed(@armed))}
           data-dirty={to_string(@session.dirty?)}
+          data-instrument={Jason.encode!(@instrument_source)}
         >
           <.score
             id="score"
@@ -157,8 +159,10 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign(:session, Session.new(version.score, Context.from_version(version)))
      |> assign(armed: nil, row_kind: :note, insert?: false, last_click: nil, menu: nil)
      |> assign(save_as_form: nil, settings_form: nil, pending_key: nil, playing?: false)
-     # The tempo marking isn't part of the score's Context; it's saved beside it.
+     # The tempo marking and instrument aren't part of the score's Context;
+     # they're saved beside it.
      |> assign(:tempo_text, version.tempo_text)
+     |> assign_instrument(version.instrument)
      |> assign_layout()}
   end
 
@@ -459,7 +463,8 @@ defmodule DrawMusicWeb.EditorLive do
   ## Score settings
 
   def handle_event("open_settings", _params, socket) do
-    params = EditorSettings.params(socket.assigns.session.ctx, socket.assigns.tempo_text)
+    %{session: session, tempo_text: tempo_text, instrument: instrument} = socket.assigns
+    params = EditorSettings.params(session.ctx, tempo_text, instrument)
     {:noreply, assign(socket, :settings_form, to_form(params, as: :settings))}
   end
 
@@ -720,15 +725,22 @@ defmodule DrawMusicWeb.EditorLive do
   defp apply_settings(socket, params, key, fields) do
     case EditorSettings.apply(socket.assigns.session, fields) do
       {:ok, session} ->
+        %{tempo_text: old_text, instrument: old_instrument} = socket.assigns
         tempo_text = EditorSettings.tempo_text(params["tempo_text"])
+
+        session =
+          session
+          |> touched(tempo_text, old_text)
+          |> touched(fields.instrument, old_instrument)
 
         socket
         |> assign(
-          session: with_tempo_text(session, tempo_text, socket.assigns.tempo_text),
+          session: session,
           settings_form: nil,
           pending_key: pending_key(key, session.ctx)
         )
         |> assign(:tempo_text, tempo_text)
+        |> assign_instrument(fields.instrument)
         |> assign_layout()
 
       {:error, reason} ->
@@ -736,9 +748,16 @@ defmodule DrawMusicWeb.EditorLive do
     end
   end
 
-  # The marking lives beside the session; changing it is still unsaved work.
-  defp with_tempo_text(session, same, same), do: session
-  defp with_tempo_text(session, _new, _old), do: %{session | dirty?: true}
+  # The marking and instrument live beside the session; changing them is
+  # still unsaved work.
+  defp touched(session, same, same), do: session
+  defp touched(session, _new, _old), do: %{session | dirty?: true}
+
+  defp assign_instrument(%{assigns: %{instrument: program}} = socket, program), do: socket
+
+  defp assign_instrument(socket, program) do
+    assign(socket, instrument: program, instrument_source: InstrumentSource.for_program(program))
+  end
 
   # A key other than the current one waits for the transpose dialog.
   defp pending_key({sf, mode}, %Context{sf: sf, mode: mode}), do: nil
@@ -747,7 +766,8 @@ defmodule DrawMusicWeb.EditorLive do
   ## Saving helpers
 
   defp version_attrs(socket) do
-    EditorSettings.version_attrs(socket.assigns.session, socket.assigns.tempo_text)
+    %{session: session, tempo_text: tempo_text, instrument: instrument} = socket.assigns
+    EditorSettings.version_attrs(session, tempo_text, instrument)
   end
 
   defp open_save_as(socket) do

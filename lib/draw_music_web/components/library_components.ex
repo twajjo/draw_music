@@ -11,6 +11,7 @@ defmodule DrawMusicWeb.LibraryComponents do
 
   alias DrawMusic.Library.Key
   alias DrawMusic.Music.Context
+  alias DrawMusic.Samples
 
   @doc "Every key as select options, grouped into major and minor, valued by slug."
   @spec key_options() :: [{String.t(), [{String.t(), String.t()}]}]
@@ -33,7 +34,8 @@ defmodule DrawMusicWeb.LibraryComponents do
         key_options: key_options(),
         time_denominators: Context.time_denominators(),
         max_time_num: Context.max_time_num(),
-        tempo_range: Context.tempo_range()
+        tempo_range: Context.tempo_range(),
+        instrument_options: instrument_options()
       )
 
     ~H"""
@@ -65,8 +67,37 @@ defmodule DrawMusicWeb.LibraryComponents do
     />
     <.input field={@form[:tempo_text]} label="Tempo marking" placeholder="Allegro" />
     <.input field={@form[:pickup_beats]} type="number" label="Pickup beats" min="0" />
+    <.input
+      id="settings-instrument"
+      field={@form[:instrument]}
+      type="select"
+      label="Instrument"
+      options={@instrument_options}
+    />
     """
   end
+
+  @doc """
+  The instrument picker's options: GM instruments grouped by family, with
+  the ones not downloaded to this server marked.
+  """
+  @spec instrument_options() :: [{String.t(), [{String.t(), 0..127}]}]
+  def instrument_options do
+    installed = Samples.installed()
+
+    for family <- Samples.families() do
+      options =
+        for %{family: ^family} = instrument <- Samples.instruments() do
+          {instrument_label(instrument, MapSet.member?(installed, instrument.program)),
+           instrument.program}
+        end
+
+      {family, options}
+    end
+  end
+
+  defp instrument_label(instrument, true = _installed?), do: instrument.name
+  defp instrument_label(instrument, false), do: "#{instrument.name} (not installed)"
 
   @doc "Path of a version's score view."
   @spec version_path(Ecto.UUID.t(), Key.t(), pos_integer()) :: String.t()

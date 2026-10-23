@@ -1,16 +1,19 @@
 defmodule DrawMusicWeb.EditorSettings do
   @moduledoc """
-  The score settings form's data (key, time signature, tempo, pickup), shared
-  by the editor's settings panel and the new composition form, and what a
-  save stores. Settings are checked with the `Version` changeset.
+  The score settings form's data (key, time signature, tempo, pickup,
+  playback instrument), shared by the editor's settings panel and the new
+  composition form, and what a save stores. Settings are checked with the
+  `Version` changeset.
   """
 
   alias DrawMusic.Library.{Key, Version}
   alias DrawMusic.Music.{Context, Editing, Session}
 
-  @doc "The settings form's params for a context and tempo marking."
-  @spec params(Context.t(), String.t() | nil) :: %{String.t() => String.t()}
-  def params(%Context{} = ctx, tempo_text) do
+  @fields [:time_num, :time_den, :time_symbol, :tempo_bpm, :pickup_ticks, :instrument]
+
+  @doc "The settings form's params for a context, tempo marking and GM instrument."
+  @spec params(Context.t(), String.t() | nil, 0..127) :: %{String.t() => String.t()}
+  def params(%Context{} = ctx, tempo_text, instrument) do
     %{
       "key" => Key.slug(ctx.sf, ctx.mode),
       "time_num" => to_string(ctx.time_num),
@@ -18,28 +21,26 @@ defmodule DrawMusicWeb.EditorSettings do
       "time_symbol" => to_string(ctx.time_symbol),
       "tempo_bpm" => to_string(ctx.tempo_bpm),
       "tempo_text" => tempo_text || "",
-      "pickup_beats" => to_string(div(ctx.pickup_ticks, Context.beat_ticks(ctx)))
+      "pickup_beats" => to_string(div(ctx.pickup_ticks, Context.beat_ticks(ctx))),
+      "instrument" => to_string(instrument)
     }
   end
 
   @doc """
   Checks submitted settings: `{:ok, key, fields}` with the `{sf, mode}` key
-  and the Context fields they set, `{:error, errors}` (keyed by form field)
-  or `:error` for an unknown key.
+  and the fields they set (the Context's, plus `:instrument`),
+  `{:error, errors}` (keyed by form field) or `:error` for an unknown key.
   """
   @spec validate(map()) ::
           {:ok, {-7..7, :major | :minor}, map()} | {:error, keyword()} | :error
   def validate(params) do
     with {:ok, key} <- Key.from_slug(params["key"] || "") do
-      changeset = Version.changeset(%Version{number: 1}, form_attrs(params))
+      case Version.changeset(%Version{number: 1}, form_attrs(params)) do
+        %Ecto.Changeset{valid?: true} = changeset ->
+          {:ok, key, Map.take(Ecto.Changeset.apply_changes(changeset), @fields)}
 
-      if changeset.valid? do
-        fields = Ecto.Changeset.apply_changes(changeset)
-
-        {:ok, key,
-         Map.take(fields, [:time_num, :time_den, :time_symbol, :tempo_bpm, :pickup_ticks])}
-      else
-        {:error, form_errors(changeset.errors)}
+        changeset ->
+          {:error, form_errors(changeset.errors)}
       end
     end
   end
@@ -48,7 +49,7 @@ defmodule DrawMusicWeb.EditorSettings do
   @spec form_attrs(map()) :: %{String.t() => term()}
   def form_attrs(params) do
     params
-    |> Map.take(~w(time_num time_den time_symbol tempo_bpm tempo_text))
+    |> Map.take(~w(time_num time_den time_symbol tempo_bpm tempo_text instrument))
     |> Map.put("pickup_ticks", pickup_ticks(params))
   end
 
@@ -89,9 +90,9 @@ defmodule DrawMusicWeb.EditorSettings do
     end
   end
 
-  @doc "What a save stores: the score and the settings it is read against."
-  @spec version_attrs(Session.t(), String.t() | nil) :: map()
-  def version_attrs(%Session{score: score, ctx: ctx}, tempo_text) do
+  @doc "What a save stores: the score, the settings it is read against, and its instrument."
+  @spec version_attrs(Session.t(), String.t() | nil, 0..127) :: map()
+  def version_attrs(%Session{score: score, ctx: ctx}, tempo_text, instrument) do
     %{
       score: score,
       time_num: ctx.time_num,
@@ -99,7 +100,8 @@ defmodule DrawMusicWeb.EditorSettings do
       time_symbol: ctx.time_symbol,
       tempo_bpm: ctx.tempo_bpm,
       tempo_text: tempo_text,
-      pickup_ticks: ctx.pickup_ticks
+      pickup_ticks: ctx.pickup_ticks,
+      instrument: instrument
     }
   end
 

@@ -104,13 +104,23 @@ defmodule DrawMusicWeb.NewCompositionLive do
     to_form(params, as: :composition, errors: EditorSettings.form_errors(errors), action: action)
   end
 
-  defp defaults, do: Map.put(EditorSettings.params(%Context{}, nil), "name", "")
+  defp defaults do
+    %Context{}
+    |> EditorSettings.params(nil, %Version{}.instrument)
+    |> Map.put("name", "")
+  end
 
   defp validation_errors(scope, params) do
     composition = Composition.changeset(%Composition{}, composition_attrs(params), scope)
     version = Version.changeset(%Version{number: 1}, version_attrs(params))
-    key = if Key.from_slug(params["key"] || "") == :error, do: [key: {"is invalid", []}], else: []
-    composition.errors ++ version.errors ++ key
+    composition.errors ++ version.errors ++ key_errors(params["key"])
+  end
+
+  defp key_errors(slug) do
+    case Key.from_slug(slug || "") do
+      {:ok, _key} -> []
+      :error -> [key: {"is invalid", []}]
+    end
   end
 
   defp composition_attrs(params), do: Map.take(params, ["name" | @credit_fields])
