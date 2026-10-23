@@ -265,6 +265,7 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
    - `mix phx.gen.release` (with a Dockerfile);
    - runtime config for `DATABASE_URL`, `SECRET_KEY_BASE`, `PHX_HOST`, `PHX_SERVER`, and release migrations;
    - fetching the audio samples at build time (`mix samples.fetch`);
+   - making `:samples_dir` a runtime setting. Phase 5 reads it at compile time for the `/samples` `Plug.Static`, so a release needs it set through `runtime.exs` and the plug initialised at runtime (e.g. a small plug wrapping `Plug.Static.call/2`);
    - a hosting target, chosen at the time, so testers can reach the app.
 8. **Live MIDI keyboard input** (added 2026-10-22; not started):
    - Play notes from a connected MIDI keyboard into the score: a key press places the armed value at the cursor, chords included.

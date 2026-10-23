@@ -7,7 +7,7 @@ defmodule DrawMusic.Samples do
   MusyngKite soundfont (gleitz `midi-js-soundfonts`), named by its stem.
   """
 
-  alias DrawMusic.Samples.Instrument
+  alias DrawMusic.Samples.{Instrument, Manifest, Splendid}
 
   @families [
     "Piano",
@@ -253,4 +253,162 @@ defmodule DrawMusic.Samples do
     |> Enum.take(@max_suggestions)
     |> Enum.map(fn {_similarity, stem} -> stem end)
   end
+
+  ## Storage
+
+  @typedoc "What can be fetched: one soundfont, or the whole Splendid Grand Piano set."
+  @type item :: Instrument.t() | :splendid
+
+  @soundfont_base "https://gleitz.github.io/midi-js-soundfonts/MusyngKite/"
+  @splendid_base "https://smpldsnds.github.io/sfzinstruments-splendid-grand-piano/samples/"
+  @soundfont_dir "musyngkite"
+  @splendid_dir "splendid-grand-piano"
+  @license_file "LICENSE.txt"
+  @parallel_downloads 8
+
+  @soundfont_license """
+  Musyng Kite soundfont, converted for the web by Benjamin Gleitzman
+  (https://github.com/gleitz/midi-js-soundfonts).
+  Licensed under Creative Commons Attribution-ShareAlike 3.0:
+  https://creativecommons.org/licenses/by-sa/3.0/
+  """
+
+  @splendid_license """
+  Splendid Grand Piano: public domain samples by AKAI (a Steinway, four
+  velocity layers), as converted by smpldsnds
+  (https://github.com/smpldsnds/sfzinstruments-splendid-grand-piano).
+  """
+
+  @doc "Where samples are stored and served from (`config :draw_music, :samples_dir`)."
+  @spec samples_dir() :: Path.t()
+  def samples_dir, do: Application.fetch_env!(:draw_music, :samples_dir)
+
+  @doc """
+  Whether a program's samples are on this server. The piano counts when
+  either the Splendid set or its soundfont is. Option `dir:` (default
+  `samples_dir/0`).
+  """
+  @spec installed?(0..127, keyword()) :: boolean()
+  def installed?(program, opts \\ []) do
+    installed_in?(Manifest.read(dir(opts)), instrument!(program))
+  end
+
+  defp installed_in?(%Manifest{splendid: %{}}, %Instrument{program: 0}), do: true
+  defp installed_in?(manifest, instrument), do: Map.has_key?(manifest.soundfonts, instrument.stem)
+
+  @doc "Whether the Splendid Grand Piano set is on this server. Option `dir:`."
+  @spec splendid?(keyword()) :: boolean()
+  def splendid?(opts \\ []), do: match?(%Manifest{splendid: %{}}, Manifest.read(dir(opts)))
+
+  @doc "Downloads one item; see `fetch_many/2`."
+  @spec fetch(item(), keyword()) :: {:ok, non_neg_integer()} | {:error, term()}
+  def fetch(item, opts \\ []) do
+    [{_item, result}] = fetch_many([item], opts)
+    result
+  end
+
+  @doc """
+  Downloads each item that isn't already complete, returning its size in
+  bytes or why it failed, and records the ones that landed in the
+  manifest. A failure leaves no partial file behind. Option `dir:`.
+  """
+  @spec fetch_many([item()], keyword()) :: [{item(), {:ok, non_neg_integer()} | {:error, term()}}]
+  def fetch_many(items, opts \\ []) do
+    dir = dir(opts)
+    manifest = Manifest.read(dir)
+    results = Enum.map(items, &{&1, fetch_item(&1, manifest, dir)})
+
+    results
+    |> Enum.reduce(manifest, &record/2)
+    |> Manifest.write(dir)
+
+    results
+  end
+
+  defp dir(opts), do: Keyword.get_lazy(opts, :dir, &samples_dir/0)
+
+  defp fetch_item(%Instrument{stem: stem}, manifest, dir) do
+    folder = set_folder(dir, @soundfont_dir, @soundfont_license)
+    path = Path.join(folder, "#{stem}-mp3.js")
+
+    case complete(path, manifest.soundfonts[stem]) do
+      {:ok, bytes} -> {:ok, bytes}
+      :missing -> download(@soundfont_base <> "#{stem}-mp3.js", path)
+    end
+  end
+
+  defp fetch_item(:splendid, _manifest, dir) do
+    folder = set_folder(dir, @splendid_dir, @splendid_license)
+
+    Splendid.files()
+    |> Task.async_stream(&fetch_sample(folder, &1),
+      max_concurrency: @parallel_downloads,
+      timeout: :infinity
+    )
+    |> Enum.reduce({:ok, 0}, &total/2)
+  end
+
+  # A sample file only ever appears complete: downloads land via rename.
+  defp fetch_sample(folder, file) do
+    path = Path.join(folder, file)
+
+    case File.stat(path) do
+      {:ok, %File.Stat{size: size}} ->
+        {:ok, size}
+
+      {:error, _missing} ->
+        download(@splendid_base <> URI.encode(file, &URI.char_unreserved?/1), path)
+    end
+  end
+
+  defp total({:ok, {:ok, bytes}}, {:ok, sum}), do: {:ok, sum + bytes}
+  defp total({:ok, {:error, _reason} = error}, {:ok, _sum}), do: error
+  defp total(_result, error), do: error
+
+  defp complete(path, %{bytes: bytes}) do
+    case File.stat(path) do
+      {:ok, %File.Stat{size: ^bytes}} -> {:ok, bytes}
+      _short_or_missing -> :missing
+    end
+  end
+
+  defp complete(_path, nil), do: :missing
+
+  defp set_folder(dir, name, license) do
+    folder = Path.join(dir, name)
+    File.mkdir_p!(folder)
+    File.write!(Path.join(folder, @license_file), license)
+    folder
+  end
+
+  defp download(url, path) do
+    case Req.get(url, req_options()) do
+      {:ok, %Req.Response{status: 200, body: body}} ->
+        tmp = path <> ".tmp"
+        File.write!(tmp, body)
+        File.rename!(tmp, path)
+        {:ok, byte_size(body)}
+
+      {:ok, %Req.Response{status: status}} ->
+        File.rm(path)
+        {:error, {:http_status, status}}
+
+      {:error, exception} ->
+        File.rm(path)
+        {:error, exception}
+    end
+  end
+
+  defp req_options do
+    Keyword.merge([decode_body: false], Application.get_env(:draw_music, :samples_req, []))
+  end
+
+  defp record({%Instrument{stem: stem}, {:ok, bytes}}, manifest) do
+    %{manifest | soundfonts: Map.put(manifest.soundfonts, stem, entry(bytes))}
+  end
+
+  defp record({:splendid, {:ok, bytes}}, manifest), do: %{manifest | splendid: entry(bytes)}
+  defp record({_item, {:error, _reason}}, manifest), do: manifest
+
+  defp entry(bytes), do: %{bytes: bytes, fetched_at: DateTime.utc_now(:second)}
 end
