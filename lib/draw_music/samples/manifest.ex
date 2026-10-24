@@ -6,11 +6,13 @@ defmodule DrawMusic.Samples.Manifest do
   reads as empty, so nothing counts as installed.
   """
 
+  alias DrawMusic.Samples.ManifestEntry
+
   @file_name "manifest.json"
 
   defstruct soundfonts: %{}, splendid: nil
 
-  @type entry :: %{bytes: non_neg_integer(), fetched_at: DateTime.t()}
+  @type entry :: ManifestEntry.t()
   @type t :: %__MODULE__{soundfonts: %{String.t() => entry()}, splendid: entry() | nil}
 
   @doc "Reads the manifest in `dir`; empty when it is missing or corrupt."
@@ -41,7 +43,7 @@ defmodule DrawMusic.Samples.Manifest do
     File.write!(Path.join(dir, @file_name), json)
   end
 
-  defp dump(%{bytes: bytes, fetched_at: at}) do
+  defp dump(%ManifestEntry{bytes: bytes, fetched_at: at}) do
     %{"bytes" => bytes, "fetched_at" => DateTime.to_iso8601(at)}
   end
 
@@ -60,7 +62,7 @@ defmodule DrawMusic.Samples.Manifest do
   defp entry(%{"bytes" => bytes, "fetched_at" => at})
        when is_integer(bytes) and bytes >= 0 and is_binary(at) do
     case DateTime.from_iso8601(at) do
-      {:ok, fetched_at, _offset} -> {:ok, %{bytes: bytes, fetched_at: fetched_at}}
+      {:ok, fetched_at, _offset} -> {:ok, %ManifestEntry{bytes: bytes, fetched_at: fetched_at}}
       _invalid -> :error
     end
   end

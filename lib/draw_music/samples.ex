@@ -7,7 +7,7 @@ defmodule DrawMusic.Samples do
   MusyngKite soundfont (gleitz `midi-js-soundfonts`), named by its stem.
   """
 
-  alias DrawMusic.Samples.{Instrument, Manifest, Splendid}
+  alias DrawMusic.Samples.{Instrument, Manifest, ManifestEntry, Splendid}
 
   @families [
     "Piano",
@@ -380,7 +380,7 @@ defmodule DrawMusic.Samples do
   defp total({:ok, {:error, _reason} = error}, {:ok, _sum}), do: error
   defp total(_result, error), do: error
 
-  defp complete(path, %{bytes: bytes}) do
+  defp complete(path, %ManifestEntry{bytes: bytes}) do
     case File.stat(path) do
       {:ok, %File.Stat{size: ^bytes}} -> {:ok, bytes}
       _short_or_missing -> :missing
@@ -396,21 +396,29 @@ defmodule DrawMusic.Samples do
     folder
   end
 
+  # A failed request leaves whatever was there; the manifest entry is what
+  # says a file is complete. A file only appears via rename, never half-written.
   defp download(url, path) do
     case Req.get(url, req_options()) do
-      {:ok, %Req.Response{status: 200, body: body}} ->
-        tmp = path <> ".tmp"
-        File.write!(tmp, body)
+      {:ok, %Req.Response{status: 200, body: body}} -> write(path, body)
+      {:ok, %Req.Response{status: status}} -> {:error, {:http_status, status}}
+      {:error, exception} -> {:error, exception}
+    end
+  end
+
+  # A full disk fails this one file, not the whole run, so the manifest is
+  # still written for the others.
+  defp write(path, body) do
+    tmp = path <> ".tmp"
+
+    case File.write(tmp, body) do
+      :ok ->
         File.rename!(tmp, path)
         {:ok, byte_size(body)}
 
-      {:ok, %Req.Response{status: status}} ->
-        File.rm(path)
-        {:error, {:http_status, status}}
-
-      {:error, exception} ->
-        File.rm(path)
-        {:error, exception}
+      {:error, reason} ->
+        File.rm(tmp)
+        {:error, {:write, reason}}
     end
   end
 
@@ -423,7 +431,13 @@ defmodule DrawMusic.Samples do
   end
 
   defp record({:splendid, {:ok, bytes}}, manifest), do: %{manifest | splendid: entry(bytes)}
-  defp record({_item, {:error, _reason}}, manifest), do: manifest
 
-  defp entry(bytes), do: %{bytes: bytes, fetched_at: DateTime.utc_now(:second)}
+  # A failure means the files on disk can't be trusted to be complete.
+  defp record({%Instrument{stem: stem}, {:error, _reason}}, manifest) do
+    %{manifest | soundfonts: Map.delete(manifest.soundfonts, stem)}
+  end
+
+  defp record({:splendid, {:error, _reason}}, manifest), do: %{manifest | splendid: nil}
+
+  defp entry(bytes), do: %ManifestEntry{bytes: bytes, fetched_at: DateTime.utc_now(:second)}
 end

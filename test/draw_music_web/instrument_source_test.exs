@@ -2,7 +2,7 @@ defmodule DrawMusicWeb.InstrumentSourceTest do
   # Points the app's samples_dir at a temp dir, so not async.
   use ExUnit.Case, async: false
 
-  alias DrawMusic.Samples.Manifest
+  alias DrawMusic.Samples.{Manifest, ManifestEntry}
   alias DrawMusicWeb.InstrumentSource
 
   @moduletag :tmp_dir
@@ -14,7 +14,7 @@ defmodule DrawMusicWeb.InstrumentSourceTest do
     %{dir: dir}
   end
 
-  defp entry, do: %{bytes: 1, fetched_at: DateTime.utc_now()}
+  defp entry, do: %ManifestEntry{bytes: 1, fetched_at: DateTime.utc_now()}
 
   test "nothing installed plays the synth" do
     assert %InstrumentSource{kind: :synth, url: nil, name: "Flute"} =

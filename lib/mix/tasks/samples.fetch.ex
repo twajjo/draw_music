@@ -17,6 +17,8 @@ defmodule Mix.Tasks.Samples.Fetch do
   alias DrawMusic.Samples
 
   @bytes_per_mb 1_000_000
+  # Program numbers 0..127, right-aligned.
+  @number_width 3
 
   @impl Mix.Task
   def run(args) do
@@ -30,14 +32,17 @@ defmodule Mix.Tasks.Samples.Fetch do
   defp list do
     start()
 
-    for instrument <- Samples.instruments() do
-      marker = if Samples.installed?(instrument.program), do: "  [installed]", else: ""
+    installed = Samples.installed()
 
-      Mix.shell().info(
-        "#{String.pad_leading(to_string(instrument.program), 3)}  #{instrument.name}#{marker}"
-      )
+    for instrument <- Samples.instruments() do
+      marker = marker(MapSet.member?(installed, instrument.program))
+      number = String.pad_leading(to_string(instrument.program), @number_width)
+      Mix.shell().info("#{number}  #{instrument.name}#{marker}")
     end
   end
+
+  defp marker(true = _installed?), do: "  [installed]"
+  defp marker(false), do: ""
 
   defp fetch(names) do
     items = items(names)

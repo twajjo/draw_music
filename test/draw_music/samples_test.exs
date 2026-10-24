@@ -2,7 +2,7 @@ defmodule DrawMusic.SamplesTest do
   use ExUnit.Case, async: true
 
   alias DrawMusic.Samples
-  alias DrawMusic.Samples.Manifest
+  alias DrawMusic.Samples.{Manifest, ManifestEntry}
 
   describe "the GM table" do
     test "has 128 programs with unique stems and all 16 families" do
@@ -105,10 +105,25 @@ defmodule DrawMusic.SamplesTest do
       assert Path.wildcard(Path.join(dir, "**/*.tmp")) == []
     end
 
+    test "a failed re-fetch of a damaged file drops its old entry",
+         %{dir: dir, requests: requests, flute: flute} do
+      stub(requests, &ok_body/1)
+      Samples.fetch_many([flute], dir: dir)
+      File.write!(Path.join(dir, "musyngkite/flute-mp3.js"), "012")
+
+      stub(requests, &Plug.Conn.send_resp(&1, 500, ""))
+      assert [{^flute, {:error, _}}] = Samples.fetch_many([flute], dir: dir)
+      refute Samples.installed?(73, dir: dir)
+    end
+
     test "the piano is installed if either the Splendid set or its soundfont is", %{dir: dir} do
       refute Samples.installed?(0, dir: dir)
 
-      Manifest.write(%Manifest{splendid: %{bytes: 1, fetched_at: DateTime.utc_now()}}, dir)
+      Manifest.write(
+        %Manifest{splendid: %ManifestEntry{bytes: 1, fetched_at: DateTime.utc_now()}},
+        dir
+      )
+
       assert Samples.installed?(0, dir: dir)
       assert Samples.splendid?(dir: dir)
     end
