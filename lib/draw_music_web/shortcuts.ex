@@ -180,23 +180,35 @@ defmodule DrawMusicWeb.Shortcuts do
       modes: @both,
       action: "Save, save as a new version, or save as a new composition"
     },
-    # Playback
+    # Playback (the play controls replace the edit palette in Play mode)
     %Shortcut{
       group: "Playback",
       keys: ["Space"],
-      modes: @both,
+      modes: @play,
       action:
         "Play the selection, from the selected note, or from the start; again to pause or resume"
     },
-    %Shortcut{group: "Playback", keys: ["Home"], modes: @both, action: "Back to the start point"},
+    %Shortcut{group: "Playback", keys: ["Home"], modes: @play, action: "Back to the start point"},
     %Shortcut{
       group: "Playback",
       keys: ["L"],
-      modes: @both,
+      modes: @play,
       action: "Repeat the selection, or the whole piece",
       diagram: :loop
     },
-    %Shortcut{group: "Playback", keys: ["Escape"], modes: @both, action: "Stop, while playing"},
+    %Shortcut{group: "Playback", keys: ["Escape"], modes: @play, action: "Stop, while playing"},
+    %Shortcut{
+      group: "Playback",
+      mouse: "Hear as",
+      modes: @play,
+      action: "Pick the instrument to listen with; the version keeps its own"
+    },
+    %Shortcut{
+      group: "Playback",
+      mouse: "Use for this version",
+      modes: @play,
+      action: "Make the version's instrument the one you're hearing (after you confirm)"
+    },
     %Shortcut{
       group: "Playback",
       mouse: "click note (Play mode)",
@@ -216,7 +228,8 @@ defmodule DrawMusicWeb.Shortcuts do
       group: "Modes",
       keys: ["P"],
       modes: @both,
-      action: "Switch between Edit and Play; in Play mode nothing can change the score"
+      action:
+        "Switch between Edit and Play: each has its own palette, and in Play mode nothing can change the score"
     },
     %Shortcut{group: "Modes", keys: ["?"], modes: @both, action: "Show this cheat-sheet"}
   ]

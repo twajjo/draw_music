@@ -1,7 +1,9 @@
 defmodule DrawMusicWeb.PaletteComponents do
   @moduledoc """
-  The editor's palette: a toolbar of durations, modifiers (rest, dot,
-  accidentals), connectors (tie, chords), Insert mode and undo/redo.
+  The editor's toolbar. In Edit mode it holds the edit palette: durations,
+  modifiers (rest, dot, accidentals), connectors (tie, chords), Insert mode,
+  settings and undo/redo. In Play mode it holds the play controls instead:
+  Rewind, Play/Pause, Loop and the playback instrument.
 
   Buttons show the real Bravura glyphs in score ink on score paper; the
   armed piece is drawn "picked up" (inverted and lifted). A click arms, a
@@ -11,7 +13,7 @@ defmodule DrawMusicWeb.PaletteComponents do
 
   use Phoenix.Component
 
-  import DrawMusicWeb.CoreComponents, only: [icon: 1]
+  import DrawMusicWeb.CoreComponents, only: [icon: 1, input: 1]
 
   alias DrawMusic.Engraving.Smufl
 
@@ -45,7 +47,11 @@ defmodule DrawMusicWeb.PaletteComponents do
     minor: ~w(i ii° III iv V VI vii°)
   }
 
-  @doc "The palette toolbar."
+  @doc """
+  The editor's toolbar: the Edit/Play switch, then the palette for the
+  current mode (the edit palette, or the play controls), then help and
+  `:trailing` (save) in both.
+  """
   attr :armed, :map, default: nil
   attr :row_kind, :atom, default: :note, values: [:note, :rest]
   attr :insert?, :boolean, default: false
@@ -56,6 +62,9 @@ defmodule DrawMusicWeb.PaletteComponents do
   attr :playback, :atom, default: :idle, values: [:idle, :loading, :playing, :paused]
   attr :loop?, :boolean, default: false
   attr :instrument_name, :string, default: "the instrument", doc: "named while it loads"
+  attr :playback_instrument, :integer, default: 0, doc: "GM program playback uses"
+  attr :version_instrument, :integer, default: 0, doc: "GM program saved with the version"
+  attr :instrument_options, :list, default: [], doc: "grouped select options (LibraryComponents)"
   slot :trailing, doc: "extra controls at the right end (e.g. save)"
 
   @spec palette(map()) :: Phoenix.LiveView.Rendered.t()
@@ -100,12 +109,9 @@ defmodule DrawMusicWeb.PaletteComponents do
       </div>
 
       <div
-        data-group="editing"
-        inert={@editor_mode == :play}
-        class={[
-          "flex flex-wrap items-center gap-2 transition-opacity duration-200",
-          @editor_mode == :play && "opacity-40"
-        ]}
+        :if={@editor_mode == :edit}
+        id="palette-edit"
+        class="flex flex-1 flex-wrap items-center gap-2"
       >
         <div class="join" role="group" aria-label="Durations">
           <.piece
@@ -224,44 +230,105 @@ defmodule DrawMusicWeb.PaletteComponents do
         >
           Insert
         </button>
+
+        <div class="ml-auto flex items-center gap-1">
+          <button
+            id="settings-button"
+            type="button"
+            title="Key, time signature, tempo and pickup"
+            phx-click="open_settings"
+            class="btn btn-ghost btn-sm btn-square"
+          >
+            <.icon name="hero-adjustments-horizontal" class="size-4" />
+          </button>
+          <button
+            id="palette-undo"
+            type="button"
+            title="Undo (Ctrl+Z)"
+            phx-click="undo"
+            disabled={!@can_undo?}
+            class="btn btn-ghost btn-sm btn-square"
+          >
+            <.icon name="hero-arrow-uturn-left" class="size-4" />
+          </button>
+          <button
+            id="palette-redo"
+            type="button"
+            title="Redo (Ctrl+Shift+Z)"
+            phx-click="redo"
+            disabled={!@can_redo?}
+            class="btn btn-ghost btn-sm btn-square"
+          >
+            <.icon name="hero-arrow-uturn-right" class="size-4" />
+          </button>
+        </div>
       </div>
 
-      <div class="join">
+      <div
+        :if={@editor_mode == :play}
+        id="palette-play-controls"
+        class="flex flex-1 flex-wrap items-center gap-2"
+      >
+        <div class="join" role="group" aria-label="Playback">
+          <button
+            id="palette-rewind"
+            type="button"
+            title="Back to the start point (Home)"
+            phx-click="rewind"
+            class="btn btn-ghost btn-sm btn-square join-item"
+          >
+            <.icon name="hero-backward-solid" class="size-4" />
+          </button>
+          <button
+            id="palette-play"
+            type="button"
+            title={play_title(@playback)}
+            aria-pressed={to_string(@playback == :playing)}
+            phx-click="play"
+            class={[
+              "btn btn-sm join-item gap-1 transition-colors",
+              if(@playback == :playing, do: "btn-warning", else: "btn-ghost")
+            ]}
+          >
+            <.icon name={play_icon(@playback)} class="size-4" />
+            {play_label(@playback, @instrument_name)}
+          </button>
+          <button
+            id="palette-loop"
+            type="button"
+            title="Repeat the selection, or the whole piece (L)"
+            aria-pressed={to_string(@loop?)}
+            phx-click="toggle_loop"
+            class={[
+              "btn btn-sm btn-square join-item transition-colors",
+              if(@loop?, do: "btn-primary", else: "btn-ghost")
+            ]}
+          >
+            <.icon name="hero-arrow-path" class="size-4" />
+          </button>
+        </div>
+
+        <form id="playback-instrument-form" phx-change="set_playback_instrument" class="w-60">
+          <.input
+            id="playback-instrument"
+            type="select"
+            name="instrument"
+            value={@playback_instrument}
+            options={@instrument_options}
+            aria-label="Playback instrument"
+            class="select select-sm w-full"
+          />
+        </form>
         <button
-          id="palette-rewind"
+          id="use-playback-instrument"
           type="button"
-          title="Back to the start point (Home)"
-          phx-click="rewind"
-          class="btn btn-ghost btn-sm btn-square join-item"
+          title="Save this instrument with the version"
+          phx-click="use_playback_instrument"
+          data-confirm={"Use #{@instrument_name} for this version? It's saved with the version when you save."}
+          disabled={@playback_instrument == @version_instrument}
+          class="btn btn-ghost btn-sm"
         >
-          <.icon name="hero-backward-solid" class="size-4" />
-        </button>
-        <button
-          id="palette-play"
-          type="button"
-          title={play_title(@playback)}
-          aria-pressed={to_string(@playback == :playing)}
-          phx-click="play"
-          class={[
-            "btn btn-sm join-item gap-1 transition-colors",
-            if(@playback == :playing, do: "btn-warning", else: "btn-ghost")
-          ]}
-        >
-          <.icon name={play_icon(@playback)} class="size-4" />
-          {play_label(@playback, @instrument_name)}
-        </button>
-        <button
-          id="palette-loop"
-          type="button"
-          title="Repeat the selection, or the whole piece (L)"
-          aria-pressed={to_string(@loop?)}
-          phx-click="toggle_loop"
-          class={[
-            "btn btn-sm btn-square join-item transition-colors",
-            if(@loop?, do: "btn-primary", else: "btn-ghost")
-          ]}
-        >
-          <.icon name="hero-arrow-path" class="size-4" />
+          Use for this version
         </button>
       </div>
 
@@ -274,35 +341,6 @@ defmodule DrawMusicWeb.PaletteComponents do
           class="btn btn-ghost btn-sm btn-square"
         >
           <.icon name="hero-question-mark-circle" class="size-4" />
-        </button>
-        <button
-          id="settings-button"
-          type="button"
-          title="Key, time signature, tempo and pickup"
-          phx-click="open_settings"
-          class="btn btn-ghost btn-sm btn-square"
-        >
-          <.icon name="hero-adjustments-horizontal" class="size-4" />
-        </button>
-        <button
-          id="palette-undo"
-          type="button"
-          title="Undo (Ctrl+Z)"
-          phx-click="undo"
-          disabled={!@can_undo?}
-          class="btn btn-ghost btn-sm btn-square"
-        >
-          <.icon name="hero-arrow-uturn-left" class="size-4" />
-        </button>
-        <button
-          id="palette-redo"
-          type="button"
-          title="Redo (Ctrl+Shift+Z)"
-          phx-click="redo"
-          disabled={!@can_redo?}
-          class="btn btn-ghost btn-sm btn-square"
-        >
-          <.icon name="hero-arrow-uturn-right" class="size-4" />
         </button>
         {render_slot(@trailing)}
       </div>

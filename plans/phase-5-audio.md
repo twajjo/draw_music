@@ -53,6 +53,30 @@ settings form and the layouts. The review stays in its own change on the
   events per Play. Pause, resume, rewind and loop are handled in the
   browser without another round trip.
 
+## Revision after the user's review (2026-10-23)
+These replace the decisions above wherever they differ.
+
+- **Edit and Play are fully distinct, with one palette each.** The toolbar shows:
+  - **in both modes:** the Edit/Play switch, help (?) and Save;
+  - **in Edit mode only:** the edit palette (durations, rest, dot, accidentals, tie, chords, Insert, score settings, undo, redo);
+  - **in Play mode only:** the play controls (Rewind, Play/Pause, Loop, the playback instrument, "Use for this version").
+- **Keys follow the mode.**
+  - Space, Home, L, and Esc-to-stop work only in Play mode.
+  - The editing keys work only in Edit mode.
+  - P and ? work in both.
+  - The server ignores the play events in Edit mode, and the edit events (score settings included) in Play mode.
+- **Switching to Edit stops playback.**
+- **Playback instrument** ("Hear as", in the play controls):
+  - it is for listening only;
+  - it starts as the version's instrument, and changes to it last through mode switches until the editor is reopened;
+  - **Use for this version** (asks for confirmation, enabled only when the two differ) sets the version's instrument, which marks the version unsaved; Save stores it;
+  - the score settings dialog still sets the version's instrument, and playback then follows that new instrument.
+- **Chord preview while placing:**
+  - the cursor shows the whole chord;
+  - the hover tone sounds the whole chord together;
+  - a label names it (e.g. Cm, B♭7; ii · Dm for a scale-degree chord).
+- **Bug fixed:** the palette's value buttons and the menu's length buttons sent an empty `value` from the browser. LiveView replaces `phx-value-value` with the button's own `value`, so these buttons now carry a real `value` attribute.
+
 ## Samples: `DrawMusic.Samples`
 - **The GM table:** 128 entries of `%Samples.Instrument{program, name,
   family, soundfont_name}`.

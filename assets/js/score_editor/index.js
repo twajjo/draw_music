@@ -359,22 +359,18 @@ export default {
       this.pushEvent(event, payload)
     }
 
+    // Mode and help keys work in both modes.
+    if (k === "p" && !ctrl && !e.altKey) return send("toggle_mode")
+    if (e.key === "?") return send("open_help")
+    if (this.mode === "play") return this.playKey(e, send)
+
     if (e.key === "Escape") {
-      if (this.audio.state === "playing" || this.audio.state === "paused") return send("stop")
       if (this.lift) {
         e.preventDefault()
         return this.endLift()
       }
       return send(this.armed ? "disarm" : "clear_selection")
     }
-
-    // Playback and mode keys work in both modes; the rest only edit.
-    if (e.key === " " && !ctrl) return send("play")
-    if (e.key === "Home" && !ctrl) return send("rewind")
-    if (k === "l" && !ctrl && !e.altKey) return send("toggle_loop")
-    if (k === "p" && !ctrl && !e.altKey) return send("toggle_mode")
-    if (e.key === "?") return send("open_help")
-    if (this.mode === "play") return
 
     // ↑/↓: a scale step (Shift: an octave, Ctrl: a semitone); ←/→: a beat.
     const dirs = {ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right"}
@@ -395,6 +391,18 @@ export default {
     if (k === "r") return send("toggle_rest")
     if (e.key === ".") return send("toggle_dot")
     if (k === "t") return send("arm_tie")
+  },
+
+  // Play mode's keys: the play controls, and Esc to stop (or clear the selection).
+  playKey(e, send) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return
+    if (e.key === " ") return send("play")
+    if (e.key === "Home") return send("rewind")
+    if (e.key.toLowerCase() === "l") return send("toggle_loop")
+    if (e.key === "Escape") {
+      const sounding = this.audio.state === "playing" || this.audio.state === "paused"
+      return send(sounding ? "stop" : "clear_selection")
+    }
   },
 
   // Right-click: cancels placing or a pick-up; on a note or rest, opens

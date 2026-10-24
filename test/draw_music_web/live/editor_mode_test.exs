@@ -105,9 +105,32 @@ defmodule DrawMusicWeb.EditorModeTest do
     refute_push_event(view, "audition", _payload)
   end
 
-  test "the palette's editing groups are inert in play mode", %{view: view} do
-    refute has_element?(view, "#palette [data-group=editing][inert]")
+  test "each mode shows only its own palette", %{view: view} do
+    assert has_element?(view, "#palette-edit")
+    refute has_element?(view, "#palette-play-controls")
+    assert has_element?(view, "#settings-button")
+
     play_mode(view)
-    assert has_element?(view, "#palette [data-group=editing][inert]")
+    refute has_element?(view, "#palette-edit")
+    refute has_element?(view, "#settings-button")
+    assert has_element?(view, "#palette-play-controls #palette-play")
+    assert has_element?(view, "#palette-help")
+    assert has_element?(view, "#save")
+  end
+
+  test "score settings can't be changed in play mode", %{view: view} do
+    play_mode(view)
+    render_hook(view, "open_settings", %{})
+    refute has_element?(view, "#settings-form")
+
+    settings = %{
+      "key" => "g-major",
+      "time_num" => "3",
+      "time_den" => "4",
+      "time_symbol" => "none"
+    }
+
+    render_hook(view, "apply_settings", %{"settings" => settings})
+    assert session_of(view).ctx.time_num == 4
   end
 end

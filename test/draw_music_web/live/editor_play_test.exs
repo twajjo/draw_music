@@ -4,6 +4,8 @@ defmodule DrawMusicWeb.EditorPlayTest do
   import Phoenix.LiveViewTest
   import DrawMusicWeb.EditorHelpers
 
+  alias DrawMusicWeb.LibraryComponents
+
   setup :register_and_log_in_user
 
   setup %{conn: conn} do
@@ -13,8 +15,11 @@ defmodule DrawMusicWeb.EditorPlayTest do
     place(view, 0, 960, "E4")
     place(view, 0, 1920, "G4")
     render_hook(view, "disarm", %{})
+    play_mode(view)
     %{view: view}
   end
+
+  defp play_mode(view), do: view |> element("#palette-mode-play") |> render_click()
 
   defp id_at(view, offset) do
     session_of(view).score.measures
@@ -89,18 +94,38 @@ defmodule DrawMusicWeb.EditorPlayTest do
     assert has_element?(view, "#palette-play", "Play")
   end
 
-  test "an edit while paused stops playback", %{view: view} do
+  test "switching to Edit stops playback and swaps the play controls for the palette",
+       %{view: view} do
     play(view)
     play(view)
-    render_hook(view, "lock", %{"kind" => "note", "value" => "quarter"})
-    place(view, 0, 2880, "B4")
+    view |> element("#palette-mode-edit") |> render_click()
 
     assert_push_event(view, "stop", %{})
+    refute has_element?(view, "#palette-play")
+    assert has_element?(view, "#palette-quarter")
+
+    play_mode(view)
     assert has_element?(view, "#palette-play", "Play")
+  end
+
+  test "in Edit mode the play events are ignored", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/")
+    refute has_element?(view, "#palette-play")
+
+    for event <- ~w(play rewind toggle_loop use_playback_instrument) do
+      render_hook(view, event, %{})
+    end
+
+    render_hook(view, "set_playback_instrument", %{"instrument" => "73"})
+    refute_push_event(view, "play", _payload)
+    refute_push_event(view, "rewind", _payload)
+    refute_push_event(view, "loop", _payload)
+    assert :sys.get_state(view.pid).socket.assigns.playback_instrument == 0
   end
 
   test "nothing to play stays idle with a message", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/")
+    play_mode(view)
     play(view)
 
     refute_push_event(view, "play", _payload)
@@ -114,6 +139,61 @@ defmodule DrawMusicWeb.EditorPlayTest do
 
     render_hook(view, "playback_state", %{"state" => "ready"})
     assert has_element?(view, "#palette-play", "Play")
+  end
+
+  describe "the playback instrument" do
+    # A saved, unchanged version, so the unsaved marker means something.
+    setup %{conn: conn, scope: scope} do
+      version = DrawMusic.LibraryFixtures.version_fixture(scope)
+      path = LibraryComponents.version_path(version.key.composition.id, version.key, 1)
+      {:ok, view, _html} = live(conn, path)
+      play_mode(view)
+      %{view: view}
+    end
+
+    defp assigns(view), do: :sys.get_state(view.pid).socket.assigns
+
+    defp hear_as(view, program) do
+      view
+      |> element("#playback-instrument-form")
+      |> render_change(%{"instrument" => to_string(program)})
+    end
+
+    test "starts as the version's and changes only playback", %{view: view} do
+      assert has_element?(view, "#playback-instrument option[value='0'][selected]")
+      assert has_element?(view, "#use-playback-instrument[disabled]")
+
+      hear_as(view, 73)
+
+      assert has_element?(view, ~s(#score-editor[data-instrument*='"program":73']))
+      assert assigns(view).instrument == 0
+      refute has_element?(view, "#dirty-marker")
+      refute has_element?(view, "#use-playback-instrument[disabled]")
+    end
+
+    test "survives switching to Edit and back", %{view: view} do
+      hear_as(view, 73)
+      view |> element("#palette-mode-edit") |> render_click()
+      view |> element("#palette-mode-play") |> render_click()
+
+      assert has_element?(view, "#playback-instrument option[value='73'][selected]")
+    end
+
+    test "Use for this version asks first, then sets the version's instrument", %{view: view} do
+      hear_as(view, 73)
+      assert has_element?(view, "#use-playback-instrument[data-confirm*='Flute']")
+
+      view |> element("#use-playback-instrument") |> render_click()
+
+      assert assigns(view).instrument == 73
+      assert has_element?(view, "#dirty-marker")
+      assert has_element?(view, "#use-playback-instrument[disabled]")
+    end
+
+    test "an out-of-range program is ignored", %{view: view} do
+      render_hook(view, "set_playback_instrument", %{"instrument" => "128"})
+      assert assigns(view).playback_instrument == 0
+    end
   end
 
   test "a fallback from the hook shows a notice naming the instrument", %{view: view} do

@@ -46,7 +46,10 @@ defmodule DrawMusicWeb.EditorLive do
   # Everything that changes the score or arms the palette; Play mode ignores them.
   @edit_events ~w(arm lock arm_value arm_chord arm_tie toggle_rest toggle_dot set_accidental
                   toggle_insert place move delete cut paste drop tie open_menu menu_copy menu_cut
-                  insert_measure delete_measure add_measure undo redo) ++ @menu_events
+                  insert_measure delete_measure add_measure undo redo open_settings
+                  apply_settings transpose_key) ++ @menu_events
+  # The play controls; Edit mode ignores them.
+  @play_events ~w(play rewind toggle_loop audition set_playback_instrument use_playback_instrument)
 
   @impl true
   def render(assigns) do
@@ -97,6 +100,9 @@ defmodule DrawMusicWeb.EditorLive do
         playback={@playback}
         loop?={@loop?}
         instrument_name={@instrument_source.name}
+        playback_instrument={@playback_instrument}
+        version_instrument={@instrument}
+        instrument_options={@instrument_options}
       >
         <:trailing>
           <.save_menu dirty?={@session.dirty?} saved?={@version.id != nil} />
@@ -170,6 +176,7 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign(armed: nil, row_kind: :note, insert?: false, last_click: nil, menu: nil)
      |> assign(save_as_form: nil, settings_form: nil, pending_key: nil)
      |> assign(playback: :idle, loop?: false, editor_mode: :edit, help?: false)
+     |> assign(:instrument_options, instrument_options())
      # The tempo marking and instrument aren't part of the score's Context;
      # they're saved beside it.
      |> assign(:tempo_text, version.tempo_text)
@@ -197,9 +204,43 @@ defmodule DrawMusicWeb.EditorLive do
     {:noreply, socket}
   end
 
+  def handle_event(event, _params, %{assigns: %{editor_mode: :edit}} = socket)
+      when event in @play_events do
+    {:noreply, socket}
+  end
+
+  # Leaving Play mode stops playback; the play controls go with it.
   def handle_event("toggle_mode", params, socket) do
     mode = next_mode(params["mode"], socket.assigns.editor_mode)
-    {:noreply, assign(socket, editor_mode: mode, armed: nil, menu: nil)}
+
+    {:noreply,
+     socket
+     |> assign(editor_mode: mode, armed: nil, menu: nil)
+     |> stop_unless_playing_mode()}
+  end
+
+  # The playback instrument is for listening only; it starts as the
+  # version's and lasts until the editor is reopened.
+  def handle_event("set_playback_instrument", %{"instrument" => value}, socket) do
+    case Integer.parse(to_string(value)) do
+      {program, ""} when program in 0..127 ->
+        {:noreply,
+         socket
+         |> stop_playback()
+         |> assign_playback_instrument(program)}
+
+      _invalid ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("use_playback_instrument", _params, socket) do
+    %{playback_instrument: program, session: session} = socket.assigns
+
+    {:noreply,
+     socket
+     |> assign(:session, touched(session, program, socket.assigns.instrument))
+     |> assign(:instrument, program)}
   end
 
   def handle_event("open_help", _params, socket), do: {:noreply, assign(socket, :help?, true)}
@@ -544,7 +585,7 @@ defmodule DrawMusicWeb.EditorLive do
     from = {session.ctx.sf, session.ctx.mode}
     socket = assign(socket, :pending_key, nil)
 
-    case Transpose.to_key(session.score, from, {sf, mode}, String.to_existing_atom(dir)) do
+    case Transpose.to_key(session.score, from, {sf, mode}, direction(dir)) do
       {:ok, score} ->
         session = Session.change_context(session, %{session.ctx | sf: sf, mode: mode}, score)
 
@@ -700,6 +741,10 @@ defmodule DrawMusicWeb.EditorLive do
   defp next_mode(_toggle, :edit), do: :play
   defp next_mode(_toggle, :play), do: :edit
 
+  defp direction("nearest"), do: :nearest
+  defp direction("up"), do: :up
+  defp direction("down"), do: :down
+
   defp beats("left"), do: -1
   defp beats("right"), do: 1
 
@@ -779,6 +824,9 @@ defmodule DrawMusicWeb.EditorLive do
     |> assign(:playback, :idle)
     |> push_event("stop", %{})
   end
+
+  defp stop_unless_playing_mode(%{assigns: %{editor_mode: :play}} = socket), do: socket
+  defp stop_unless_playing_mode(socket), do: stop_playback(socket)
 
   defp selected_events(%Session{score: score, selection: selection}) do
     for m <- score.measures, event <- m.notes ++ m.rests, event.id in selection, do: event
@@ -881,10 +929,24 @@ defmodule DrawMusicWeb.EditorLive do
   defp touched(session, same, same), do: session
   defp touched(session, _new, _old), do: %{session | dirty?: true}
 
+  # A new version instrument (from the settings) is also what playback uses next.
   defp assign_instrument(%{assigns: %{instrument: program}} = socket, program), do: socket
 
   defp assign_instrument(socket, program) do
-    assign(socket, instrument: program, instrument_source: InstrumentSource.for_program(program))
+    socket
+    |> assign(:instrument, program)
+    |> assign_playback_instrument(program)
+  end
+
+  defp assign_playback_instrument(%{assigns: %{playback_instrument: program}} = socket, program) do
+    socket
+  end
+
+  defp assign_playback_instrument(socket, program) do
+    assign(socket,
+      playback_instrument: program,
+      instrument_source: InstrumentSource.for_program(program)
+    )
   end
 
   # A key other than the current one waits for the transpose dialog.
