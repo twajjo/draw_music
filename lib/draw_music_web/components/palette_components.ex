@@ -16,6 +16,7 @@ defmodule DrawMusicWeb.PaletteComponents do
   import DrawMusicWeb.CoreComponents, only: [icon: 1, input: 1]
 
   alias DrawMusic.Engraving.Smufl
+  alias DrawMusic.Music.Chords
 
   @values [
     {:whole, "Whole", "1", :noteWhole, :restWhole},
@@ -41,11 +42,6 @@ defmodule DrawMusicWeb.PaletteComponents do
     {:sus4, "sus4"},
     {:add9, "add9"}
   ]
-
-  @numerals %{
-    major: ~w(I ii iii IV V vi vii°),
-    minor: ~w(i ii° III iv V VI vii°)
-  }
 
   @doc """
   The editor's toolbar: the Edit/Play switch, then the palette for the
@@ -73,7 +69,7 @@ defmodule DrawMusicWeb.PaletteComponents do
       assign(assigns,
         values: @values,
         qualities: @qualities,
-        numerals: Map.fetch!(@numerals, assigns.mode)
+        numerals: Chords.numerals(assigns.mode)
       )
 
     ~H"""

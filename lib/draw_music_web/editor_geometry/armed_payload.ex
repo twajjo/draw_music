@@ -2,12 +2,15 @@ defmodule DrawMusicWeb.EditorGeometry.ArmedPayload do
   @moduledoc """
   The armed palette item as the browser hook needs it (sent as JSON in
   `data-armed`): what it is, the glyph to draw as the cursor (nil for the
-  tie tool) and the time grid to snap to (the undotted value's length).
+  tie tool), the time grid to snap to (the undotted value's length), and for
+  a chord its shape, to preview it whole.
   """
+
+  alias DrawMusicWeb.EditorGeometry.ChordShape
 
   @derive Jason.Encoder
   @enforce_keys [:kind, :value, :dots, :locked, :grid]
-  defstruct [:kind, :value, :dots, :alter, :locked, :glyph, :grid]
+  defstruct [:kind, :value, :dots, :alter, :locked, :glyph, :grid, :chord]
 
   @type t :: %__MODULE__{
           kind: :note | :rest | :chord | :tie,
@@ -16,6 +19,7 @@ defmodule DrawMusicWeb.EditorGeometry.ArmedPayload do
           alter: -2..2 | nil,
           locked: boolean(),
           glyph: String.t() | nil,
-          grid: pos_integer()
+          grid: pos_integer(),
+          chord: ChordShape.t() | nil
         }
 end

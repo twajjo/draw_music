@@ -128,7 +128,7 @@ defmodule DrawMusicWeb.EditorLive do
             )
           ]}
           data-geometry={Jason.encode!(EditorGeometry.encode(@engraved, @session.ctx))}
-          data-armed={Jason.encode!(EditorGeometry.armed(@armed))}
+          data-armed={Jason.encode!(EditorGeometry.armed(@armed, @session.ctx))}
           data-dirty={to_string(@session.dirty?)}
           data-instrument={Jason.encode!(@instrument_source)}
           data-mode={@editor_mode}

@@ -8,7 +8,8 @@
 // and data-instrument (InstrumentSource). Playback lives in audio.js.
 
 import * as Tone from "tone"
-import {locate, snap, pitchOf, stepY, ledgerSteps, stepOnStaff} from "./geometry"
+import {locate, snap, pitchOf, keyAlter, stepY, ledgerSteps, stepOnStaff} from "./geometry"
+import {chordAt} from "./chord"
 import {cursorFor} from "./cursor"
 import {Audio} from "./audio"
 // The keys this hook acts on; the cheat-sheet (DrawMusicWeb.Shortcuts) lists the same ones.
@@ -24,6 +25,11 @@ const DRAG_THRESHOLD = 0.5
 const CLICK_GRID = 240
 // Length of the tone played over each new line or space (seconds).
 const PLACEMENT_TONE = 0.12
+// Chord preview (staff spaces): a second's upper note sits this far right;
+// the name sits this far above the top note, at this size.
+const SECOND_OFFSET = 1.2
+const CHORD_LABEL_GAP = 2
+const CHORD_LABEL_SIZE = 1.6
 
 // The note or rest element (and its id) under an event, if any.
 function eventTarget(e) {
@@ -192,7 +198,8 @@ export default {
     const sound = `${t.staff}:${t.step}:${alter}`
     if (sound !== this.lastSound) {
       this.lastSound = sound
-      this.play(pitchOf(t.step, alter, this.geometry.sf))
+      const chord = chordAt(this.armed, t, this.geometry.sf)
+      this.play(chord ? chord.tones.map((tone) => tone.midi) : pitchOf(t.step, alter, this.geometry.sf))
     }
   },
 
@@ -437,6 +444,12 @@ export default {
     g.style.color = "var(--score-ink)"
 
     const x = t.measure.content_x + t.offset * t.measure.scale
+    const chord = chordAt(this.armed, t, this.geometry.sf)
+    if (chord) {
+      this.drawChord(g, t, x, chord)
+      return this.overlay.appendChild(g)
+    }
+
     const rest = this.armed.kind === "rest"
     const y = rest ? stepY(this.geometry, t.staff, this.geometry.top_step[t.staff] - 4) : stepY(this.geometry, t.staff, t.step)
 
@@ -453,6 +466,36 @@ export default {
 
     g.appendChild(this.glyph(this.armed.glyph, x, y))
     this.overlay.appendChild(g)
+  },
+
+  // A chord's noteheads where they'll land: ledger lines, the accidentals
+  // the key doesn't already give, a second's upper note set off to the
+  // right, and the chord's name above it.
+  drawChord(g, t, x, chord) {
+    const {geometry} = this
+    let previous = null
+    let top = Infinity
+
+    for (const tone of chord.tones) {
+      const y = stepY(geometry, t.staff, tone.step)
+      const nx = previous !== null && tone.step - previous.step === 1 && !previous.shifted ? x + SECOND_OFFSET : x
+      previous = {step: tone.step, shifted: nx !== x}
+      top = Math.min(top, y)
+
+      for (const step of ledgerSteps(geometry, t.staff, tone.step)) {
+        const ly = stepY(geometry, t.staff, step)
+        const line = document.createElementNS(SVG, "line")
+        Object.entries({x1: nx - 0.4, x2: nx + 1.6, y1: ly, y2: ly, stroke: "currentColor", "stroke-width": 0.16}).forEach(([k, v]) => line.setAttribute(k, v))
+        g.appendChild(line)
+      }
+      if (tone.alter !== keyAlter(geometry.sf, tone.step)) g.appendChild(this.glyph(ACCIDENTALS[tone.alter], x - 1.3, y))
+      g.appendChild(this.glyph(this.armed.glyph, nx, y))
+    }
+
+    const label = document.createElementNS(SVG, "text")
+    Object.entries({x, y: top - CHORD_LABEL_GAP, "font-family": "sans-serif", "font-size": CHORD_LABEL_SIZE}).forEach(([k, v]) => label.setAttribute(k, v))
+    label.textContent = chord.label
+    g.appendChild(label)
   },
 
   glyph(char, x, y) {
@@ -486,14 +529,17 @@ export default {
   // Browsers only allow audio after a user gesture.
   async startAudio() {
     await Tone.start()
-    this.synth = new Tone.Synth({
+    this.synth = new Tone.PolySynth(Tone.Synth, {
       oscillator: {type: "triangle"},
       envelope: {attack: 0.005, decay: 0.1, sustain: 0.2, release: 0.2},
     }).toDestination()
   },
 
-  // The placement beep (until parts bring per-instrument tones).
-  play(midi) {
-    if (this.synth) this.synth.triggerAttackRelease(Tone.Frequency(midi, "midi"), PLACEMENT_TONE)
+  // The placement beep (until parts bring per-instrument tones): one MIDI
+  // number, or a chord's, sounded together.
+  play(midis) {
+    if (!this.synth) return
+    const notes = [midis].flat().map((midi) => Tone.Frequency(midi, "midi").toFrequency())
+    this.synth.triggerAttackRelease(notes, PLACEMENT_TONE)
   },
 }

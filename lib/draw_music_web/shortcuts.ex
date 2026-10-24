@@ -133,7 +133,8 @@ defmodule DrawMusicWeb.Shortcuts do
       group: "Ties and chords",
       mouse: "Chords menu",
       modes: @edit,
-      action: "Pick a chord, then click the note to build it on"
+      action:
+        "Pick a chord; the cursor shows, sounds and names it as you move; click where its root goes"
     },
     # Measures
     %Shortcut{
