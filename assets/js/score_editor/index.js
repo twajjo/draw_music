@@ -338,6 +338,7 @@ export default {
     }
 
     if (e.key === "Escape") {
+      if (this.audio.state === "playing" || this.audio.state === "paused") return send("stop")
       if (this.lift) {
         e.preventDefault()
         return this.endLift()
@@ -348,6 +349,7 @@ export default {
     // ↑/↓: a scale step (Shift: an octave, Ctrl: a semitone); ←/→: a beat.
     const dirs = {ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right"}
     if (e.key === " " && !ctrl) return send("play")
+    if (e.key === "Home" && !ctrl) return send("rewind")
     if (dirs[e.key]) {
       const by = e.shiftKey ? "octave" : ctrl ? "semitone" : "step"
       return send("move", {dir: dirs[e.key], by})
@@ -365,6 +367,7 @@ export default {
     if (k === "r") return send("toggle_rest")
     if (e.key === ".") return send("toggle_dot")
     if (k === "t") return send("arm_tie")
+    if (k === "l") return send("toggle_loop")
   },
 
   // Right-click: cancels placing or a pick-up; on a note or rest, opens

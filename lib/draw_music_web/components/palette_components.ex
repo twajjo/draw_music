@@ -52,7 +52,9 @@ defmodule DrawMusicWeb.PaletteComponents do
   attr :can_undo?, :boolean, default: false
   attr :can_redo?, :boolean, default: false
   attr :mode, :atom, default: :major, doc: "the key's mode, for chord numerals"
-  attr :playing?, :boolean, default: false
+  attr :playback, :atom, default: :idle, values: [:idle, :loading, :playing, :paused]
+  attr :loop?, :boolean, default: false
+  attr :instrument_name, :string, default: "the instrument", doc: "named while it loads"
   slot :trailing, doc: "extra controls at the right end (e.g. save)"
 
   @spec palette(map()) :: Phoenix.LiveView.Rendered.t()
@@ -190,22 +192,44 @@ defmodule DrawMusicWeb.PaletteComponents do
         Insert
       </button>
 
-      <button
-        id="palette-play"
-        type="button"
-        title={
-          if @playing?, do: "Stop (Space)", else: "Play from the selection, or from the start (Space)"
-        }
-        aria-pressed={to_string(@playing?)}
-        phx-click="play"
-        class={[
-          "btn btn-sm gap-1 transition-colors",
-          if(@playing?, do: "btn-warning", else: "btn-ghost")
-        ]}
-      >
-        <.icon name={if @playing?, do: "hero-stop-solid", else: "hero-play-solid"} class="size-4" />
-        {if @playing?, do: "Stop", else: "Play"}
-      </button>
+      <div class="join">
+        <button
+          id="palette-rewind"
+          type="button"
+          title="Back to the start point (Home)"
+          phx-click="rewind"
+          class="btn btn-ghost btn-sm btn-square join-item"
+        >
+          <.icon name="hero-backward-solid" class="size-4" />
+        </button>
+        <button
+          id="palette-play"
+          type="button"
+          title={play_title(@playback)}
+          aria-pressed={to_string(@playback == :playing)}
+          phx-click="play"
+          class={[
+            "btn btn-sm join-item gap-1 transition-colors",
+            if(@playback == :playing, do: "btn-warning", else: "btn-ghost")
+          ]}
+        >
+          <.icon name={play_icon(@playback)} class="size-4" />
+          {play_label(@playback, @instrument_name)}
+        </button>
+        <button
+          id="palette-loop"
+          type="button"
+          title="Repeat the selection, or the whole piece (L)"
+          aria-pressed={to_string(@loop?)}
+          phx-click="toggle_loop"
+          class={[
+            "btn btn-sm btn-square join-item transition-colors",
+            if(@loop?, do: "btn-primary", else: "btn-ghost")
+          ]}
+        >
+          <.icon name="hero-arrow-path" class="size-4" />
+        </button>
+      </div>
 
       <div class="ml-auto flex items-center gap-1">
         <button
@@ -342,6 +366,21 @@ defmodule DrawMusicWeb.PaletteComponents do
       <span :if={@locked} class="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-primary" />
     </button>
     """
+  end
+
+  defp play_label(:playing, _instrument), do: "Pause"
+  defp play_label(:paused, _instrument), do: "Resume"
+  defp play_label(:loading, instrument), do: "Loading #{instrument}…"
+  defp play_label(:idle, _instrument), do: "Play"
+
+  defp play_icon(:playing), do: "hero-pause-solid"
+  defp play_icon(_state), do: "hero-play-solid"
+
+  defp play_title(:playing), do: "Pause (Space)"
+  defp play_title(:paused), do: "Resume (Space)"
+
+  defp play_title(_state) do
+    "Play the selection, from the selected note, or from the start (Space)"
   end
 
   # A piece of type: score ink on score paper; picked up (inverted, lifted)

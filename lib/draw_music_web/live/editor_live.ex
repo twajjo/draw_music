@@ -88,7 +88,9 @@ defmodule DrawMusicWeb.EditorLive do
         can_undo?={@session.undo != []}
         can_redo?={@session.redo != []}
         mode={@session.ctx.mode}
-        playing?={@playing?}
+        playback={@playback}
+        loop?={@loop?}
+        instrument_name={@instrument_source.name}
       >
         <:trailing>
           <.save_menu dirty?={@session.dirty?} saved?={@version.id != nil} />
@@ -158,7 +160,8 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign(:version, version)
      |> assign(:session, Session.new(version.score, Context.from_version(version)))
      |> assign(armed: nil, row_kind: :note, insert?: false, last_click: nil, menu: nil)
-     |> assign(save_as_form: nil, settings_form: nil, pending_key: nil, playing?: false)
+     |> assign(save_as_form: nil, settings_form: nil, pending_key: nil)
+     |> assign(playback: :idle, loop?: false)
      # The tempo marking and instrument aren't part of the score's Context;
      # they're saved beside it.
      |> assign(:tempo_text, version.tempo_text)
@@ -508,6 +511,7 @@ defmodule DrawMusicWeb.EditorLive do
         {:noreply,
          socket
          |> assign(:session, session)
+         |> stop_playback()
          |> in_new_key(sf, mode)}
 
       {:error, reason} ->
@@ -517,32 +521,48 @@ defmodule DrawMusicWeb.EditorLive do
 
   ## Playback
 
-  # The browser plays the events (Tone.js) and highlights each note as it
-  # sounds; Play while playing stops.
-  def handle_event("play", _params, %{assigns: %{playing?: true}} = socket) do
+  # The browser plays the events (smplr, see audio.js) and highlights each
+  # note as it sounds; pause, resume, rewind and loop happen there too.
+  def handle_event("play", _params, %{assigns: %{playback: :playing}} = socket) do
     {:noreply,
      socket
-     |> assign(:playing?, false)
+     |> assign(:playback, :paused)
+     |> push_event("pause", %{})}
+  end
+
+  def handle_event("play", _params, %{assigns: %{playback: :paused}} = socket) do
+    {:noreply,
+     socket
+     |> assign(:playback, :playing)
+     |> push_event("resume", %{})}
+  end
+
+  def handle_event("play", _params, socket), do: {:noreply, start_playback(socket)}
+
+  def handle_event("rewind", _params, socket), do: {:noreply, push_event(socket, "rewind", %{})}
+
+  def handle_event("toggle_loop", _params, socket) do
+    loop? = !socket.assigns.loop?
+
+    {:noreply,
+     socket
+     |> assign(:loop?, loop?)
+     |> push_event("loop", %{on: loop?})}
+  end
+
+  def handle_event("stop", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:playback, :idle)
      |> push_event("stop", %{})}
   end
 
-  def handle_event("play", _params, socket) do
-    %{session: session} = socket.assigns
-
-    case Playback.events(session.score, session.ctx, from: play_from(session)) do
-      [] ->
-        {:noreply, socket}
-
-      events ->
-        {:noreply,
-         socket
-         |> assign(:playing?, true)
-         |> push_event("play", %PlaybackPayload{events: events})}
-    end
+  def handle_event("playback_state", %{"state" => state}, socket) when is_binary(state) do
+    {:noreply, playback_state(socket, state)}
   end
 
   def handle_event("playback_ended", _params, socket) do
-    {:noreply, assign(socket, :playing?, false)}
+    {:noreply, assign(socket, :playback, :idle)}
   end
 
   ## History
@@ -551,6 +571,7 @@ defmodule DrawMusicWeb.EditorLive do
     {:noreply,
      socket
      |> update(:session, &Session.undo/1)
+     |> stop_playback()
      |> assign_layout()}
   end
 
@@ -558,6 +579,7 @@ defmodule DrawMusicWeb.EditorLive do
     {:noreply,
      socket
      |> update(:session, &Session.redo/1)
+     |> stop_playback()
      |> assign_layout()}
   end
 
@@ -586,6 +608,7 @@ defmodule DrawMusicWeb.EditorLive do
          socket
          |> clear_flash()
          |> assign(:session, session)
+         |> stop_playback()
          |> assign_layout()}
 
       {:error, reason} ->
@@ -644,13 +667,72 @@ defmodule DrawMusicWeb.EditorLive do
 
   defp selected_ids(socket), do: MapSet.to_list(socket.assigns.session.selection)
 
-  # Playback starts at the earliest selected event, else at the beginning.
-  defp play_from(%Session{} = session) do
-    session.score
-    |> Timeline.flatten(session.ctx)
-    |> Enum.filter(&(&1.event.id in session.selection))
-    |> Enum.map(& &1.start)
-    |> Enum.min(fn -> 0 end)
+  ## Playback helpers
+
+  defp start_playback(socket) do
+    %{session: session, loop?: loop?} = socket.assigns
+
+    case Playback.events(session.score, session.ctx, play_span(session)) do
+      [] ->
+        put_flash(socket, :error, "Nothing to play here.")
+
+      events ->
+        socket
+        |> assign(:playback, :playing)
+        |> push_event("play", %PlaybackPayload{events: events, loop: loop?})
+    end
+  end
+
+  # Several selected events play from the first to the end of the last;
+  # one plays from there to the end; none, the whole score.
+  defp play_span(%Session{} = session) do
+    selected =
+      session.score
+      |> Timeline.flatten(session.ctx)
+      |> Enum.filter(&(&1.event.id in session.selection))
+
+    case selected do
+      [] -> [from: 0]
+      [entry] -> [from: entry.start]
+      entries -> [from: Enum.min(Enum.map(entries, & &1.start)), to: span_end(entries)]
+    end
+  end
+
+  defp span_end(entries) do
+    entries
+    |> Enum.map(&(&1.start + &1.ticks))
+    |> Enum.max()
+  end
+
+  # What the hook reports; names are only matched, never made atoms.
+  defp playback_state(socket, "loading"), do: assign(socket, :playback, :loading)
+  defp playback_state(socket, "playing"), do: assign(socket, :playback, :playing)
+  defp playback_state(socket, "paused"), do: assign(socket, :playback, :paused)
+  defp playback_state(socket, "idle"), do: assign(socket, :playback, :idle)
+  defp playback_state(socket, "ready"), do: loaded(socket)
+
+  defp playback_state(socket, "fallback") do
+    name = socket.assigns.instrument_source.name
+
+    socket
+    |> loaded()
+    |> put_flash(:info, "#{name} isn't available; playing with the built-in synth.")
+  end
+
+  defp playback_state(socket, _unknown), do: socket
+
+  defp loaded(%{assigns: %{playback: :loading}} = socket), do: assign(socket, :playback, :idle)
+  defp loaded(socket), do: socket
+
+  # Any change to the score stops playback: the browser's events are stale.
+  defp stop_playback(%{assigns: %{playback: state}} = socket) when state in [:idle, :loading] do
+    socket
+  end
+
+  defp stop_playback(socket) do
+    socket
+    |> assign(:playback, :idle)
+    |> push_event("stop", %{})
   end
 
   defp selected_events(%Session{score: score, selection: selection}) do
@@ -741,6 +823,7 @@ defmodule DrawMusicWeb.EditorLive do
         )
         |> assign(:tempo_text, tempo_text)
         |> assign_instrument(fields.instrument)
+        |> stop_playback()
         |> assign_layout()
 
       {:error, reason} ->
