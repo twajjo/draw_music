@@ -72,6 +72,10 @@ defmodule DrawMusicWeb.Layouts do
       </div>
     </main>
 
+    <footer class="flex items-center justify-center gap-4 border-t border-base-300 px-4 py-4 text-sm opacity-70">
+      <.link id="footer-credits" navigate={~p"/credits"} class="link link-hover">Credits</.link>
+    </footer>
+
     <.flash_group flash={@flash} />
     """
   end
