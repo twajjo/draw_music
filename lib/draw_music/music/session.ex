@@ -10,7 +10,7 @@ defmodule DrawMusic.Music.Session do
   in the current score.
   """
 
-  alias DrawMusic.Music.{Context, Score}
+  alias DrawMusic.Music.{Context, Score, Timeline}
 
   defstruct score: nil,
             ctx: %Context{},
@@ -126,6 +126,21 @@ defmodule DrawMusic.Music.Session do
 
   @spec clear_selection(t()) :: t()
   def clear_selection(%__MODULE__{} = session), do: %{session | selection: MapSet.new()}
+
+  @doc "Narrows the selection to its earliest event; an empty selection stays empty."
+  @spec collapse_selection(t()) :: t()
+  def collapse_selection(%__MODULE__{score: score, ctx: ctx, selection: selection} = session) do
+    first =
+      score
+      |> Timeline.flatten(ctx)
+      |> Enum.filter(&(&1.event.id in selection))
+      |> Enum.min_by(& &1.start, fn -> nil end)
+
+    case first do
+      nil -> session
+      entry -> %{session | selection: MapSet.new([entry.event.id])}
+    end
+  end
 
   @doc "Ids of every note and rest in the score."
   @spec event_ids(t()) :: MapSet.t(Ecto.UUID.t())

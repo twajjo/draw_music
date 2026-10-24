@@ -209,13 +209,16 @@ defmodule DrawMusicWeb.EditorLive do
     {:noreply, socket}
   end
 
-  # Leaving Play mode stops playback; the play controls go with it.
+  # Leaving Play mode stops playback; the play controls go with it. A range
+  # selected for playback shouldn't become an edit target (or vice versa),
+  # so the selection narrows to its first event.
   def handle_event("toggle_mode", params, socket) do
     mode = next_mode(params["mode"], socket.assigns.editor_mode)
 
     {:noreply,
      socket
      |> assign(editor_mode: mode, armed: nil, menu: nil)
+     |> update(:session, &Session.collapse_selection/1)
      |> stop_unless_playing_mode()}
   end
 

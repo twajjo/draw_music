@@ -175,7 +175,7 @@ These replace the decisions above wherever they differ.
     `playing?`;
   - `loop?: boolean`.
 - **Events:**
-  - `toggle_mode`, which disarms any armed value and keeps the selection.
+  - `toggle_mode`, which disarms any armed value and narrows the selection to its first event (a range picked for playback must not become an edit target);
   - `play`, which depends on the playback state:
     - **idle:** computes the span (below) and pushes `play` with
       `%PlaybackPayload{events, loop?}`;
@@ -309,7 +309,7 @@ updates it as part of finishing each feature.
 - **`Playback.chord_at`:** the notes of a chord on one staff, not the
   other staff, with the key's accidentals applied.
 - **`EditorLive`:**
-  - `toggle_mode` disarms and keeps the selection;
+  - `toggle_mode` disarms and narrows a range selection to its first note;
   - each editing event in Play mode leaves the score unchanged;
   - `audition` pushes the chord's pitches and selects the note;
   - `play` pushes the span for a range, a single selection, and no

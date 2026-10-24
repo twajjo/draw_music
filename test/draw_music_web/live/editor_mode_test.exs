@@ -40,6 +40,16 @@ defmodule DrawMusicWeb.EditorModeTest do
     assert has_element?(view, "#score-editor[data-mode=edit]")
   end
 
+  test "toggle_mode narrows a range to its first note", %{view: view, c: c, e: e, g: g} do
+    render_hook(view, "select", %{"ids" => [c, g], "add" => false})
+    play_mode(view)
+    assert MapSet.to_list(session_of(view).selection) == [c]
+
+    render_hook(view, "select", %{"ids" => [e, g], "add" => false})
+    render_hook(view, "toggle_mode", %{})
+    assert MapSet.to_list(session_of(view).selection) == [e]
+  end
+
   test "editing events change nothing in play mode", %{view: view, c: c, g: g} do
     render_hook(view, "select", %{"ids" => [g], "add" => false})
     render_hook(view, "copy", %{})

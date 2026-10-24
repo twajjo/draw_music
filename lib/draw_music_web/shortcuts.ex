@@ -230,7 +230,7 @@ defmodule DrawMusicWeb.Shortcuts do
       keys: ["P"],
       modes: @both,
       action:
-        "Switch between Edit and Play: each has its own palette, and in Play mode nothing can change the score"
+        "Switch between Edit and Play: each has its own palette, in Play mode nothing can change the score, and a selected range narrows to its first note"
     },
     %Shortcut{group: "Modes", keys: ["?"], modes: @both, action: "Show this cheat-sheet"}
   ]
