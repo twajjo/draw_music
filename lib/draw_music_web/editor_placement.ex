@@ -13,6 +13,10 @@ defmodule DrawMusicWeb.EditorPlacement do
 
   @staves %{"treble" => :treble, "bass" => :bass}
 
+  @doc "The staff a browser names, or nil."
+  @spec staff(term()) :: :treble | :bass | nil
+  def staff(name), do: Map.get(@staves, name)
+
   @doc """
   The target of a `place` event, or `:error` for anything malformed.
   `alter` is nil unless the user held a modifier.

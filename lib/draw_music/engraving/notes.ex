@@ -22,7 +22,16 @@ defmodule DrawMusic.Engraving.Notes do
     Staff
   }
 
-  alias DrawMusic.Music.{Accidentals, BeamGroup, Beaming, Context, Duration, Measure, Stems}
+  alias DrawMusic.Music.{
+    Accidentals,
+    BeamGroup,
+    Beaming,
+    Context,
+    Duration,
+    Gaps,
+    Measure,
+    Stems
+  }
 
   @half_space 0.5
   @stem_length 3.5
@@ -154,7 +163,7 @@ defmodule DrawMusic.Engraving.Notes do
       top_y: top_y,
       bottom_y: bottom_y,
       items:
-        Enum.map(heads, &glyph(:notehead, glyph, &1.x, &1.y, &1.note.id)) ++
+        Enum.map(heads, &%{glyph(:notehead, glyph, &1.x, &1.y, &1.note.id) | staff: staff}) ++
           ledgers(heads, staff, left, right) ++
           dots(heads, right) ++ accidentals(heads, left, accidentals),
       anchors:
@@ -391,15 +400,23 @@ defmodule DrawMusic.Engraving.Notes do
 
   ## Rests
 
+  # Stored rests, then implied ones: a whole-bar rest on an empty staff, and
+  # rests in the gaps of each voice on a staff with notes.
   defp rests(measure, geom, voice_counts) do
     stored = Enum.flat_map(measure.rests, &rest(&1, geom, voice_counts[&1.staff]))
 
-    implied =
+    empty_staves =
       for staff <- [:treble, :bass], not Map.has_key?(voice_counts, staff) do
         bar_rest(staff, geom, nil)
       end
 
-    stored ++ implied
+    gaps =
+      for rest <- Gaps.rests(measure, geom.capacity),
+          Map.has_key?(voice_counts, rest.staff),
+          item <- rest(rest, geom, voice_counts[rest.staff]),
+          do: item
+
+    stored ++ empty_staves ++ gaps
   end
 
   # A rest filling the bar alone on its staff is drawn as a centered whole

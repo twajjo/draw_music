@@ -142,7 +142,7 @@ defmodule DrawMusic.Music.EditingTest do
       assert MapSet.disjoint?(MapSet.new(ids), MapSet.new([a, b]))
     end
 
-    test "fill_rests fills voice 1 of each staff and any other voice in use" do
+    test "fill_rests fills voice 1 of each staff and any other voice in use, on the beats" do
       {score, _id} =
         note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
 
@@ -155,9 +155,41 @@ defmodule DrawMusic.Music.EditingTest do
 
       assert Enum.sort(rests) == [
                {:bass, 1, 0, :whole, 0},
-               {:treble, 1, 960, :half, 1},
+               {:treble, 1, 960, :quarter, 0},
+               {:treble, 1, 1920, :half, 0},
                {:treble, 2, 1920, :half, 0}
              ]
+    end
+
+    test "move_to_staff moves a note to the other staff, leaving a gap on the first" do
+      {score, id} =
+        note!(Score.new(), @ctx, 0, "G3", %{staff: :treble, offset: 960, value: :half})
+
+      {:ok, score, new_id} = Editing.move_to_staff(score, @ctx, id, :bass, 25)
+      [note] = hd(score.measures).notes
+
+      assert {note.id, note.staff, note.step, note.offset, note.value} ==
+               {new_id, :bass, 25, 960, :half}
+    end
+
+    test "move_to_staff on the note's own staff just moves it, keeping its id" do
+      {score, id} =
+        note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
+
+      {:ok, score, ^id} = Editing.move_to_staff(score, @ctx, id, :treble, 30)
+      assert [%{id: ^id, staff: :treble, step: 30}] = hd(score.measures).notes
+    end
+
+    test "move_to_staff joins a note already on the other staff as a second voice or chord" do
+      {score, bass} =
+        note!(Score.new(), @ctx, 0, "C3", %{staff: :bass, offset: 0, value: :quarter})
+
+      {score, id} = note!(score, @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
+
+      {:ok, score, new_id} = Editing.move_to_staff(score, @ctx, id, :bass, 23)
+      ids = for n <- hd(score.measures).notes, n.staff == :bass, do: n.id
+
+      assert Enum.sort(ids) == Enum.sort([bass, new_id])
     end
   end
 

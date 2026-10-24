@@ -37,13 +37,7 @@ export function locate(geometry, x, y) {
   const system = systemAt(geometry, y)
   if (!system) return null
 
-  const ry = y - system.y
-  const {staff_top: top, top_step: topStep} = geometry
-  const gapMiddle = (top.treble + 4 + top.bass) / 2
-  const staff = ry < gapMiddle ? "treble" : "bass"
-  const rawStep = topStep[staff] - Math.round((ry - top[staff]) * 2)
-  const step = Math.min(MAX_STEP, Math.max(MIN_STEP, rawStep))
-
+  const {staff, step} = staffStepAt(geometry, system, y)
   const measure = measureAt(system, x)
   const tick = (x - measure.content_x) / measure.scale
   const offset = Math.min(measure.capacity - 1, Math.max(0, tick))
@@ -51,11 +45,25 @@ export function locate(geometry, x, y) {
   return {system, measure, offset, staff, step}
 }
 
+// The staff and step at y in a given system; between the staves, the
+// closer staff.
+export function staffStepAt(geometry, system, y) {
+  const top = geometry.staff_top
+  const gapMiddle = (top.treble + 4 + top.bass) / 2
+  const staff = y - system.y < gapMiddle ? "treble" : "bass"
+  return {staff, step: stepOnStaff(geometry, system, staff, y)}
+}
+
 // The step at y on a given staff of a system (no switching staves), for
-// dragging a note up and down.
+// dragging several notes up and down together.
 export function stepOnStaff(geometry, system, staff, y) {
   const raw = geometry.top_step[staff] - Math.round((y - system.y - geometry.staff_top[staff]) * 2)
   return Math.min(MAX_STEP, Math.max(MIN_STEP, raw))
+}
+
+// The step a notehead drawn at y (relative to its system) sits on.
+export function stepAtY(geometry, staff, y) {
+  return geometry.top_step[staff] - Math.round((y - geometry.staff_top[staff]) * 2)
 }
 
 // The grid position at or before `offset`, leaving room for the value.

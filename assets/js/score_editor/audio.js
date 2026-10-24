@@ -18,15 +18,25 @@ const LEAD_IN = 0.05
 // How far ahead of the clock notes are handed to the player (seconds).
 const LOOKAHEAD = 0.25
 
+// A sawtooth has the overtones small speakers need to make bass notes heard
+// (a triangle's low notes are mostly fundamental, which they can't play).
 const SYNTH_OPTIONS = {
-  oscillator: {type: "triangle"},
+  oscillator: {type: "sawtooth"},
   envelope: {attack: 0.01, decay: 0.2, sustain: 0.5, release: 0.4},
+}
+// The sawtooth is much louder than the triangle was (decibels).
+const SYNTH_VOLUME = -12
+
+function newSynth() {
+  const synth = new Tone.PolySynth(Tone.Synth, SYNTH_OPTIONS).toDestination()
+  synth.volume.value = SYNTH_VOLUME
+  return synth
 }
 
 // The built-in fallback: a Tone.js synth. Stopping disposes it (that also
 // cancels attacks it has scheduled) and starts a fresh one.
 function synthPlayer() {
-  let synth = new Tone.PolySynth(Tone.Synth, SYNTH_OPTIONS).toDestination()
+  let synth = newSynth()
 
   return {
     now: () => Tone.getContext().currentTime,
@@ -34,7 +44,7 @@ function synthPlayer() {
     start: (midi, time, duration) => synth.triggerAttackRelease(Tone.Frequency(midi, "midi").toFrequency(), duration, time),
     stop: () => {
       synth.dispose()
-      synth = new Tone.PolySynth(Tone.Synth, SYNTH_OPTIONS).toDestination()
+      synth = newSynth()
     },
     dispose: () => synth.dispose(),
   }
@@ -180,6 +190,15 @@ export class Audio {
     await player.unlock()
     const at = player.now() + LEAD_IN
     for (const ev of events) player.start(ev.midi, at + ev.start, ev.duration)
+  }
+
+  // A short tone (or chord) while placing or dragging, on the loaded
+  // instrument; it doesn't touch playback.
+  async preview(midis, duration) {
+    const player = this.nextPlayer()
+    await player.unlock()
+    const at = player.now()
+    for (const midi of midis) player.start(midi, at, duration)
   }
 
   // Starts (or restarts) the span `from` seconds in on `player`. A note

@@ -42,11 +42,31 @@ defmodule DrawMusicWeb.EditorToolsTest do
     id
   end
 
-  describe "pick-up" do
-    test "dropping moves the lifted notes by scale steps", %{view: view} do
+  describe "dragging" do
+    test "dropping moves the dragged notes by scale steps and selects them", %{view: view} do
       put_notes(view, [{0, "C4"}])
-      render_hook(view, "drop", %{"ids" => [id_at(view, 0)], "steps" => 2})
+      id = id_at(view, 0)
+      render_hook(view, "drop", %{"ids" => [id], "steps" => 2})
       assert notes_of(view) == [{0, 0, "E4", :quarter, 0}]
+      assert session_of(view).selection == MapSet.new([id])
+    end
+
+    test "a note dropped on the other staff moves there and stays selected", %{view: view} do
+      put_notes(view, [{960, "C4"}])
+      {step, _alter} = MusicHelpers.pitch!("G3")
+
+      render_hook(view, "drop", %{"ids" => [id_at(view, 960)], "staff" => "bass", "step" => step})
+
+      [note] = hd(session_of(view).score.measures).notes
+      assert {note.staff, note.offset} == {:bass, 960}
+      assert notes_of(view) == [{0, 960, "G3", :quarter, 0}]
+      assert session_of(view).selection == MapSet.new([note.id])
+    end
+
+    test "a drop naming an unknown staff changes nothing", %{view: view} do
+      put_notes(view, [{0, "C4"}])
+      render_hook(view, "drop", %{"ids" => [id_at(view, 0)], "staff" => "alto", "step" => 20})
+      assert notes_of(view) == [{0, 0, "C4", :quarter, 0}]
     end
 
     test "a modifier held while dropping sets the accidental", %{view: view} do

@@ -19,7 +19,9 @@ defmodule DrawMusicWeb.ShortcutsTest do
     gestures = for %{mouse: mouse} <- Shortcuts.all(), mouse, do: mouse
 
     for gesture <- [
-          "click staff",
+          "press, drag, let go",
+          "click note",
+          "drag note",
           "shift-click",
           "ctrl-click",
           "drag note to note",

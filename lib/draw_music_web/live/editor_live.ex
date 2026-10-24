@@ -419,7 +419,18 @@ defmodule DrawMusicWeb.EditorLive do
       when is_list(ids) and is_integer(steps) do
     ids = Enum.filter(ids, &is_binary/1)
     alter = EditorPalette.alter(to_string(params["alter"]))
-    {:noreply, edit(socket, EditorCommands.drop(ids, steps, alter))}
+    {:noreply, drop(socket, EditorCommands.drop(ids, steps, alter))}
+  end
+
+  # One note dragged on its own lands on whichever staff it was let go over.
+  def handle_event("drop", %{"ids" => [id], "staff" => staff, "step" => step} = params, socket)
+      when is_binary(id) and is_integer(step) do
+    alter = EditorPalette.alter(to_string(params["alter"]))
+
+    case EditorPlacement.staff(staff) do
+      nil -> {:noreply, socket}
+      staff -> {:noreply, drop(socket, EditorCommands.drop_on_staff(id, staff, step, alter))}
+    end
   end
 
   def handle_event("tie", %{"from" => from, "to" => to}, socket)
@@ -691,13 +702,13 @@ defmodule DrawMusicWeb.EditorLive do
   # as it was and the reason is shown.
   defp apply_edit(socket, fun) do
     case Session.edit(socket.assigns.session, fun) do
-      {:ok, session, _extra} ->
+      {:ok, session, extra} ->
         {:ok,
          socket
          |> clear_flash()
          |> assign(:session, session)
          |> stop_playback()
-         |> assign_layout()}
+         |> assign_layout(), extra}
 
       {:error, reason} ->
         {:error, put_flash(socket, :error, error_message(reason))}
@@ -706,12 +717,22 @@ defmodule DrawMusicWeb.EditorLive do
 
   # `apply_edit/2` when the outcome doesn't matter beyond the socket.
   defp edit(socket, fun) do
-    {_outcome, socket} = apply_edit(socket, fun)
-    socket
+    case apply_edit(socket, fun) do
+      {:ok, socket, _extra} -> socket
+      {:error, socket} -> socket
+    end
+  end
+
+  # A drop's edit gives the ids of the notes it moved; they end up selected.
+  defp drop(socket, fun) do
+    case apply_edit(socket, fun) do
+      {:ok, socket, ids} -> update(socket, :session, &Session.select(&1, ids, false))
+      {:error, socket} -> socket
+    end
   end
 
   # A placement or tie that worked disarms the palette unless it's locked.
-  defp placed({:ok, socket}), do: disarm_unless_locked(socket)
+  defp placed({:ok, socket, _extra}), do: disarm_unless_locked(socket)
   defp placed({:error, socket}), do: socket
 
   # Edits the selection; with nothing selected there is nothing to do.

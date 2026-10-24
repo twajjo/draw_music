@@ -99,6 +99,7 @@ defmodule DrawMusicWeb.ScoreComponents do
     <text
       id={dom_id(@item)}
       class={MapSet.member?(@selection, @item.id) && "selected"}
+      data-staff={@item.staff}
       x={n(@item.x)}
       y={n(@item.y)}
     >

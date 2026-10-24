@@ -1,14 +1,18 @@
 // ScoreEditor hook: the instant parts of editing. It maps the pointer to a
-// musical position (geometry.js), draws the armed piece as the cursor,
-// plays a tone on each new line or space, and sends semantic events
-// (`place`, `disarm`) to EditorLive, which owns the score.
+// musical position (geometry.js), draws the armed piece as the cursor and
+// a dragged note where it would land, sounds each new line or space while
+// the button is down, and sends semantic events (`place`, `drop`, `select`)
+// to EditorLive, which owns the score.
+//
+// A press on a note or rest selects it when let go where it was pressed;
+// a note dragged away lands where it is let go. With a piece armed, the
+// press shows and sounds it, and letting go places it.
 //
 // Server state arrives as data attributes on the hook element:
 // data-geometry (EditorGeometry.encode), data-armed (EditorGeometry.armed)
 // and data-instrument (InstrumentSource). Playback lives in audio.js.
 
-import * as Tone from "tone"
-import {locate, snap, pitchOf, keyAlter, stepY, ledgerSteps, stepOnStaff} from "./geometry"
+import {locate, snap, pitchOf, keyAlter, stepY, ledgerSteps, stepOnStaff, staffStepAt, stepAtY} from "./geometry"
 import {chordAt} from "./chord"
 import {cursorFor} from "./cursor"
 import {Audio} from "./audio"
@@ -24,7 +28,7 @@ const DRAG_THRESHOLD = 0.5
 // Clicks on empty staff remember a paste position on this grid (a 16th).
 const CLICK_GRID = 240
 // Length of the tone played over each new line or space (seconds).
-const PLACEMENT_TONE = 0.12
+const PLACEMENT_TONE = 0.25
 // Chord preview (staff spaces): a second's upper note sits this far right;
 // the name sits this far above the top note, at this size.
 const SECOND_OFFSET = 1.2
@@ -58,21 +62,22 @@ export default {
 
     this.onMove = (e) => {
       if (this.band) return this.dragBand(e)
-      if (this.lift) return this.moveLift(e)
+      if (this.pending) return this.movePending(e)
+      if (this.drag) return this.moveDrag(e)
       if (this.tieDrag) return this.dragTie(e)
       this.hover(e)
     }
-    this.onLeave = () => this.clearGhost()
+    this.onLeave = () => this.pressing || this.clearGhost()
     this.onDown = (e) => this.pointerDown(e)
     this.onUp = (e) => this.pointerUp(e)
+    this.onCancel = () => this.cancelPress()
     this.onKey = (e) => this.key(e)
     this.onContext = (e) => this.contextMenu(e)
     // Browsers allow audio only after a gesture: the first press, of a
-    // pointer or a key, starts both clocks.
+    // pointer or a key, starts the audio clocks.
     this.onFirstGesture = () => {
       window.removeEventListener("pointerdown", this.onFirstGesture)
       window.removeEventListener("keydown", this.onFirstGesture)
-      this.startAudio()
       this.audio.unlock()
     }
 
@@ -80,6 +85,7 @@ export default {
     this.el.addEventListener("pointerleave", this.onLeave)
     this.el.addEventListener("pointerdown", this.onDown)
     this.el.addEventListener("pointerup", this.onUp)
+    this.el.addEventListener("pointercancel", this.onCancel)
     window.addEventListener("keydown", this.onKey)
     window.addEventListener("contextmenu", this.onContext)
     window.addEventListener("pointerdown", this.onFirstGesture)
@@ -174,7 +180,7 @@ export default {
     this.el.classList.toggle("play-mode", this.mode === "play")
     this.overlay.setAttribute("viewBox", this.score.getAttribute("viewBox"))
     this.setPageCursor(this.armed && this.armed.glyph)
-    if (!this.armed) this.clearGhost()
+    if (!this.armed && !this.drag) this.clearGhost()
   },
 
   // Pointer → staff-space coordinates of the score's viewBox.
@@ -197,12 +203,13 @@ export default {
     return {...at, offset, modifier}
   },
 
+  // The ghost follows the pointer; it sounds only while the button is down.
   hover(e) {
     const t = this.target(e)
     if (!t) return this.clearGhost()
     this.drawGhost(t)
 
-    if (this.armed.kind === "rest") return
+    if (!this.pressing || this.armed.kind === "rest") return
     const alter = t.modifier ?? this.armed.alter
     const sound = `${t.staff}:${t.step}:${alter}`
     if (sound !== this.lastSound) {
@@ -216,20 +223,18 @@ export default {
     if (e.button !== 0) return
     // The bar controls are ordinary buttons.
     if (e.target.closest("button")) return
-    if (this.lift) return this.dropLift(e)
 
     const hit = eventTarget(e)
     // Play mode: a note sounds its chord; anywhere else starts a range selection.
     if (this.mode === "play" && hit) return hit.kind === "note" && this.pushEvent("audition", {id: hit.id})
     if (this.mode === "play") return this.startBand(e)
     if (this.armed && this.armed.kind === "tie") return hit && hit.kind === "note" && this.startTie(e, hit)
-    if (this.armed) return this.place(e)
+    if (this.armed) return this.startPress(e)
 
+    // A note or rest: selected on release, unless a note is dragged first.
     if (hit) {
-      // Shift-click toggles; a rest selects alone; a note is picked up.
-      if (e.shiftKey) return this.pushEvent("select", {ids: [hit.id], add: true})
-      if (hit.kind === "rest") return this.pushEvent("select", {ids: [hit.id], add: false})
-      return this.startLift(e, hit)
+      this.pending = {hit, start: this.toScore(e), shift: e.shiftKey}
+      return this.el.setPointerCapture(e.pointerId)
     }
 
     this.startBand(e)
@@ -241,50 +246,102 @@ export default {
     this.el.setPointerCapture(e.pointerId)
   },
 
-  // Pick-up: the clicked note (with the selection, if it is selected)
-  // follows the pointer by scale steps until a second click drops it.
-  startLift(e, hit) {
-    const clicked = document.getElementById(`note-${hit.id}`)
-    const elements = clicked.classList.contains("selected")
+  // Placing: the press sounds the armed piece, each new line or space
+  // sounds while it is held, and letting go places it.
+  startPress(e) {
+    this.pressing = true
+    this.lastSound = null
+    this.el.setPointerCapture(e.pointerId)
+    this.hover(e)
+  },
+
+  // A press on a note becomes a drag once the pointer has moved far enough.
+  movePending(e) {
+    const {hit, start} = this.pending
+    const point = this.toScore(e)
+    if (hit.kind !== "note" || Math.hypot(point.x - start.x, point.y - start.y) < DRAG_THRESHOLD) return
+    this.pending = null
+    this.startDrag(hit)
+    this.moveDrag(e)
+  },
+
+  // The pressed note drags alone, or with the selection if it is selected.
+  // One note on its own may move to the other staff; several keep their staves.
+  startDrag(hit) {
+    const pressed = document.getElementById(`note-${hit.id}`)
+    const elements = pressed.classList.contains("selected")
       ? [...this.score.querySelectorAll(".selected[id^='note-']")]
-      : [clicked]
-    const point = this.toScore(e)
-    const at = locate(this.geometry, point.x, point.y)
-    if (!at) return
+      : [pressed]
 
-    this.lift = {elements, ids: elements.map((el) => el.id.slice(5)), at, delta: 0, modifier: null}
-    this.play(pitchOf(at.step, null, this.geometry.sf))
+    const notes = elements.map((el) => {
+      const staff = el.dataset.staff
+      const y = Number(el.getAttribute("y"))
+      const system = this.geometry.systems[Number(el.closest("[id^='system-']").id.slice(7))]
+      return {el, id: el.id.slice(5), staff, step: stepAtY(this.geometry, staff, y), x: Number(el.getAttribute("x")), system}
+    })
+
+    const anchor = notes.find((note) => note.id === hit.id)
+    elements.forEach((el) => el.classList.add("dragging"))
+    // delta starts unset, so the first move draws and sounds the preview.
+    this.drag = {notes, anchor, single: notes.length === 1, delta: null, staff: anchor.staff, modifier: null}
   },
 
-  moveLift(e) {
+  // Where the dragged notes would land, drawn and sounded on each change.
+  moveDrag(e) {
     const point = this.toScore(e)
-    const {at} = this.lift
-    const delta = stepOnStaff(this.geometry, at.system, at.staff, point.y) - at.step
+    const {anchor} = this.drag
     const modifier = e.shiftKey ? 1 : e.ctrlKey || e.altKey ? -1 : null
+    const {staff, step} = this.drag.single
+      ? staffStepAt(this.geometry, anchor.system, point.y)
+      : {staff: anchor.staff, step: stepOnStaff(this.geometry, anchor.system, anchor.staff, point.y)}
+    const delta = step - anchor.step
 
-    if (delta !== this.lift.delta || modifier !== this.lift.modifier) {
-      this.lift.delta = delta
-      this.lift.modifier = modifier
-      this.lift.elements.forEach((el) => el.setAttribute("transform", `translate(0 ${-delta / 2})`))
-      this.play(pitchOf(at.step + delta, modifier, this.geometry.sf))
-    }
+    if (delta === this.drag.delta && staff === this.drag.staff && modifier === this.drag.modifier) return
+    Object.assign(this.drag, {delta, staff, modifier})
+    this.drawDrag()
+    this.play(this.dragTargets().map((t) => pitchOf(t.step, modifier, this.geometry.sf)))
   },
 
-  dropLift(e) {
-    const {ids, delta, modifier} = this.endLift()
-    if (delta === 0 && modifier === null) return
-    const params = {ids, steps: delta}
+  // Each dragged note's landing place: its staff (the pointer's, for one
+  // note alone) and step.
+  dragTargets() {
+    const {notes, single, staff, delta} = this.drag
+    return notes.map((note) => ({...note, staff: single ? staff : note.staff, step: note.step + delta}))
+  },
+
+  // Lands the dragged notes. Let go where it started, the drag is a click.
+  endDrag(e) {
+    const {single, staff, delta, modifier, anchor} = this.drag
+    const targets = this.dragTargets()
+    this.cancelDrag()
+    if (delta === 0 && staff === anchor.staff && modifier === null) return this.select({hit: anchor, shift: e.shiftKey})
+
+    const ids = targets.map((t) => t.id)
+    const params = single ? {ids, staff, step: targets[0].step} : {ids, steps: delta}
     if (modifier !== null) params.alter = modifier
-    e.preventDefault()
     this.pushEvent("drop", params)
   },
 
-  // Puts lifted notes back; returns what was lifted.
-  endLift() {
-    const lift = this.lift
-    this.lift = null
-    lift.elements.forEach((el) => el.removeAttribute("transform"))
-    return lift
+  cancelDrag() {
+    if (!this.drag) return
+    this.drag.notes.forEach((note) => note.el.classList.remove("dragging"))
+    this.drag = null
+    this.clearGhost()
+  },
+
+  // A click on a note or rest: Shift toggles it, else it alone is selected.
+  select({hit, shift}) {
+    this.pushEvent("select", {ids: [hit.id], add: shift})
+  },
+
+  // Abandons whatever the pointer was doing.
+  cancelPress() {
+    this.pending = null
+    this.pressing = false
+    this.band = null
+    this.tieDrag = null
+    this.cancelDrag()
+    this.clearGhost()
   },
 
   // Tie tool: drag from one note to another.
@@ -313,6 +370,16 @@ export default {
 
   pointerUp(e) {
     if (this.tieDrag) return this.endTie(e)
+    if (this.drag) return this.endDrag(e)
+    if (this.pending) {
+      const pending = this.pending
+      this.pending = null
+      return this.select(pending)
+    }
+    if (this.pressing) {
+      this.pressing = false
+      return this.place(e)
+    }
     if (!this.band) return
     const {start, end} = this.band
     this.band = null
@@ -381,10 +448,11 @@ export default {
     if (this.mode === "play") return this.playKey(e, send)
 
     if (e.key === "Escape") {
-      if (this.lift) {
+      if (this.drag || this.pending) {
         e.preventDefault()
-        return this.endLift()
+        return this.cancelPress()
       }
+      this.pressing = false
       return send(this.armed ? "disarm" : "clear_selection")
     }
 
@@ -421,17 +489,18 @@ export default {
     }
   },
 
-  // Right-click: cancels placing or a pick-up; on a note or rest, opens
-  // its menu (or the selection's, if it is selected).
+  // Right-click: cancels placing or a drag; on a note or rest, opens its
+  // menu (or the selection's, if it is selected).
   contextMenu(e) {
     if (this.mode === "play") return
     if (this.armed) {
       e.preventDefault()
+      this.pressing = false
       return this.pushEvent("disarm", {})
     }
-    if (this.lift) {
+    if (this.drag || this.pending) {
       e.preventDefault()
-      return this.endLift()
+      return this.cancelPress()
     }
 
     const hit = this.el.contains(e.target) && eventTarget(e)
@@ -507,6 +576,31 @@ export default {
     g.appendChild(label)
   },
 
+  // The dragged notes' heads where they would land, with their ledger
+  // lines and the accidental a modifier adds; the originals stay faded.
+  drawDrag() {
+    this.clearGhost()
+    const {anchor, modifier} = this.drag
+    const g = document.createElementNS(SVG, "g")
+    g.setAttribute("transform", `translate(0 ${anchor.system.y})`)
+    g.setAttribute("fill", "currentColor")
+    g.setAttribute("opacity", "0.6")
+    g.style.color = "var(--score-ink)"
+
+    for (const t of this.dragTargets()) {
+      const y = stepY(this.geometry, t.staff, t.step)
+      for (const step of ledgerSteps(this.geometry, t.staff, t.step)) {
+        const ly = stepY(this.geometry, t.staff, step)
+        const line = document.createElementNS(SVG, "line")
+        Object.entries({x1: t.x - 0.4, x2: t.x + 1.6, y1: ly, y2: ly, stroke: "currentColor", "stroke-width": 0.16}).forEach(([k, v]) => line.setAttribute(k, v))
+        g.appendChild(line)
+      }
+      if (modifier !== null) g.appendChild(this.glyph(ACCIDENTALS[modifier], t.x - 1.3, y))
+      g.appendChild(this.glyph(t.el.textContent, t.x, y))
+    }
+    this.overlay.appendChild(g)
+  },
+
   glyph(char, x, y) {
     const text = document.createElementNS(SVG, "text")
     text.setAttribute("x", x)
@@ -535,20 +629,9 @@ export default {
     document.head.appendChild(style)
   },
 
-  // Browsers only allow audio after a user gesture.
-  async startAudio() {
-    await Tone.start()
-    this.synth = new Tone.PolySynth(Tone.Synth, {
-      oscillator: {type: "triangle"},
-      envelope: {attack: 0.005, decay: 0.1, sustain: 0.2, release: 0.2},
-    }).toDestination()
-  },
-
-  // The placement beep (until parts bring per-instrument tones): one MIDI
-  // number, or a chord's, sounded together.
+  // The tone for placing and dragging, on the playback instrument: one
+  // MIDI number, or a chord's, sounded together.
   play(midis) {
-    if (!this.synth) return
-    const notes = [midis].flat().map((midi) => Tone.Frequency(midi, "midi").toFrequency())
-    this.synth.triggerAttackRelease(notes, PLACEMENT_TONE)
+    this.audio.preview([midis].flat(), PLACEMENT_TONE)
   },
 }

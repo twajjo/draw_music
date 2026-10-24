@@ -31,12 +31,30 @@ defmodule DrawMusicWeb.EditorCommands do
   }
   @octave Map.fetch!(@intervals, "P8")
 
-  @doc "Drops picked-up notes `steps` scale steps away, with `alter` if a modifier was held."
+  @doc """
+  Drops dragged notes `steps` scale steps away, with `alter` if a modifier
+  was held. Gives their ids.
+  """
   @spec drop([Ecto.UUID.t()], integer(), -2..2 | nil) :: edit()
   def drop(ids, steps, alter) do
     fn score, ctx ->
-      with {:ok, score} <- Editing.move_steps(score, ctx, ids, steps) do
-        maybe_alter(score, ctx, ids, alter)
+      with {:ok, score} <- Editing.move_steps(score, ctx, ids, steps),
+           {:ok, score} <- maybe_alter(score, ctx, ids, alter) do
+        {:ok, score, ids}
+      end
+    end
+  end
+
+  @doc """
+  Drops one note on `step` of `staff`, which may be the other staff, with
+  `alter` if a modifier was held. Gives the note's id (new if it changed staff).
+  """
+  @spec drop_on_staff(Ecto.UUID.t(), Note.staff(), integer(), -2..2 | nil) :: edit()
+  def drop_on_staff(id, staff, step, alter) do
+    fn score, ctx ->
+      with {:ok, score, id} <- Editing.move_to_staff(score, ctx, id, staff, step),
+           {:ok, score} <- maybe_alter(score, ctx, [id], alter) do
+        {:ok, score, [id]}
       end
     end
   end

@@ -21,6 +21,7 @@ defmodule DrawMusic.Music.Editing do
     Clipboard,
     Context,
     Duration,
+    Gaps,
     Measure,
     Note,
     Pitch,
@@ -208,6 +209,55 @@ defmodule DrawMusic.Music.Editing do
         %{note | step: step, alter: Pitch.key_alter(ctx.sf, Pitch.letter(step))}
       end)
     end)
+  end
+
+  @doc """
+  Moves note `id` onto `step` of `staff`, keeping its time, value and dots;
+  it lands on the key's version of the new letter. On another staff it
+  leaves its chord and voice and goes in the lowest voice it fits there.
+  Returns the moved note's id, which is new when the staff changes.
+  """
+  @spec move_to_staff(Score.t(), Context.t(), id(), Note.staff(), integer()) ::
+          {:ok, Score.t(), id()} | {:error, reason()}
+  def move_to_staff(%Score{} = score, %Context{} = ctx, id, staff, step) do
+    case find_entry(Timeline.flatten(score, ctx), id) do
+      {:ok, %{kind: :note, event: %{staff: ^staff} = note}} ->
+        with {:ok, score} <- move_steps(score, ctx, [id], step - note.step) do
+          {:ok, score, id}
+        end
+
+      {:ok, %{kind: :note} = entry} ->
+        restaff(score, ctx, entry, staff, step)
+
+      {:ok, _rest} ->
+        {:error, :not_found}
+
+      error ->
+        error
+    end
+  end
+
+  defp restaff(score, ctx, %{event: note} = entry, staff, step) do
+    {index, {bar_start, _capacity}} =
+      score
+      |> Timeline.bars(ctx)
+      |> Enum.with_index()
+      |> Enum.find_value(fn {{start, capacity} = bar, index} ->
+        entry.start >= start and entry.start < start + capacity and {index, bar}
+      end)
+
+    placement = %Placement{
+      staff: staff,
+      offset: entry.start - bar_start,
+      value: note.value,
+      dots: note.dots,
+      step: step,
+      alter: Pitch.key_alter(ctx.sf, Pitch.letter(step))
+    }
+
+    with {:ok, score} <- remove(score, ctx, [note.id]) do
+      place_note(score, ctx, index, placement)
+    end
   end
 
   @doc """
@@ -862,60 +912,16 @@ defmodule DrawMusic.Music.Editing do
       measures
       |> Enum.zip(Timeline.bars(score, ctx))
       |> Enum.map(fn {measure, {_start, capacity}} ->
-        rests =
-          Enum.flat_map(voices_in(measure), &gap_rests(measure, &1, capacity)) ++ measure.rests
+        gap_rests =
+          measure
+          |> Gaps.rests(capacity)
+          |> Enum.map(&%{&1 | id: Ecto.UUID.generate()})
 
+        rests = gap_rests ++ measure.rests
         %{measure | rests: Enum.sort_by(rests, &{&1.offset, &1.staff, &1.voice})}
       end)
 
     %{score | measures: filled}
-  end
-
-  defp voices_in(measure) do
-    Enum.uniq([{:treble, 1}, {:bass, 1} | Enum.map(measure.notes, &{&1.staff, &1.voice})])
-  end
-
-  defp gap_rests(measure, {staff, voice}, capacity) do
-    occupied =
-      for event <- measure.notes ++ measure.rests, event.staff == staff, event.voice == voice do
-        {event.offset, event.offset + Duration.ticks(event.value, event.dots)}
-      end
-      |> Enum.sort()
-
-    {gaps, cursor} =
-      Enum.reduce(occupied, {[], 0}, fn {from, to}, {gaps, cursor} ->
-        {add_gap(gaps, cursor, from), max(cursor, to)}
-      end)
-
-    gaps
-    |> add_gap(cursor, capacity)
-    |> Enum.flat_map(&rests_for_gap(&1, staff, voice))
-  end
-
-  defp add_gap(gaps, from, to) when to > from, do: [{from, to - from} | gaps]
-  defp add_gap(gaps, _from, _to), do: gaps
-
-  defp rests_for_gap({offset, len}, staff, voice) do
-    case Duration.decompose(len) do
-      {:ok, values} ->
-        values
-        |> Enum.map_reduce(offset, fn {value, dots}, at ->
-          rest = %Rest{
-            id: Ecto.UUID.generate(),
-            staff: staff,
-            voice: voice,
-            offset: at,
-            value: value,
-            dots: dots
-          }
-
-          {rest, at + Duration.ticks(value, dots)}
-        end)
-        |> elem(0)
-
-      {:error, _reason} ->
-        []
-    end
   end
 
   ## Rebuilding

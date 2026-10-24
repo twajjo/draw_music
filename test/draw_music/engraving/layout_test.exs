@@ -81,8 +81,21 @@ defmodule DrawMusic.Engraving.LayoutTest do
     test "an empty staff shows a whole-bar rest" do
       {score, _id} = place("C5", %{})
       rests = role(Layout.layout(score, @ctx), :rest)
-      assert [%{glyph: :restWhole, id: nil, y: y}] = rests
+      assert [%{y: y}] = Enum.filter(rests, &(&1.glyph == :restWhole and &1.id == nil))
       assert y == Staff.top(:bass) + 1
+    end
+
+    test "the gaps around a note show implied rests, on the beats" do
+      {score, _id} = place("C5", %{})
+
+      treble_rests =
+        score
+        |> Layout.layout(@ctx)
+        |> role(:rest)
+        |> Enum.reject(&(&1.glyph == :restWhole))
+
+      assert [%{glyph: :restQuarter, id: nil}, %{glyph: :restHalf, id: nil}] =
+               Enum.sort_by(treble_rests, & &1.x)
     end
 
     test "a note tied in from the previous bar shows no accidental, nor do later ones in that bar" do

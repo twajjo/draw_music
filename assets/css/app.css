@@ -133,6 +133,11 @@
   fill: var(--score-selection);
 }
 
+/* A note being dragged: the original fades while its preview follows the pointer. */
+#score .dragging {
+  opacity: 0.3;
+}
+
 #score .playing {
   fill: var(--color-warning);
 }

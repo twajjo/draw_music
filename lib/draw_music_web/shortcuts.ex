@@ -46,16 +46,17 @@ defmodule DrawMusicWeb.Shortcuts do
     },
     %Shortcut{
       group: "Placing",
-      mouse: "click staff",
+      mouse: "press, drag, let go",
       modes: @edit,
-      action: "Place the picked note or rest; it snaps to the nearest line or space",
+      action:
+        "Press on the staff to hear the picked note, drag up or down to hear each line and space, and let go to place it",
       diagram: :ghost_snap
     },
     %Shortcut{
       group: "Placing",
       mouse: "shift-click",
       modes: @edit,
-      action: "Place it sharp (hold Shift while placing or picking up)",
+      action: "Place it sharp (hold Shift while placing or dragging)",
       diagram: :accidental_modifiers
     },
     %Shortcut{
@@ -81,7 +82,15 @@ defmodule DrawMusicWeb.Shortcuts do
       group: "Selecting and moving",
       mouse: "click note",
       modes: @edit,
-      action: "Pick a note up; it follows the pointer by scale steps; click again to drop it"
+      action:
+        "Select a note or rest; Delete, the arrows, the menu and the palette's dot and accidentals act on it"
+    },
+    %Shortcut{
+      group: "Selecting and moving",
+      mouse: "drag note",
+      modes: @edit,
+      action:
+        "Move it up or down, hearing each step; it lands when you let go. Alone it can move to the other staff; a selected note brings the selection"
     },
     %Shortcut{
       group: "Selecting and moving",
