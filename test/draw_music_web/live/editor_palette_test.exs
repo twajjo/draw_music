@@ -16,6 +16,14 @@ defmodule DrawMusicWeb.EditorPaletteTest do
     assert has_element?(view, "#palette-eighth[aria-pressed=true]")
   end
 
+  # Browsers send a clicked button's own `value` as the event's "value",
+  # replacing phx-value-value; LiveViewTest doesn't, so check the attribute.
+  test "value buttons carry their value for the browser", %{view: view} do
+    assert has_element?(view, "#palette-quarter[value=quarter]")
+    view |> element("#palette-rest-toggle") |> render_click()
+    assert has_element?(view, "#palette-eighth[value=eighth]")
+  end
+
   test "arming the same item twice keeps it armed; lock keeps it armed and locked", %{view: view} do
     view |> element("#palette-eighth") |> render_click()
     view |> element("#palette-eighth") |> render_click()

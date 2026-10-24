@@ -399,7 +399,7 @@ defmodule DrawMusicWeb.PaletteComponents do
       data-locked={@locked}
       phx-click={@event}
       phx-value-kind={@kind}
-      phx-value-value={@value}
+      value={@value}
       phx-value-alter={@alter}
       class={piece_class(@pressed)}
     >

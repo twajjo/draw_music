@@ -237,7 +237,7 @@ defmodule DrawMusicWeb.EditorComponents do
           title={label}
           aria-label={label}
           phx-click="set_value"
-          phx-value-value={value}
+          value={value}
           class="grid h-8 w-7 place-items-center rounded transition-colors hover:bg-base-200"
         >
           <span class="font-['Bravura'] text-xl leading-none">{Smufl.char(glyph)}</span>

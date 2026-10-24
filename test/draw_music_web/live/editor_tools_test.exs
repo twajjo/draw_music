@@ -89,6 +89,13 @@ defmodule DrawMusicWeb.EditorToolsTest do
       refute has_element?(view, "#context-menu")
     end
 
+    # The browser sends a button's own `value`, not phx-value-value.
+    test "length buttons carry their value for the browser", %{view: view} do
+      put_notes(view, [{0, "C4"}])
+      open_menu(view, 0)
+      assert has_element?(view, "#menu-length-half[value=half]")
+    end
+
     test "split", %{view: view} do
       put_notes(view, [{0, "C4"}])
       open_menu(view, 0)
