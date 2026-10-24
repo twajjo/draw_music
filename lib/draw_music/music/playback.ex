@@ -53,6 +53,35 @@ defmodule DrawMusic.Music.Playback do
   end
 
   @doc """
+  The chord a note belongs to, to sound at once: every note on its staff
+  that starts with it, each for its own written length, timed from 0.
+  Nothing for a rest or an unknown id.
+  """
+  @spec chord_at(Score.t(), Context.t(), Ecto.UUID.t()) :: [PlaybackEvent.t()]
+  def chord_at(%Score{} = score, %Context{} = ctx, id) do
+    notes = for %{kind: :note} = entry <- Timeline.flatten(score, ctx), do: entry
+
+    case Enum.find(notes, &(&1.event.id == id)) do
+      nil ->
+        []
+
+      clicked ->
+        for entry <- notes,
+            entry.start == clicked.start,
+            entry.event.staff == clicked.event.staff do
+          event(
+            [entry.event.id],
+            Note.midi(entry.event),
+            entry.start,
+            entry.start,
+            entry.ticks,
+            ctx
+          )
+        end
+    end
+  end
+
+  @doc """
   Sounds to play, timed in seconds at the context's tempo. Options:
   `:from` and `:to` (ticks) limit playback to sounds starting in that span;
   times are relative to `:from`.
@@ -62,17 +91,22 @@ defmodule DrawMusic.Music.Playback do
   def events(%Score{} = score, %Context{} = ctx, opts \\ []) do
     from = Keyword.get(opts, :from, 0)
     to = Keyword.get(opts, :to)
-    seconds_per_tick = @seconds_per_minute / (ctx.tempo_bpm * Duration.ppq())
 
     for sound <- sounds(score, ctx), sound.start >= from, is_nil(to) or sound.start < to do
-      %PlaybackEvent{
-        ids: sound.ids,
-        midi: sound.midi,
-        frequency: Pitch.frequency(sound.midi),
-        tick: sound.start,
-        start: (sound.start - from) * seconds_per_tick,
-        duration: sound.ticks * seconds_per_tick
-      }
+      event(sound.ids, sound.midi, sound.start, from, sound.ticks, ctx)
     end
+  end
+
+  defp event(ids, midi, tick, from, ticks, ctx) do
+    seconds_per_tick = @seconds_per_minute / (ctx.tempo_bpm * Duration.ppq())
+
+    %PlaybackEvent{
+      ids: ids,
+      midi: midi,
+      frequency: Pitch.frequency(midi),
+      tick: tick,
+      start: (tick - from) * seconds_per_tick,
+      duration: ticks * seconds_per_tick
+    }
   end
 end

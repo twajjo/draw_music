@@ -143,6 +143,8 @@ export default {
   readState() {
     this.geometry = JSON.parse(this.el.dataset.geometry)
     this.armed = JSON.parse(this.el.dataset.armed || "null")
+    this.mode = this.el.dataset.mode || "edit"
+    this.el.classList.toggle("play-mode", this.mode === "play")
     this.overlay.setAttribute("viewBox", this.score.getAttribute("viewBox"))
     this.setPageCursor(this.armed && this.armed.glyph)
     if (!this.armed) this.clearGhost()
@@ -189,6 +191,9 @@ export default {
     if (this.lift) return this.dropLift(e)
 
     const hit = eventTarget(e)
+    // Play mode: a note sounds its chord; anywhere else starts a range selection.
+    if (this.mode === "play" && hit) return hit.kind === "note" && this.pushEvent("audition", {id: hit.id})
+    if (this.mode === "play") return this.startBand(e)
     if (this.armed && this.armed.kind === "tie") return hit && hit.kind === "note" && this.startTie(e, hit)
     if (this.armed) return this.place(e)
 
@@ -199,6 +204,10 @@ export default {
       return this.startLift(e, hit)
     }
 
+    this.startBand(e)
+  },
+
+  startBand(e) {
     const start = this.toScore(e)
     this.band = {start, end: start}
     this.el.setPointerCapture(e.pointerId)
@@ -346,10 +355,15 @@ export default {
       return send(this.armed ? "disarm" : "clear_selection")
     }
 
-    // ↑/↓: a scale step (Shift: an octave, Ctrl: a semitone); ←/→: a beat.
-    const dirs = {ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right"}
+    // Playback and mode keys work in both modes; the rest only edit.
     if (e.key === " " && !ctrl) return send("play")
     if (e.key === "Home" && !ctrl) return send("rewind")
+    if (k === "l" && !ctrl && !e.altKey) return send("toggle_loop")
+    if (k === "p" && !ctrl && !e.altKey) return send("toggle_mode")
+    if (this.mode === "play") return
+
+    // ↑/↓: a scale step (Shift: an octave, Ctrl: a semitone); ←/→: a beat.
+    const dirs = {ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right"}
     if (dirs[e.key]) {
       const by = e.shiftKey ? "octave" : ctrl ? "semitone" : "step"
       return send("move", {dir: dirs[e.key], by})
@@ -367,12 +381,12 @@ export default {
     if (k === "r") return send("toggle_rest")
     if (e.key === ".") return send("toggle_dot")
     if (k === "t") return send("arm_tie")
-    if (k === "l") return send("toggle_loop")
   },
 
   // Right-click: cancels placing or a pick-up; on a note or rest, opens
   // its menu (or the selection's, if it is selected).
   contextMenu(e) {
+    if (this.mode === "play") return
     if (this.armed) {
       e.preventDefault()
       return this.pushEvent("disarm", {})

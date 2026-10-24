@@ -42,6 +42,10 @@ defmodule DrawMusicWeb.EditorLive do
 
   @draft_measures 4
   @menu_events ~w(split set_value toggle_menu_dot to_rest to_note tie_next untie menu_delete transpose reverse)
+  # Everything that changes the score or arms the palette; Play mode ignores them.
+  @edit_events ~w(arm lock arm_value arm_chord arm_tie toggle_rest toggle_dot set_accidental
+                  toggle_insert place move delete cut paste drop tie open_menu menu_copy menu_cut
+                  insert_measure delete_measure add_measure undo redo) ++ @menu_events
 
   @impl true
   def render(assigns) do
@@ -88,6 +92,7 @@ defmodule DrawMusicWeb.EditorLive do
         can_undo?={@session.undo != []}
         can_redo?={@session.redo != []}
         mode={@session.ctx.mode}
+        editor_mode={@editor_mode}
         playback={@playback}
         loop?={@loop?}
         instrument_name={@instrument_source.name}
@@ -119,6 +124,7 @@ defmodule DrawMusicWeb.EditorLive do
           data-armed={Jason.encode!(EditorGeometry.armed(@armed))}
           data-dirty={to_string(@session.dirty?)}
           data-instrument={Jason.encode!(@instrument_source)}
+          data-mode={@editor_mode}
         >
           <.score
             id="score"
@@ -161,7 +167,7 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign(:session, Session.new(version.score, Context.from_version(version)))
      |> assign(armed: nil, row_kind: :note, insert?: false, last_click: nil, menu: nil)
      |> assign(save_as_form: nil, settings_form: nil, pending_key: nil)
-     |> assign(playback: :idle, loop?: false)
+     |> assign(playback: :idle, loop?: false, editor_mode: :edit)
      # The tempo marking and instrument aren't part of the score's Context;
      # they're saved beside it.
      |> assign(:tempo_text, version.tempo_text)
@@ -181,9 +187,38 @@ defmodule DrawMusicWeb.EditorLive do
     {composition, version, "#{composition.name} · #{Key.name(version.key)} v#{version.number}"}
   end
 
-  ## Palette
+  ## Modes
 
   @impl true
+  def handle_event(event, _params, %{assigns: %{editor_mode: :play}} = socket)
+      when event in @edit_events do
+    {:noreply, socket}
+  end
+
+  def handle_event("toggle_mode", params, socket) do
+    mode = next_mode(params["mode"], socket.assigns.editor_mode)
+    {:noreply, assign(socket, editor_mode: mode, armed: nil, menu: nil)}
+  end
+
+  # Play mode: a click on a note sounds its chord and makes it the start point.
+  def handle_event("audition", %{"id" => id}, %{assigns: %{editor_mode: :play}} = socket)
+      when is_binary(id) do
+    %{session: session} = socket.assigns
+
+    case Playback.chord_at(session.score, session.ctx, id) do
+      [] ->
+        {:noreply, socket}
+
+      events ->
+        {:noreply,
+         socket
+         |> update(:session, &Session.select(&1, [id], false))
+         |> push_event("audition", %PlaybackPayload{events: events, loop: false})}
+    end
+  end
+
+  ## Palette
+
   def handle_event("arm", %{"kind" => kind, "value" => value}, socket) do
     {:noreply, arm(socket, EditorPalette.arm(socket.assigns.armed, kind, value))}
   end
@@ -654,6 +689,11 @@ defmodule DrawMusicWeb.EditorLive do
 
   defp disarm_unless_locked(%{assigns: %{armed: %{locked?: true}}} = socket), do: socket
   defp disarm_unless_locked(socket), do: assign(socket, :armed, nil)
+
+  defp next_mode("play", _current), do: :play
+  defp next_mode("edit", _current), do: :edit
+  defp next_mode(_toggle, :edit), do: :play
+  defp next_mode(_toggle, :play), do: :edit
 
   defp beats("left"), do: -1
   defp beats("right"), do: 1

@@ -52,6 +52,7 @@ defmodule DrawMusicWeb.PaletteComponents do
   attr :can_undo?, :boolean, default: false
   attr :can_redo?, :boolean, default: false
   attr :mode, :atom, default: :major, doc: "the key's mode, for chord numerals"
+  attr :editor_mode, :atom, default: :edit, values: [:edit, :play]
   attr :playback, :atom, default: :idle, values: [:idle, :loading, :playing, :paused]
   attr :loop?, :boolean, default: false
   attr :instrument_name, :string, default: "the instrument", doc: "named while it loads"
@@ -74,123 +75,156 @@ defmodule DrawMusicWeb.PaletteComponents do
       aria-label="Palette"
       class="sticky top-0 z-20 flex flex-wrap items-center gap-2 border-b border-base-300 bg-base-100/95 px-1 py-2 backdrop-blur"
     >
-      <div class="join" role="group" aria-label="Durations">
-        <.piece
-          :for={{value, label, key, note_glyph, rest_glyph} <- @values}
-          id={"palette-#{value}"}
-          event="arm"
-          kind={@row_kind}
-          value={value}
-          title={"#{label} #{if @row_kind == :rest, do: "rest", else: "note"} (#{key})"}
-          pressed={armed?(@armed, [:note, :rest], value)}
-          locked={@armed && @armed.locked? && armed?(@armed, [:note, :rest], value)}
-          lockable
-        >
-          {Smufl.char(if @row_kind == :rest, do: rest_glyph, else: note_glyph)}
-        </.piece>
-      </div>
-
-      <div class="join" role="group" aria-label="Modifiers">
-        <.piece
-          id="palette-rest-toggle"
-          event="toggle_rest"
-          title="Rests instead of notes (R)"
-          pressed={@row_kind == :rest}
-        >
-          {Smufl.char(:restQuarter)}
-        </.piece>
-        <.piece
-          id="palette-dot"
-          event="toggle_dot"
-          title="Dotted (.)"
-          pressed={@armed != nil and Map.get(@armed, :dots, 0) > 0}
-        >
-          {Smufl.char(:augmentationDot)}
-        </.piece>
-        <.piece
+      <div class="join" role="group" aria-label="Mode">
+        <button
           :for={
-            {id, alter, glyph, label} <- [
-              {"sharp", 1, :accidentalSharp, "Sharp (hold Shift)"},
-              {"flat", -1, :accidentalFlat, "Flat (hold Ctrl or Alt)"},
-              {"natural", 0, :accidentalNatural, "Natural"}
+            {mode, label, icon} <- [
+              {:edit, "Edit", "hero-pencil"},
+              {:play, "Play", "hero-speaker-wave"}
             ]
           }
-          id={"palette-#{id}"}
-          event="set_accidental"
-          alter={alter}
-          title={label}
-          pressed={@armed != nil and Map.get(@armed, :alter) == alter}
-        >
-          {Smufl.char(glyph)}
-        </.piece>
-      </div>
-
-      <div class="join" role="group" aria-label="Ties and chords">
-        <button
-          id="palette-tie"
+          id={"palette-mode-#{mode}"}
           type="button"
-          title="Tie: drag from one note to the next (T)"
-          aria-pressed={to_string(armed?(@armed, [:tie]))}
-          phx-click="arm_tie"
-          class={piece_class(armed?(@armed, [:tie]))}
+          title={"#{label} mode (P)"}
+          aria-pressed={to_string(@editor_mode == mode)}
+          phx-click="toggle_mode"
+          phx-value-mode={mode}
+          class={[
+            "btn btn-sm join-item gap-1 transition-colors",
+            if(@editor_mode == mode, do: "btn-neutral", else: "btn-ghost")
+          ]}
         >
-          <svg viewBox="0 0 24 12" class="h-3 w-6" aria-hidden="true">
-            <path d="M2 3 Q12 12 22 3 Q12 9 2 3Z" fill="currentColor" />
-          </svg>
+          <.icon name={icon} class="size-4" />
+          {label}
         </button>
-        <details id="palette-chords-menu" class="dropdown join-item">
-          <summary
-            id="palette-chords"
-            aria-pressed={to_string(armed?(@armed, [:chord]))}
-            title="Place a chord"
-            class={[piece_class(armed?(@armed, [:chord])), "w-auto gap-1 px-3 text-sm"]}
-          >
-            Chords <.icon name="hero-chevron-down-micro" class="size-4 opacity-60" />
-          </summary>
-          <div class="dropdown-content z-30 mt-1 w-72 rounded-box border border-base-300 bg-base-100 p-3 shadow-lg">
-            <p class="mb-1 text-xs opacity-60">Built on the note you click</p>
-            <div class="grid grid-cols-4 gap-1">
-              <button
-                :for={{quality, label} <- @qualities}
-                id={"palette-chord-#{quality}"}
-                type="button"
-                phx-click="arm_chord"
-                phx-value-quality={quality}
-                class={chip_class(@armed && @armed.chord == {:quality, quality})}
-              >
-                {label}
-              </button>
-            </div>
-            <p class="mt-3 mb-1 text-xs opacity-60">In the key, on the octave you click</p>
-            <div class="grid grid-cols-7 gap-1">
-              <button
-                :for={{numeral, degree} <- Enum.with_index(@numerals, 1)}
-                id={"palette-degree-#{degree}"}
-                type="button"
-                phx-click="arm_chord"
-                phx-value-degree={degree}
-                class={chip_class(@armed && @armed.chord == {:degree, degree})}
-              >
-                {numeral}
-              </button>
-            </div>
-          </div>
-        </details>
       </div>
 
-      <button
-        id="palette-insert"
-        type="button"
-        title="Insert: later music on that staff moves right (Ins)"
-        aria-pressed={to_string(@insert?)}
-        phx-click="toggle_insert"
+      <div
+        data-group="editing"
+        inert={@editor_mode == :play}
         class={[
-          "btn btn-sm transition-colors",
-          if(@insert?, do: "btn-primary", else: "btn-ghost")
+          "flex flex-wrap items-center gap-2 transition-opacity duration-200",
+          @editor_mode == :play && "opacity-40"
         ]}
       >
-        Insert
-      </button>
+        <div class="join" role="group" aria-label="Durations">
+          <.piece
+            :for={{value, label, key, note_glyph, rest_glyph} <- @values}
+            id={"palette-#{value}"}
+            event="arm"
+            kind={@row_kind}
+            value={value}
+            title={"#{label} #{if @row_kind == :rest, do: "rest", else: "note"} (#{key})"}
+            pressed={armed?(@armed, [:note, :rest], value)}
+            locked={@armed && @armed.locked? && armed?(@armed, [:note, :rest], value)}
+            lockable
+          >
+            {Smufl.char(if @row_kind == :rest, do: rest_glyph, else: note_glyph)}
+          </.piece>
+        </div>
+
+        <div class="join" role="group" aria-label="Modifiers">
+          <.piece
+            id="palette-rest-toggle"
+            event="toggle_rest"
+            title="Rests instead of notes (R)"
+            pressed={@row_kind == :rest}
+          >
+            {Smufl.char(:restQuarter)}
+          </.piece>
+          <.piece
+            id="palette-dot"
+            event="toggle_dot"
+            title="Dotted (.)"
+            pressed={@armed != nil and Map.get(@armed, :dots, 0) > 0}
+          >
+            {Smufl.char(:augmentationDot)}
+          </.piece>
+          <.piece
+            :for={
+              {id, alter, glyph, label} <- [
+                {"sharp", 1, :accidentalSharp, "Sharp (hold Shift)"},
+                {"flat", -1, :accidentalFlat, "Flat (hold Ctrl or Alt)"},
+                {"natural", 0, :accidentalNatural, "Natural"}
+              ]
+            }
+            id={"palette-#{id}"}
+            event="set_accidental"
+            alter={alter}
+            title={label}
+            pressed={@armed != nil and Map.get(@armed, :alter) == alter}
+          >
+            {Smufl.char(glyph)}
+          </.piece>
+        </div>
+
+        <div class="join" role="group" aria-label="Ties and chords">
+          <button
+            id="palette-tie"
+            type="button"
+            title="Tie: drag from one note to the next (T)"
+            aria-pressed={to_string(armed?(@armed, [:tie]))}
+            phx-click="arm_tie"
+            class={piece_class(armed?(@armed, [:tie]))}
+          >
+            <svg viewBox="0 0 24 12" class="h-3 w-6" aria-hidden="true">
+              <path d="M2 3 Q12 12 22 3 Q12 9 2 3Z" fill="currentColor" />
+            </svg>
+          </button>
+          <details id="palette-chords-menu" class="dropdown join-item">
+            <summary
+              id="palette-chords"
+              aria-pressed={to_string(armed?(@armed, [:chord]))}
+              title="Place a chord"
+              class={[piece_class(armed?(@armed, [:chord])), "w-auto gap-1 px-3 text-sm"]}
+            >
+              Chords <.icon name="hero-chevron-down-micro" class="size-4 opacity-60" />
+            </summary>
+            <div class="dropdown-content z-30 mt-1 w-72 rounded-box border border-base-300 bg-base-100 p-3 shadow-lg">
+              <p class="mb-1 text-xs opacity-60">Built on the note you click</p>
+              <div class="grid grid-cols-4 gap-1">
+                <button
+                  :for={{quality, label} <- @qualities}
+                  id={"palette-chord-#{quality}"}
+                  type="button"
+                  phx-click="arm_chord"
+                  phx-value-quality={quality}
+                  class={chip_class(@armed && @armed.chord == {:quality, quality})}
+                >
+                  {label}
+                </button>
+              </div>
+              <p class="mt-3 mb-1 text-xs opacity-60">In the key, on the octave you click</p>
+              <div class="grid grid-cols-7 gap-1">
+                <button
+                  :for={{numeral, degree} <- Enum.with_index(@numerals, 1)}
+                  id={"palette-degree-#{degree}"}
+                  type="button"
+                  phx-click="arm_chord"
+                  phx-value-degree={degree}
+                  class={chip_class(@armed && @armed.chord == {:degree, degree})}
+                >
+                  {numeral}
+                </button>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <button
+          id="palette-insert"
+          type="button"
+          title="Insert: later music on that staff moves right (Ins)"
+          aria-pressed={to_string(@insert?)}
+          phx-click="toggle_insert"
+          class={[
+            "btn btn-sm transition-colors",
+            if(@insert?, do: "btn-primary", else: "btn-ghost")
+          ]}
+        >
+          Insert
+        </button>
+      </div>
 
       <div class="join">
         <button
