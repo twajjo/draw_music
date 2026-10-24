@@ -52,6 +52,22 @@ defmodule DrawMusicWeb.EditorPlayTest do
     assert Enum.map(events, & &1.midi) == [60, 64]
   end
 
+  # At 100 BPM a quarter is 0.6 s. The span, not the last note, sets where a
+  # loop repeats, so trailing rests are kept.
+  test "the span's length is sent, rests included", %{view: view} do
+    select(view, [0, 960])
+    play(view)
+    assert_push_event(view, "play", %{span: span})
+    assert_in_delta span, 1.2, 1.0e-9
+
+    render_hook(view, "stop", %{})
+    render_hook(view, "clear_selection", %{})
+    play(view)
+    # Four empty-ending bars of 4/4: the whole score, not just to the G4.
+    assert_push_event(view, "play", %{span: whole})
+    assert_in_delta whole, 9.6, 1.0e-9
+  end
+
   test "a single selection plays from it to the end", %{view: view} do
     select(view, [960])
     play(view)

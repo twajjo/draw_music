@@ -67,7 +67,14 @@ export default {
     this.onUp = (e) => this.pointerUp(e)
     this.onKey = (e) => this.key(e)
     this.onContext = (e) => this.contextMenu(e)
-    this.onFirstGesture = () => this.startAudio()
+    // Browsers allow audio only after a gesture: the first press, of a
+    // pointer or a key, starts both clocks.
+    this.onFirstGesture = () => {
+      window.removeEventListener("pointerdown", this.onFirstGesture)
+      window.removeEventListener("keydown", this.onFirstGesture)
+      this.startAudio()
+      this.audio.unlock()
+    }
 
     this.el.addEventListener("pointermove", this.onMove)
     this.el.addEventListener("pointerleave", this.onLeave)
@@ -75,7 +82,8 @@ export default {
     this.el.addEventListener("pointerup", this.onUp)
     window.addEventListener("keydown", this.onKey)
     window.addEventListener("contextmenu", this.onContext)
-    window.addEventListener("pointerdown", this.onFirstGesture, {once: true})
+    window.addEventListener("pointerdown", this.onFirstGesture)
+    window.addEventListener("keydown", this.onFirstGesture)
 
     // Unsaved changes: confirm before leaving, by closing/reloading the tab
     // or by following an in-app link.
@@ -102,7 +110,7 @@ export default {
       onEnded: () => this.pushEvent("playback_ended", {}),
     })
     this.loadInstrument()
-    this.handleEvent("play", ({events, loop}) => this.audio.play(events, Boolean(loop)))
+    this.handleEvent("play", ({events, span, loop}) => this.audio.play(events, span, Boolean(loop)))
     this.handleEvent("pause", () => this.audio.pause())
     this.handleEvent("resume", () => this.audio.resume())
     this.handleEvent("rewind", () => this.audio.rewind())
@@ -151,9 +159,10 @@ export default {
     window.removeEventListener("keydown", this.onKey)
     window.removeEventListener("contextmenu", this.onContext)
     window.removeEventListener("pointerdown", this.onFirstGesture)
+    window.removeEventListener("keydown", this.onFirstGesture)
     window.removeEventListener("beforeunload", this.onBeforeUnload)
     window.removeEventListener("popstate", this.onPopState)
-    this.audio.silence()
+    this.audio.destroy()
     document.removeEventListener("click", this.onLinkClick, true)
     this.setPageCursor(null)
   },

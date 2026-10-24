@@ -97,16 +97,20 @@ defmodule DrawMusic.Music.Playback do
     end
   end
 
-  defp event(ids, midi, tick, from, ticks, ctx) do
-    seconds_per_tick = @seconds_per_minute / (ctx.tempo_bpm * Duration.ppq())
+  @doc "How long `ticks` last at the context's tempo, in seconds."
+  @spec seconds(Context.t(), non_neg_integer()) :: float()
+  def seconds(%Context{} = ctx, ticks) do
+    ticks * @seconds_per_minute / (ctx.tempo_bpm * Duration.ppq())
+  end
 
+  defp event(ids, midi, tick, from, ticks, ctx) do
     %PlaybackEvent{
       ids: ids,
       midi: midi,
       frequency: Pitch.frequency(midi),
       tick: tick,
-      start: (tick - from) * seconds_per_tick,
-      duration: ticks * seconds_per_tick
+      start: seconds(ctx, tick - from),
+      duration: seconds(ctx, ticks)
     }
   end
 end

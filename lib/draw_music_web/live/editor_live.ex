@@ -259,7 +259,11 @@ defmodule DrawMusicWeb.EditorLive do
         {:noreply,
          socket
          |> update(:session, &Session.select(&1, [id], false))
-         |> push_event("audition", %PlaybackPayload{events: events, loop: false})}
+         |> push_event("audition", %PlaybackPayload{
+           events: events,
+           span: Enum.max(Enum.map(events, & &1.duration)),
+           loop: false
+         })}
     end
   end
 
@@ -761,30 +765,38 @@ defmodule DrawMusicWeb.EditorLive do
 
   defp start_playback(socket) do
     %{session: session, loop?: loop?} = socket.assigns
+    {from, to} = play_span(session)
+    opts = [from: from, to: to]
 
-    case Playback.events(session.score, session.ctx, play_span(session)) do
+    case Playback.events(session.score, session.ctx, opts) do
       [] ->
         put_flash(socket, :error, "Nothing to play here.")
 
       events ->
+        payload = %PlaybackPayload{
+          events: events,
+          span: Playback.seconds(session.ctx, to - from),
+          loop: loop?
+        }
+
         socket
         |> assign(:playback, :playing)
-        |> push_event("play", %PlaybackPayload{events: events, loop: loop?})
+        |> push_event("play", payload)
     end
   end
 
   # Several selected events play from the first to the end of the last;
   # one plays from there to the end; none, the whole score.
-  defp play_span(%Session{} = session) do
+  defp play_span(%Session{score: score, ctx: ctx} = session) do
     selected =
-      session.score
-      |> Timeline.flatten(session.ctx)
+      score
+      |> Timeline.flatten(ctx)
       |> Enum.filter(&(&1.event.id in session.selection))
 
     case selected do
-      [] -> [from: 0]
-      [entry] -> [from: entry.start]
-      entries -> [from: Enum.min(Enum.map(entries, & &1.start)), to: span_end(entries)]
+      [] -> {0, Timeline.end_tick(score, ctx)}
+      [entry] -> {entry.start, Timeline.end_tick(score, ctx)}
+      entries -> {Enum.min(Enum.map(entries, & &1.start)), span_end(entries)}
     end
   end
 

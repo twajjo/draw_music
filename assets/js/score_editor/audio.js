@@ -1,7 +1,11 @@
-// Playback for the ScoreEditor hook: loads the version's instrument
-// (smplr, from the server's /samples) and plays the timed events EditorLive
-// sends, with pause, resume, rewind and loop handled here on the audio
-// clock. Notes light up (`.playing`) while they sound.
+// Playback for the ScoreEditor hook: loads the playback instrument (smplr,
+// from the server's /samples) and plays the timed events EditorLive sends.
+// Pause, resume, rewind and loop happen here, on the audio clock. Notes
+// light up (`.playing`) while they sound.
+//
+// Notes are handed to the player only a short way ahead (LOOKAHEAD), from
+// the animation-frame tick, so pausing or stopping only has to silence the
+// few notes already handed over; nothing is left queued to sound later.
 //
 // Instrument sources come from data-instrument (DrawMusicWeb.InstrumentSource):
 // {kind: "splendid" | "soundfont" | "synth", url, name, program}.
@@ -11,66 +15,91 @@ import {Soundfont, SplendidGrandPiano} from "smplr"
 
 // Scheduling starts this far ahead of "now" (seconds), so the first note isn't clipped.
 const LEAD_IN = 0.05
+// How far ahead of the clock notes are handed to the player (seconds).
+const LOOKAHEAD = 0.25
 
-// smplr builds sample URLs without encoding them, and the piano's sample
-// names contain "#" ("PP D#0"), which would otherwise start a URL fragment.
-const storage = {fetch: (url) => fetch(url.replace(/#/g, "%23"))}
+const SYNTH_OPTIONS = {
+  oscillator: {type: "triangle"},
+  envelope: {attack: 0.01, decay: 0.2, sustain: 0.5, release: 0.4},
+}
 
-// The built-in fallback: a Tone.js synth on Tone's own clock.
+// The built-in fallback: a Tone.js synth. Stopping disposes it (that also
+// cancels attacks it has scheduled) and starts a fresh one.
 function synthPlayer() {
-  const synth = new Tone.PolySynth(Tone.Synth, {
-    oscillator: {type: "triangle"},
-    envelope: {attack: 0.01, decay: 0.2, sustain: 0.5, release: 0.4},
-  }).toDestination()
+  let synth = new Tone.PolySynth(Tone.Synth, SYNTH_OPTIONS).toDestination()
 
   return {
-    now: () => Tone.now(),
+    now: () => Tone.getContext().currentTime,
     unlock: () => Tone.start(),
-    start: (midi, time, duration) => synth.triggerAttackRelease(Tone.Frequency(midi, "midi"), duration, time),
-    stop: () => synth.releaseAll(),
+    start: (midi, time, duration) => synth.triggerAttackRelease(Tone.Frequency(midi, "midi").toFrequency(), duration, time),
+    stop: () => {
+      synth.dispose()
+      synth = new Tone.PolySynth(Tone.Synth, SYNTH_OPTIONS).toDestination()
+    },
+    dispose: () => synth.dispose(),
   }
 }
 
+// A smplr instrument. Each started note's stop function cancels it whether
+// it is sounding or still waiting in smplr's own scheduler.
 function smplrPlayer(context, instrument) {
+  let stops = []
+
   return {
     now: () => context.currentTime,
     unlock: () => context.resume(),
-    start: (midi, time, duration) => instrument.start({note: midi, time, duration}),
-    stop: () => instrument.stop(),
+    start: (midi, time, duration) => stops.push(instrument.start({note: midi, time, duration})),
+    stop: () => {
+      stops.forEach((stopNote) => stopNote())
+      stops = []
+    },
+    dispose: () => instrument.dispose(),
   }
 }
 
 async function loadSmplr(context, source) {
   const instrument =
     source.kind === "splendid"
-      ? new SplendidGrandPiano(context, {baseUrl: source.url, storage})
-      : new Soundfont(context, {instrumentUrl: source.url, storage})
+      ? new SplendidGrandPiano(context, {baseUrl: source.url})
+      : new Soundfont(context, {instrumentUrl: source.url})
   await instrument.ready
   return smplrPlayer(context, instrument)
 }
 
+const sameSource = (a, b) => a && b && a.kind === b.kind && a.url === b.url && a.program === b.program
+
 export class Audio {
-  // onState(state, detail): "loading" | "ready" | "fallback" | "playing" | "paused" | "idle".
+  // onState(state, source): "loading" | "ready" | "fallback" | "playing" | "paused" | "idle".
   constructor({onState, onEnded}) {
     this.onState = onState
     this.onEnded = onEnded
+    this.context = null
     this.source = null
-    this.player = null
+    this.loaded = null // the player for `source`, once ready
+    this.active = null // the player sounding the current span
     this.events = []
     this.loop = false
     this.state = "idle"
     this.frame = null
+    this.generation = 0
   }
 
-  // Loads `source` unless it is already the current one.
+  // Browsers only allow audio after a user gesture: the hook calls this on
+  // the first pointer press, so both clocks are running before Play.
+  async unlock() {
+    this.context = this.context || new AudioContext()
+    await Promise.all([Tone.start(), this.context.resume()])
+  }
+
+  // Loads `source` unless it is already the current one. A span already
+  // playing keeps its player; the new one is used from the next Play.
   async load(source) {
-    if (this.source && this.source.kind === source.kind && this.source.url === source.url) return
-    this.stop()
+    if (sameSource(this.source, source)) return
     this.source = source
-    this.player = null
+    this.loaded = null
 
     if (source.kind === "synth") {
-      this.player = synthPlayer()
+      this.loaded = synthPlayer()
       return this.onState("fallback", source)
     }
 
@@ -80,47 +109,55 @@ export class Audio {
     try {
       const player = await loadSmplr(this.context, source)
       if (this.source !== source) return
-      this.player = player
+      this.loaded = player
       this.onState("ready", source)
     } catch (_error) {
       if (this.source !== source) return
-      this.player = synthPlayer()
+      this.loaded = synthPlayer()
       this.onState("fallback", source)
     }
   }
 
-  // Until the instrument has loaded, plays with the synth.
-  ensurePlayer() {
-    if (!this.player) this.player = synthPlayer()
-    return this.player
+  // The player for a new span: the loaded instrument, or the synth meanwhile.
+  nextPlayer() {
+    if (!this.loaded) this.loaded = synthPlayer()
+    return this.loaded
   }
 
-  async play(events, loop) {
+  // `span` is the span's length in seconds (rests included), so a loop
+  // comes round in time.
+  async play(events, span, loop) {
     this.stop()
-    this.events = events
+    const generation = ++this.generation
+    this.events = [...events].sort((a, b) => a.start - b.start)
+    this.span = span
     this.loop = loop
-    this.duration = events.reduce((end, ev) => Math.max(end, ev.start + ev.duration), 0)
-    await this.ensurePlayer().unlock()
-    this.scheduleFrom(0)
+    const player = this.nextPlayer()
+    await player.unlock()
+    if (generation !== this.generation) return
+    this.startSpan(player, 0)
   }
 
   pause() {
     if (this.state !== "playing") return
-    this.elapsed = this.player.now() - this.t0
+    this.elapsed = this.active.now() - this.t0
     this.silence()
     this.setState("paused")
   }
 
   async resume() {
     if (this.state !== "paused") return
-    await this.player.unlock()
-    this.scheduleFrom(this.elapsed)
+    const generation = ++this.generation
+    const player = this.nextPlayer()
+    await player.unlock()
+    if (generation !== this.generation) return
+    this.startSpan(player, this.elapsed)
   }
 
   rewind() {
     if (this.state === "playing") {
       this.silence()
-      return this.scheduleFrom(0)
+      return this.startSpan(this.nextPlayer(), 0)
     }
     this.elapsed = 0
   }
@@ -130,6 +167,7 @@ export class Audio {
   }
 
   stop() {
+    this.generation++
     this.silence()
     this.events = []
     this.elapsed = 0
@@ -138,38 +176,46 @@ export class Audio {
 
   // Sounds a chord at once, with no highlighting or state change.
   async audition(events) {
-    const player = this.ensurePlayer()
+    const player = this.nextPlayer()
     await player.unlock()
     const at = player.now() + LEAD_IN
     for (const ev of events) player.start(ev.midi, at + ev.start, ev.duration)
   }
 
-  // Schedules every event still sounding at `from` seconds into the span.
-  // One already under way restarts now for what is left of it.
-  scheduleFrom(from) {
-    const player = this.player
+  // Starts (or restarts) the span `from` seconds in on `player`. A note
+  // already under way at `from` sounds for what is left of it.
+  startSpan(player, from) {
+    this.active = player
     this.t0 = player.now() + LEAD_IN - from
-
-    for (const ev of this.events) {
-      const end = ev.start + ev.duration
-      if (end <= from) continue
-      const start = Math.max(ev.start, from)
-      player.start(ev.midi, this.t0 + start, end - start)
-    }
-
+    this.next = this.events.findIndex((ev) => ev.start + ev.duration > from)
+    if (this.next === -1) this.next = this.events.length
+    this.from = from
     this.setState("playing")
-    this.frame = requestAnimationFrame(() => this.tick())
+    this.tick()
   }
 
-  // Lights the notes sounding now; at the end of the span, loops or stops.
+  // Each frame: hand over the notes due within LOOKAHEAD, light the ones
+  // sounding, and at the end of the span loop or stop.
   tick() {
-    const at = this.player.now() - this.t0
+    const at = this.active.now() - this.t0
 
-    if (at >= this.duration) {
-      this.highlightAll(false)
-      if (this.loop) return this.scheduleFrom(0)
+    if (at >= this.span && this.loop) {
+      // The next time round starts exactly a span later, with no gap.
+      this.t0 += this.span
+      this.next = 0
+      this.from = 0
+      return this.tick()
+    }
+
+    if (at >= this.span) {
       this.stop()
       return this.onEnded()
+    }
+
+    while (this.next < this.events.length && this.events[this.next].start < at + LOOKAHEAD) {
+      const ev = this.events[this.next++]
+      const start = Math.max(ev.start, this.from)
+      this.active.start(ev.midi, this.t0 + start, ev.start + ev.duration - start)
     }
 
     for (const ev of this.events) {
@@ -182,12 +228,15 @@ export class Audio {
   silence() {
     if (this.frame) cancelAnimationFrame(this.frame)
     this.frame = null
-    if (this.player) this.player.stop()
-    this.highlightAll(false)
+    if (this.active) this.active.stop()
+    document.querySelectorAll(".playing").forEach((el) => el.classList.remove("playing"))
   }
 
-  highlightAll(on) {
-    document.querySelectorAll(".playing").forEach((el) => el.classList.toggle("playing", on))
+  // Leaving the editor: stop, and free the audio objects.
+  destroy() {
+    this.silence()
+    for (const player of new Set([this.active, this.loaded])) if (player) player.dispose()
+    if (this.context) this.context.close()
   }
 
   setState(state) {
