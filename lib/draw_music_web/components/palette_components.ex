@@ -267,6 +267,15 @@ defmodule DrawMusicWeb.PaletteComponents do
 
       <div class="ml-auto flex items-center gap-1">
         <button
+          id="palette-help"
+          type="button"
+          title="Keys and mouse (?)"
+          phx-click="open_help"
+          class="btn btn-ghost btn-sm btn-square"
+        >
+          <.icon name="hero-question-mark-circle" class="size-4" />
+        </button>
+        <button
           id="settings-button"
           type="button"
           title="Key, time signature, tempo and pickup"

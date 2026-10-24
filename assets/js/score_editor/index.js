@@ -11,6 +11,8 @@ import * as Tone from "tone"
 import {locate, snap, pitchOf, stepY, ledgerSteps, stepOnStaff} from "./geometry"
 import {cursorFor} from "./cursor"
 import {Audio} from "./audio"
+// The keys this hook acts on; the cheat-sheet (DrawMusicWeb.Shortcuts) lists the same ones.
+import KEYS from "./keys.json"
 
 const SVG = "http://www.w3.org/2000/svg"
 const CURSOR_STYLE_ID = "score-editor-cursor"
@@ -30,6 +32,16 @@ function eventTarget(e) {
 }
 
 const typing = (e) => e.target.closest && e.target.closest("input, textarea, select, [contenteditable]")
+
+// A key press as keys.json names it: "Ctrl+Z", "Shift+ArrowUp", "Space", "R".
+// Modifiers only count where they change what the key does.
+function keyId(e) {
+  const ctrl = e.ctrlKey || e.metaKey
+  const name = e.key === " " ? "Space" : e.key.length === 1 ? e.key.toUpperCase() : e.key
+  if (name === "ArrowUp" || name === "ArrowDown") return ctrl ? `Ctrl+${name}` : e.shiftKey ? `Shift+${name}` : name
+  if (ctrl) return e.shiftKey ? `Ctrl+Shift+${name}` : `Ctrl+${name}`
+  return name
+}
 
 export default {
   mounted() {
@@ -338,7 +350,8 @@ export default {
   key(e) {
     if (typing(e)) return
     // A dialog is open: its own keys (Esc) handle it; leave the score alone.
-    if (document.querySelector("#settings-form, #save-as-form, #transpose-dialog")) return
+    if (document.querySelector("#settings-form, #save-as-form, #transpose-dialog, #help-dialog")) return
+    if (!KEYS.includes(keyId(e))) return
     const ctrl = e.ctrlKey || e.metaKey
     const k = e.key.toLowerCase()
     const send = (event, payload = {}) => {
@@ -360,6 +373,7 @@ export default {
     if (e.key === "Home" && !ctrl) return send("rewind")
     if (k === "l" && !ctrl && !e.altKey) return send("toggle_loop")
     if (k === "p" && !ctrl && !e.altKey) return send("toggle_mode")
+    if (e.key === "?") return send("open_help")
     if (this.mode === "play") return
 
     // ↑/↓: a scale step (Shift: an octave, Ctrl: a semitone); ←/→: a beat.

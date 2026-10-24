@@ -10,7 +10,7 @@ defmodule DrawMusicWeb.EditorComponents do
   import DrawMusicWeb.CoreComponents, only: [icon: 1, input: 1]
 
   alias DrawMusic.Engraving.Smufl
-  alias DrawMusicWeb.{BarControl, LibraryComponents, ScoreComponents}
+  alias DrawMusicWeb.{BarControl, HelpComponents, LibraryComponents, ScoreComponents}
 
   # Bar controls sit this far above a system's top line (staff spaces).
   @controls_raise 2.2
@@ -53,6 +53,40 @@ defmodule DrawMusicWeb.EditorComponents do
             <button type="submit" class="btn btn-primary" phx-disable-with="Saving...">Save</button>
           </div>
         </.form>
+      </div>
+    </div>
+    """
+  end
+
+  @doc "The cheat-sheet over the score, the current mode's groups first."
+  attr :shortcuts, :list, required: true
+
+  @spec help_dialog(map()) :: Phoenix.LiveView.Rendered.t()
+  def help_dialog(assigns) do
+    ~H"""
+    <div class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
+      <div
+        id="help-dialog"
+        role="dialog"
+        aria-label="Keys and mouse"
+        class="max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-box border border-base-300 bg-base-100 p-6 shadow-2xl"
+        phx-click-away="close_help"
+        phx-window-keydown="close_help"
+        phx-key="Escape"
+      >
+        <div class="mb-4 flex items-center justify-between">
+          <p class="text-lg font-semibold">Keys and mouse</p>
+          <button
+            id="help-close"
+            type="button"
+            phx-click="close_help"
+            class="btn btn-ghost btn-sm btn-square"
+            aria-label="Close"
+          >
+            <.icon name="hero-x-mark" class="size-5" />
+          </button>
+        </div>
+        <HelpComponents.cheat_sheet shortcuts={@shortcuts} />
       </div>
     </div>
     """

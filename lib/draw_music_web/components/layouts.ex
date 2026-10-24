@@ -73,6 +73,7 @@ defmodule DrawMusicWeb.Layouts do
     </main>
 
     <footer class="flex items-center justify-center gap-4 border-t border-base-300 px-4 py-4 text-sm opacity-70">
+      <.link id="footer-help" navigate={~p"/help"} class="link link-hover">Keys and mouse</.link>
       <.link id="footer-credits" navigate={~p"/credits"} class="link link-hover">Credits</.link>
     </footer>
 

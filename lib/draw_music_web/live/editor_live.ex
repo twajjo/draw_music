@@ -37,6 +37,7 @@ defmodule DrawMusicWeb.EditorLive do
     InstrumentSource,
     PlaybackPayload,
     ScorePreferences,
+    Shortcuts,
     VersionLookup
   }
 
@@ -145,6 +146,7 @@ defmodule DrawMusicWeb.EditorLive do
         <.context_menu :if={@menu} menu={@menu} />
         <.save_as_dialog :if={@save_as_form} form={@save_as_form} />
         <.settings_panel :if={@settings_form} form={@settings_form} />
+        <.help_dialog :if={@help?} shortcuts={Shortcuts.for_mode(@editor_mode)} />
         <.transpose_dialog
           :if={@pending_key}
           key_name={Key.name(elem(@pending_key, 0), elem(@pending_key, 1))}
@@ -167,7 +169,7 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign(:session, Session.new(version.score, Context.from_version(version)))
      |> assign(armed: nil, row_kind: :note, insert?: false, last_click: nil, menu: nil)
      |> assign(save_as_form: nil, settings_form: nil, pending_key: nil)
-     |> assign(playback: :idle, loop?: false, editor_mode: :edit)
+     |> assign(playback: :idle, loop?: false, editor_mode: :edit, help?: false)
      # The tempo marking and instrument aren't part of the score's Context;
      # they're saved beside it.
      |> assign(:tempo_text, version.tempo_text)
@@ -199,6 +201,9 @@ defmodule DrawMusicWeb.EditorLive do
     mode = next_mode(params["mode"], socket.assigns.editor_mode)
     {:noreply, assign(socket, editor_mode: mode, armed: nil, menu: nil)}
   end
+
+  def handle_event("open_help", _params, socket), do: {:noreply, assign(socket, :help?, true)}
+  def handle_event("close_help", _params, socket), do: {:noreply, assign(socket, :help?, false)}
 
   # Play mode: a click on a note sounds its chord and makes it the start point.
   def handle_event("audition", %{"id" => id}, %{assigns: %{editor_mode: :play}} = socket)
