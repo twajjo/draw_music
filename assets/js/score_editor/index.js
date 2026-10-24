@@ -4,11 +4,13 @@
 // (`place`, `disarm`) to EditorLive, which owns the score.
 //
 // Server state arrives as data attributes on the hook element:
-// data-geometry (EditorGeometry.encode) and data-armed (EditorGeometry.armed).
+// data-geometry (EditorGeometry.encode), data-armed (EditorGeometry.armed)
+// and data-instrument (InstrumentSource). Playback lives in audio.js.
 
 import * as Tone from "tone"
 import {locate, snap, pitchOf, stepY, ledgerSteps, stepOnStaff} from "./geometry"
 import {cursorFor} from "./cursor"
+import {Audio} from "./audio"
 
 const SVG = "http://www.w3.org/2000/svg"
 const CURSOR_STYLE_ID = "score-editor-cursor"
@@ -18,6 +20,8 @@ const VALUES = ["whole", "half", "quarter", "eighth", "sixteenth", "thirty_secon
 const DRAG_THRESHOLD = 0.5
 // Clicks on empty staff remember a paste position on this grid (a 16th).
 const CLICK_GRID = 240
+// Length of the tone played over each new line or space (seconds).
+const PLACEMENT_TONE = 0.12
 
 // The note or rest element (and its id) under an event, if any.
 function eventTarget(e) {
@@ -74,10 +78,19 @@ export default {
     window.addEventListener("popstate", this.onPopState)
     this.syncGuard()
 
-    // Playback: the server sends timed events; we sound and highlight them.
-    this.playTimers = []
-    this.handleEvent("play", ({events}) => this.playEvents(events))
-    this.handleEvent("stop", () => this.stopPlayback())
+    // Playback: the server sends timed events; audio.js sounds and highlights them.
+    this.audio = new Audio({
+      onState: (state, source) => this.pushEvent("playback_state", {state, name: source && source.name}),
+      onEnded: () => this.pushEvent("playback_ended", {}),
+    })
+    this.loadInstrument()
+    this.handleEvent("play", ({events, loop}) => this.audio.play(events, Boolean(loop)))
+    this.handleEvent("pause", () => this.audio.pause())
+    this.handleEvent("resume", () => this.audio.resume())
+    this.handleEvent("rewind", () => this.audio.rewind())
+    this.handleEvent("loop", ({on}) => this.audio.setLoop(on))
+    this.handleEvent("stop", () => this.audio.stop())
+    this.handleEvent("audition", ({events}) => this.audio.audition(events))
     this.onLinkClick = (e) => {
       const link = e.target.closest && e.target.closest("a[href]")
       if (!link || !this.dirty() || link.hasAttribute("download")) return
@@ -109,6 +122,11 @@ export default {
     this.score = this.el.querySelector("#score")
     this.readState()
     this.syncGuard()
+    this.loadInstrument()
+  },
+
+  loadInstrument() {
+    this.audio.load(JSON.parse(this.el.dataset.instrument))
   },
 
   destroyed() {
@@ -117,7 +135,7 @@ export default {
     window.removeEventListener("pointerdown", this.onFirstGesture)
     window.removeEventListener("beforeunload", this.onBeforeUnload)
     window.removeEventListener("popstate", this.onPopState)
-    this.stopPlayback()
+    this.audio.silence()
     document.removeEventListener("click", this.onLinkClick, true)
     this.setPageCursor(null)
   },
@@ -435,44 +453,8 @@ export default {
     }).toDestination()
   },
 
+  // The placement beep (until parts bring per-instrument tones).
   play(midi) {
-    if (this.synth) this.synth.triggerAttackRelease(Tone.Frequency(midi, "midi"), 0.12)
-  },
-
-  // Sounds `events` ({ids, midi, start, duration} in seconds) on a
-  // polyphonic synth and lights each note while it sounds.
-  async playEvents(events) {
-    this.stopPlayback()
-    await Tone.start()
-    if (!this.player) {
-      this.player = new Tone.PolySynth(Tone.Synth, {
-        oscillator: {type: "triangle"},
-        envelope: {attack: 0.01, decay: 0.2, sustain: 0.5, release: 0.4},
-      }).toDestination()
-    }
-
-    const now = Tone.now() + 0.05
-    let end = 0
-    for (const ev of events) {
-      this.player.triggerAttackRelease(Tone.Frequency(ev.midi, "midi"), ev.duration, now + ev.start)
-      this.playTimers.push(setTimeout(() => this.highlight(ev.ids, true), ev.start * 1000))
-      this.playTimers.push(setTimeout(() => this.highlight(ev.ids, false), (ev.start + ev.duration) * 1000))
-      end = Math.max(end, ev.start + ev.duration)
-    }
-    this.playTimers.push(setTimeout(() => {
-      this.stopPlayback()
-      this.pushEvent("playback_ended", {})
-    }, end * 1000 + 100))
-  },
-
-  stopPlayback() {
-    this.playTimers.forEach(clearTimeout)
-    this.playTimers = []
-    if (this.player) this.player.releaseAll()
-    this.el.querySelectorAll(".playing").forEach((el) => el.classList.remove("playing"))
-  },
-
-  highlight(ids, on) {
-    for (const id of ids) document.getElementById(`note-${id}`)?.classList.toggle("playing", on)
+    if (this.synth) this.synth.triggerAttackRelease(Tone.Frequency(midi, "midi"), PLACEMENT_TONE)
   },
 }
