@@ -295,6 +295,21 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
     - rendering: the chord lane and fret diagrams in `ScoreComponents` and the SVG export, plus the layout's headroom;
     - editor: catalog auto-symbol toggle, Name chord, typed entry, voicing stepper, and the display setting;
     - MIDI text-event export and import.
+11. **User guide** (added 2026-10-23; the final phase, after every other phase and feature):
+    - An in-app `/guide` of task-based pages, written in Markdown (`priv/guide/*.md`) and rendered with an off-the-shelf library (Earmark or MDEx).
+    - Linked from the footer, and from each cheat-sheet entry and the editor's **?** dialog ("more").
+    - Pages may reuse the cheat-sheet's diagrams. It gets its own short spec first.
+    - **Topics to cover** (collected as they come up):
+      - Edit and Play modes, and the two palettes.
+      - Adding notes and rests:
+        - lengths, dots, Shift/Ctrl accidentals;
+        - locking a length (double-click);
+        - keys 1–7 and R.
+      - Chords:
+        - the Chords menu places a new chord on the clicked root (a scale-degree chord takes only its octave from the click);
+        - stacking same-length notes at one beat builds a chord by hand;
+        - a different length, or a note that duplicates one already there, goes into a second voice or is refused.
+      - The playback instrument vs the version's instrument, and "Use for this version".
 
 ## Verification
 - **`mix test`:**
