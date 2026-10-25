@@ -42,9 +42,10 @@ defmodule DrawMusicWeb.EditorLive do
   }
 
   @draft_measures 4
-  @menu_events ~w(split set_value toggle_menu_dot to_rest to_note tie_next untie menu_delete transpose reverse)
+  @menu_events ~w(split set_value toggle_menu_dot to_rest to_note tie_next untie add_third_above
+                  add_third_below menu_delete transpose reverse)
   # Everything that changes the score or arms the palette; Play mode ignores them.
-  @edit_events ~w(arm lock arm_value arm_chord arm_tie toggle_rest toggle_dot set_accidental
+  @edit_events ~w(arm arm_value arm_chord single_notes arm_tie toggle_rest toggle_dot set_accidental
                   toggle_insert place move delete cut paste drop tie open_menu menu_copy menu_cut
                   insert_measure delete_measure add_measure undo redo open_settings
                   apply_settings transpose_key) ++ @menu_events
@@ -55,7 +56,8 @@ defmodule DrawMusicWeb.EditorLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope} wide>
-      <header class="flex flex-wrap items-end justify-between gap-4">
+      <%!-- Version status and downloads sit on the title's row, at the right. --%>
+      <header class="flex flex-wrap items-start justify-between gap-4">
         <div class="space-y-1">
           <h1 id="composition-name" class="text-2xl font-semibold">{@composition.name}</h1>
           <p :if={@composition.subtitle} class="opacity-80">{@composition.subtitle}</p>
@@ -67,7 +69,6 @@ defmodule DrawMusicWeb.EditorLive do
           <% else %>
             <span id="unsaved" class="badge badge-ghost">Unsaved</span>
           <% end %>
-          <.layout_toggle id="score-layout" layout={@current_scope.user.score_layout} />
           <.button
             :if={@version.id}
             id="download-svg"
@@ -104,6 +105,16 @@ defmodule DrawMusicWeb.EditorLive do
         version_instrument={@instrument}
         instrument_options={@instrument_options}
       >
+        <:below_mode>
+          <%!-- Its buttons are cells of the palette's grid, so Page and Strip
+               line up under Edit and Play, the same widths. --%>
+          <.layout_toggle
+            id="score-layout"
+            layout={@current_scope.user.score_layout}
+            class="contents"
+            button_class="row-start-2 h-auto w-full"
+          />
+        </:below_mode>
         <:trailing>
           <.save_menu dirty?={@session.dirty?} saved?={@version.id != nil} />
         </:trailing>
@@ -128,6 +139,7 @@ defmodule DrawMusicWeb.EditorLive do
             )
           ]}
           data-geometry={Jason.encode!(EditorGeometry.encode(@engraved, @session.ctx))}
+          data-insert={to_string(@insert?)}
           data-armed={Jason.encode!(EditorGeometry.armed(@armed, @session.ctx))}
           data-dirty={to_string(@session.dirty?)}
           data-instrument={Jason.encode!(@instrument_source)}
@@ -147,7 +159,11 @@ defmodule DrawMusicWeb.EditorLive do
             class="pointer-events-none absolute inset-0 h-full w-full"
             style="color: var(--score-ink)"
           />
-          <.measure_controls engraved={@engraved} score={@session.score} />
+          <.measure_controls
+            :if={@editor_mode == :edit}
+            engraved={@engraved}
+            score={@session.score}
+          />
         </div>
         <.context_menu :if={@menu} menu={@menu} />
         <.save_as_dialog :if={@save_as_form} form={@save_as_form} />
@@ -173,7 +189,7 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign(:composition, composition)
      |> assign(:version, version)
      |> assign(:session, Session.new(version.score, Context.from_version(version)))
-     |> assign(armed: nil, row_kind: :note, insert?: false, last_click: nil, menu: nil)
+     |> assign(armed: nil, row_kind: :note, insert?: true, last_click: nil, menu: nil)
      |> assign(save_as_form: nil, settings_form: nil, pending_key: nil)
      |> assign(playback: :idle, loop?: false, editor_mode: :edit, help?: false)
      |> assign(:instrument_options, instrument_options())
@@ -210,15 +226,15 @@ defmodule DrawMusicWeb.EditorLive do
   end
 
   # Leaving Play mode stops playback; the play controls go with it. A range
-  # selected for playback shouldn't become an edit target (or vice versa),
-  # so the selection narrows to its first event.
+  # selected for playback shouldn't become an edit target, so entering Edit
+  # narrows the selection to its first event; entering Play keeps it, to play.
   def handle_event("toggle_mode", params, socket) do
     mode = next_mode(params["mode"], socket.assigns.editor_mode)
 
     {:noreply,
      socket
      |> assign(editor_mode: mode, armed: nil, menu: nil)
-     |> update(:session, &Session.collapse_selection/1)
+     |> narrow_selection_for(mode)
      |> stop_unless_playing_mode()}
   end
 
@@ -261,7 +277,7 @@ defmodule DrawMusicWeb.EditorLive do
       events ->
         {:noreply,
          socket
-         |> update(:session, &Session.select(&1, [id], false))
+         |> reselected(&Session.select(&1, [id], false))
          |> push_event("audition", %PlaybackPayload{
            events: events,
            span: Enum.max(Enum.map(events, & &1.duration)),
@@ -276,17 +292,35 @@ defmodule DrawMusicWeb.EditorLive do
     {:noreply, arm(socket, EditorPalette.arm(socket.assigns.armed, kind, value))}
   end
 
-  def handle_event("lock", %{"kind" => kind, "value" => value}, socket) do
-    {:noreply, arm(socket, EditorPalette.arm(socket.assigns.armed, kind, value, true))}
-  end
-
   def handle_event("arm_value", %{"value" => value}, socket) do
     kind = Atom.to_string(socket.assigns.row_kind)
     {:noreply, arm(socket, EditorPalette.arm(socket.assigns.armed, kind, value))}
   end
 
+  # Chords don't apply to rests. With nothing armed and notes selected, a
+  # chord turns the selected notes into that chord; otherwise it turns chord
+  # mode on (or, picked again, off), whichever of length and chord came first.
+  def handle_event("arm_chord", _params, %{assigns: %{row_kind: :rest}} = socket) do
+    {:noreply, socket}
+  end
+
   def handle_event("arm_chord", params, socket) do
-    {:noreply, arm(socket, EditorPalette.arm_chord(socket.assigns.armed, params))}
+    %{armed: armed, session: session} = socket.assigns
+
+    case {EditorPalette.chord(params), armed, MapSet.size(session.selection)} do
+      {:error, _armed, _selected} ->
+        {:noreply, socket}
+
+      {{:ok, chord}, nil, selected} when selected > 0 ->
+        {:noreply, edit_and_select(socket, EditorCommands.chordify(selected_ids(socket), chord))}
+
+      {{:ok, chord}, armed, _selected} ->
+        {:noreply, assign(socket, :armed, EditorPalette.arm_chord(armed, chord))}
+    end
+  end
+
+  def handle_event("single_notes", _params, socket) do
+    {:noreply, update(socket, :armed, &EditorPalette.single_notes/1)}
   end
 
   def handle_event("arm_tie", _params, socket) do
@@ -336,9 +370,10 @@ defmodule DrawMusicWeb.EditorLive do
     insert? = socket.assigns.insert?
 
     case EditorPlacement.parse(params) do
+      # (A press on a note or rest itself selects it: the hook sends `select`.)
       {:ok, target} ->
-        result = apply_edit(socket, &EditorPlacement.place(&1, &2, armed, target, insert?))
-        {:noreply, placed(result)}
+        {:noreply,
+         placed(apply_edit(socket, &EditorPlacement.place(&1, &2, armed, target, insert?)))}
 
       :error ->
         {:noreply, put_flash(socket, :error, error_message(:invalid))}
@@ -350,23 +385,23 @@ defmodule DrawMusicWeb.EditorLive do
   ## Selection
 
   def handle_event("select", %{"ids" => [id], "add" => true}, socket) when is_binary(id) do
-    {:noreply, update(socket, :session, &Session.toggle(&1, id))}
+    {:noreply, reselected(socket, &Session.toggle(&1, id))}
   end
 
   def handle_event("select", %{"ids" => ids} = params, socket) when is_list(ids) do
     ids = Enum.filter(ids, &is_binary/1)
-    {:noreply, update(socket, :session, &Session.select(&1, ids, params["add"] == true))}
+    {:noreply, reselected(socket, &Session.select(&1, ids, params["add"] == true))}
   end
 
   def handle_event("select_range", %{"from" => from, "to" => to}, socket)
       when is_integer(from) and is_integer(to) do
     %{session: session} = socket.assigns
     ids = Editing.select_range(session.score, session.ctx, min(from, to), max(from, to))
-    {:noreply, assign(socket, :session, Session.select(session, ids, false))}
+    {:noreply, reselected(socket, &Session.select(&1, ids, false))}
   end
 
   def handle_event("clear_selection", _params, socket) do
-    {:noreply, update(socket, :session, &Session.clear_selection/1)}
+    {:noreply, reselected(socket, &Session.clear_selection/1)}
   end
 
   def handle_event("set_last_click", %{"at" => at}, socket) when is_integer(at) and at >= 0 do
@@ -389,7 +424,7 @@ defmodule DrawMusicWeb.EditorLive do
 
   def handle_event("delete", _params, socket) do
     ids = selected_ids(socket)
-    {:noreply, edit_selection(socket, &Editing.delete(&1, &2, ids))}
+    {:noreply, edit_selection(socket, EditorCommands.delete(ids, socket.assigns.insert?))}
   end
 
   def handle_event("copy", _params, socket), do: {:noreply, copy(socket)}
@@ -400,7 +435,7 @@ defmodule DrawMusicWeb.EditorLive do
     {:noreply,
      socket
      |> copy()
-     |> edit_selection(&Editing.delete(&1, &2, ids))}
+     |> edit_selection(EditorCommands.delete(ids, socket.assigns.insert?))}
   end
 
   def handle_event(
@@ -419,7 +454,7 @@ defmodule DrawMusicWeb.EditorLive do
       when is_list(ids) and is_integer(steps) do
     ids = Enum.filter(ids, &is_binary/1)
     alter = EditorPalette.alter(to_string(params["alter"]))
-    {:noreply, drop(socket, EditorCommands.drop(ids, steps, alter))}
+    {:noreply, edit_and_select(socket, EditorCommands.drop(ids, steps, alter))}
   end
 
   # One note dragged on its own lands on whichever staff it was let go over.
@@ -428,8 +463,11 @@ defmodule DrawMusicWeb.EditorLive do
     alter = EditorPalette.alter(to_string(params["alter"]))
 
     case EditorPlacement.staff(staff) do
-      nil -> {:noreply, socket}
-      staff -> {:noreply, drop(socket, EditorCommands.drop_on_staff(id, staff, step, alter))}
+      nil ->
+        {:noreply, socket}
+
+      staff ->
+        {:noreply, edit_and_select(socket, EditorCommands.drop_on_staff(id, staff, step, alter))}
     end
   end
 
@@ -463,7 +501,7 @@ defmodule DrawMusicWeb.EditorLive do
      socket
      |> select_menu_events(menu)
      |> copy()
-     |> edit(&Editing.delete(&1, &2, menu.ids))
+     |> edit(EditorCommands.delete(menu.ids, socket.assigns.insert?))
      |> assign(:menu, nil)}
   end
 
@@ -494,7 +532,7 @@ defmodule DrawMusicWeb.EditorLive do
   end
 
   def handle_event("add_measure", _params, socket) do
-    {:noreply, edit(socket, fn score, _ctx -> Editing.append_measure(score) end)}
+    {:noreply, edit(socket, &Editing.append_measure/2)}
   end
 
   ## Saving
@@ -723,16 +761,18 @@ defmodule DrawMusicWeb.EditorLive do
     end
   end
 
-  # A drop's edit gives the ids of the notes it moved; they end up selected.
-  defp drop(socket, fun) do
+  # For edits that give the ids of the notes they made or moved (a drop, a
+  # chord from the selection): those notes end up selected.
+  defp edit_and_select(socket, fun) do
     case apply_edit(socket, fun) do
       {:ok, socket, ids} -> update(socket, :session, &Session.select(&1, ids, false))
       {:error, socket} -> socket
     end
   end
 
-  # A placement or tie that worked disarms the palette unless it's locked.
-  defp placed({:ok, socket, _extra}), do: disarm_unless_locked(socket)
+  # The armed item stays armed after a placement or tie, until another
+  # is picked or it's disarmed; `placed/1` just unwraps the outcome.
+  defp placed({:ok, socket, _extra}), do: socket
   defp placed({:error, socket}), do: socket
 
   # Edits the selection; with nothing selected there is nothing to do.
@@ -760,9 +800,6 @@ defmodule DrawMusicWeb.EditorLive do
 
   defp arm(socket, {:ok, armed}), do: assign(socket, :armed, armed)
   defp arm(socket, :error), do: socket
-
-  defp disarm_unless_locked(%{assigns: %{armed: %{locked?: true}}} = socket), do: socket
-  defp disarm_unless_locked(socket), do: assign(socket, :armed, nil)
 
   defp next_mode("play", _current), do: :play
   defp next_mode("edit", _current), do: :edit
@@ -860,6 +897,22 @@ defmodule DrawMusicWeb.EditorLive do
     |> assign(:playback, :idle)
     |> push_event("stop", %{})
   end
+
+  # A new selection is what the next Play plays: a paused span is dropped,
+  # so Play starts the new one instead of resuming the old.
+  defp reselected(socket, fun) do
+    socket
+    |> update(:session, fun)
+    |> drop_paused()
+  end
+
+  defp drop_paused(%{assigns: %{playback: :paused}} = socket), do: stop_playback(socket)
+  defp drop_paused(socket), do: socket
+
+  defp narrow_selection_for(socket, :edit),
+    do: update(socket, :session, &Session.collapse_selection/1)
+
+  defp narrow_selection_for(socket, :play), do: socket
 
   defp stop_unless_playing_mode(%{assigns: %{editor_mode: :play}} = socket), do: socket
   defp stop_unless_playing_mode(socket), do: stop_playback(socket)

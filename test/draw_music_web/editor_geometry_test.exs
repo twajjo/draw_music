@@ -13,7 +13,7 @@ defmodule DrawMusicWeb.EditorGeometryTest do
     assert %ChordShape{
              kind: :quality,
              tones: [[0, 0], [2, 3], [4, 7]],
-             suffix: "m",
+             suffix: "min",
              numeral: nil
            } = payload.chord
   end
@@ -25,7 +25,7 @@ defmodule DrawMusicWeb.EditorGeometryTest do
              kind: :degree,
              root_letter: 1,
              tones: [[0, 0], [2, 0], [4, 0]],
-             suffix: "m",
+             suffix: "min",
              numeral: "ii"
            } = payload.chord
   end
@@ -33,7 +33,12 @@ defmodule DrawMusicWeb.EditorGeometryTest do
   test "in a minor key, V raises the leading tone" do
     payload = EditorGeometry.armed(chord({:degree, 5}), %Context{sf: 0, mode: :minor})
 
-    assert %ChordShape{root_letter: 2, tones: [[0, 0], [2, 1], [4, 0]], suffix: "", numeral: "V"} =
+    assert %ChordShape{
+             root_letter: 2,
+             tones: [[0, 0], [2, 1], [4, 0]],
+             suffix: "maj",
+             numeral: "V"
+           } =
              payload.chord
   end
 

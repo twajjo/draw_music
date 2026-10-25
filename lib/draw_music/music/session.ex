@@ -10,7 +10,7 @@ defmodule DrawMusic.Music.Session do
   in the current score.
   """
 
-  alias DrawMusic.Music.{Context, Score, Timeline}
+  alias DrawMusic.Music.{Context, Editing, Score, Timeline}
 
   defstruct score: nil,
             ctx: %Context{},
@@ -32,11 +32,15 @@ defmodule DrawMusic.Music.Session do
 
   @doc """
   A clean session over `score` read against `ctx`. A score with no measures
-  starts with one empty bar, so there is somewhere to write.
+  starts with one empty bar, so there is somewhere to write. Gaps are filled
+  with filler rests, so every rest drawn can be selected.
   """
   @spec new(Score.t(), Context.t()) :: t()
   def new(%Score{measures: []}, %Context{} = ctx), do: new(Score.new(), ctx)
-  def new(%Score{} = score, %Context{} = ctx), do: %__MODULE__{score: score, ctx: ctx}
+
+  def new(%Score{} = score, %Context{} = ctx) do
+    %__MODULE__{score: Editing.fill_rests(score, ctx), ctx: ctx}
+  end
 
   @doc """
   Applies an edit: `fun.(score, ctx)` returns `{:ok, score}`, `{:ok, score,

@@ -20,14 +20,13 @@ defmodule DrawMusicWeb.ShortcutsTest do
 
     for gesture <- [
           "press, drag, let go",
-          "click note",
+          "click note or rest",
           "drag note",
           "shift-click",
           "ctrl-click",
           "drag note to note",
           "drag empty area",
           "right-click",
-          "double-click palette item",
           "click note (Play mode)",
           "drag (Play mode)"
         ] do

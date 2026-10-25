@@ -59,7 +59,7 @@ These replace the decisions above wherever they differ.
 - **Edit and Play are fully distinct, with one palette each.** The toolbar shows:
   - **in both modes:** the Edit/Play switch, help (?) and Save;
   - **in Edit mode only:** the edit palette (durations, rest, dot, accidentals, tie, chords, Insert, score settings, undo, redo);
-  - **in Play mode only:** the play controls (Rewind, Play/Pause, Loop, the playback instrument, "Use for this version").
+  - **in Play mode only:** the play controls (Rewind, Play/Pause, Loop, the playback instrument, "Set selection to version Instrument").
 - **Keys follow the mode.**
   - Space, Home, L, and Esc-to-stop work only in Play mode.
   - The editing keys work only in Edit mode.
@@ -69,7 +69,7 @@ These replace the decisions above wherever they differ.
 - **Playback instrument** ("Hear as", in the play controls):
   - it is for listening only;
   - it starts as the version's instrument, and changes to it last through mode switches until the editor is reopened;
-  - **Use for this version** (asks for confirmation, enabled only when the two differ) sets the version's instrument, which marks the version unsaved; Save stores it;
+  - **Set selection to version Instrument** (asks for confirmation, enabled only when the two differ) sets the version's instrument, which marks the version unsaved; Save stores it;
   - the score settings dialog still sets the version's instrument, and playback then follows that new instrument.
 - **Chord preview while placing:**
   - the cursor shows the whole chord;
@@ -175,7 +175,7 @@ These replace the decisions above wherever they differ.
     `playing?`;
   - `loop?: boolean`.
 - **Events:**
-  - `toggle_mode`, which disarms any armed value and narrows the selection to its first event (a range picked for playback must not become an edit target);
+  - `toggle_mode`, which disarms any armed value and, entering Edit, narrows the selection to its first event (a range picked for playback must not become an edit target); entering Play keeps it, and a new selection while paused drops the paused span;
   - `play`, which depends on the playback state:
     - **idle:** computes the span (below) and pushes `play` with
       `%PlaybackPayload{events, loop?}`;
@@ -309,7 +309,7 @@ updates it as part of finishing each feature.
 - **`Playback.chord_at`:** the notes of a chord on one staff, not the
   other staff, with the key's accidentals applied.
 - **`EditorLive`:**
-  - `toggle_mode` disarms and narrows a range selection to its first note;
+  - `toggle_mode` disarms; entering Edit narrows a range selection to its first note, entering Play keeps it; a selection change while paused pushes `stop`;
   - each editing event in Play mode leaves the score unchanged;
   - `audition` pushes the chord's pitches and selects the note;
   - `play` pushes the span for a range, a single selection, and no

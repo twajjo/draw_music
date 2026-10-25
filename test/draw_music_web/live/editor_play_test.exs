@@ -10,7 +10,7 @@ defmodule DrawMusicWeb.EditorPlayTest do
 
   setup %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/")
-    render_hook(view, "lock", %{"kind" => "note", "value" => "quarter"})
+    render_hook(view, "arm", %{"kind" => "note", "value" => "quarter"})
     place(view, 0, 0, "C4")
     place(view, 0, 960, "E4")
     place(view, 0, 1920, "G4")
@@ -85,6 +85,27 @@ defmodule DrawMusicWeb.EditorPlayTest do
     play(view)
     assert_push_event(view, "resume", %{})
     assert has_element?(view, "#palette-play", "Pause")
+  end
+
+  test "a new selection while paused is played afresh, not resumed", %{view: view} do
+    play(view)
+    play(view)
+    assert_push_event(view, "pause", %{})
+
+    render_hook(view, "select_range", %{"from" => 0, "to" => 1000})
+    assert_push_event(view, "stop", %{})
+    assert has_element?(view, "#palette-play", "Play")
+
+    play(view)
+    assert_push_event(view, "play", %{events: [_first, _second], loop: false})
+  end
+
+  test "instruments that aren't installed are marked yellow in both pickers", %{view: view} do
+    assert has_element?(view, "#playback-instrument option.text-warning", "(not installed)")
+
+    view |> element("#palette-mode-edit") |> render_click()
+    view |> element("#settings-button") |> render_click()
+    assert has_element?(view, "#settings-instrument option.text-warning", "(not installed)")
   end
 
   test "Rewind pushes rewind; Loop toggles and pushes loop", %{view: view} do
@@ -195,7 +216,7 @@ defmodule DrawMusicWeb.EditorPlayTest do
       assert has_element?(view, "#playback-instrument option[value='73'][selected]")
     end
 
-    test "Use for this version asks first, then sets the version's instrument", %{view: view} do
+    test "the set-instrument button asks first, then sets the version's instrument", %{view: view} do
       hear_as(view, 73)
       assert has_element?(view, "#use-playback-instrument[data-confirm*='Flute']")
 

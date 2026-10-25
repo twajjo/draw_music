@@ -28,7 +28,7 @@ defmodule DrawMusicWeb.EditorSettingsTest do
 
   defp draft(conn) do
     {:ok, view, _html} = live(conn, ~p"/")
-    view
+    placing_mode(view, :overlay)
   end
 
   test "a new time signature re-flows the notes into the new bars, undoably", %{conn: conn} do

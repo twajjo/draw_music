@@ -11,7 +11,7 @@ defmodule DrawMusicWeb.EditorSelectTest do
   # A draft with C4 and E4 quarters at the start of bar 0.
   setup %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/")
-    render_hook(view, "lock", %{"kind" => "note", "value" => "quarter"})
+    render_hook(view, "arm", %{"kind" => "note", "value" => "quarter"})
     place(view, 0, 0, "C4")
     place(view, 0, 960, "E4")
     render_hook(view, "disarm", %{})
@@ -29,9 +29,17 @@ defmodule DrawMusicWeb.EditorSelectTest do
   defp select(view, ids, add \\ false),
     do: render_hook(view, "select", %{"ids" => ids, "add" => add})
 
-  test "a time range selects everything in it", %{view: view} do
+  test "a time range selects everything in it, rests included", %{view: view} do
     render_hook(view, "select_range", %{"from" => 0, "to" => 3840})
-    assert count(view, "#score .selected") == 2
+    assert count(view, "#score [id^='note-'].selected") == 2
+    # The treble's half rest after the notes, and the bass's whole-bar rest.
+    assert count(view, "#score [id^='rest-'].selected") == 2
+  end
+
+  test "a range takes in a filler rest only if the rest ends inside it", %{view: view} do
+    render_hook(view, "select_range", %{"from" => 0, "to" => 1920})
+    assert count(view, "#score [id^='note-'].selected") == 2
+    refute has_element?(view, "#score [id^='rest-'].selected")
   end
 
   test "shift-click toggles one note in and out", %{view: view} do
@@ -51,7 +59,15 @@ defmodule DrawMusicWeb.EditorSelectTest do
     assert {0, 1920, "F4", :quarter, 0} in notes_of(view)
   end
 
-  test "delete removes the selection and closes the gap", %{view: view} do
+  test "in Overlay, delete removes the selection and leaves the rest where it was",
+       %{view: view} do
+    placing_mode(view, :overlay)
+    select(view, [id_at(view, 0)])
+    render_hook(view, "delete", %{})
+    assert notes_of(view) == [{0, 960, "E4", :quarter, 0}]
+  end
+
+  test "in Insert, delete removes the selection and closes the gap", %{view: view} do
     select(view, [id_at(view, 0)])
     render_hook(view, "delete", %{})
     assert notes_of(view) == [{0, 0, "E4", :quarter, 0}]
@@ -67,7 +83,7 @@ defmodule DrawMusicWeb.EditorSelectTest do
   end
 
   test "an octave move keeps a note's accidental", %{view: view} do
-    render_hook(view, "lock", %{"kind" => "note", "value" => "quarter"})
+    render_hook(view, "arm", %{"kind" => "note", "value" => "quarter"})
     place(view, 0, 1920, "F#4", alter: true)
     render_hook(view, "disarm", %{})
     select(view, [id_at(view, 1920)])
@@ -116,9 +132,10 @@ defmodule DrawMusicWeb.EditorSelectTest do
       assert notes_of(view) == [{0, 0, "E4", :quarter, 0}, {0, 960, "G♯4", :quarter, 0}]
     end
 
+    # The whole bar is selected, so its closing half rest comes first.
     test "reverses the selection", %{view: view} do
       view |> element("#menu-reverse") |> render_click()
-      assert notes_of(view) == [{0, 0, "E4", :quarter, 0}, {0, 960, "C4", :quarter, 0}]
+      assert notes_of(view) == [{0, 1920, "E4", :quarter, 0}, {0, 2880, "C4", :quarter, 0}]
     end
 
     test "deletes the selection", %{view: view} do
@@ -137,11 +154,12 @@ defmodule DrawMusicWeb.EditorSelectTest do
   end
 
   test "cut removes and keeps a copy", %{view: view} do
+    placing_mode(view, :overlay)
     select(view, [id_at(view, 0)])
     render_hook(view, "cut", %{})
     render_hook(view, "paste", %{"at" => 1920})
 
-    assert notes_of(view) == [{0, 0, "E4", :quarter, 0}, {0, 1920, "C4", :quarter, 0}]
+    assert notes_of(view) == [{0, 960, "E4", :quarter, 0}, {0, 1920, "C4", :quarter, 0}]
   end
 
   test "paste always inserts, moving later music on that staff right", %{view: view} do
@@ -175,7 +193,7 @@ defmodule DrawMusicWeb.EditorSelectTest do
   end
 
   test "a move outside the piano's range is refused", %{view: view} do
-    render_hook(view, "lock", %{"kind" => "note", "value" => "quarter"})
+    render_hook(view, "arm", %{"kind" => "note", "value" => "quarter"})
     place(view, 0, 1920, "C8")
     render_hook(view, "disarm", %{})
     select(view, [id_at(view, 1920)])

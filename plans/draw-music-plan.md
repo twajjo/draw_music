@@ -51,7 +51,7 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
   - dots;
   - ties: mouse-down on the source note, mouse-up on the target, forward or backward;
   - accidentals;
-  - chords by stacking notes at the same position or from a catalog;
+  - chords from a catalog, from chordify, or a 3rd at a time from a note's menu (stacking by placing was dropped on 2026-10-25, when Overlay became "type over time");
   - chord symbols (names) and guitar chord diagrams above the treble staff (see below; phase 10);
   - automatic beaming.
 - **Chord symbols and guitar fingering** (added 2026-10-23; phase 10):
@@ -295,7 +295,13 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
     - rendering: the chord lane and fret diagrams in `ScoreComponents` and the SVG export, plus the layout's headroom;
     - editor: catalog auto-symbol toggle, Name chord, typed entry, voicing stepper, and the display setting;
     - MIDI text-event export and import.
-11. **User guide** (added 2026-10-23; the final phase, after every other phase and feature):
+11. **Scoped insert** (added 2026-10-25; not started):
+    - An insert normally pushes everything after it, through to the end of the piece.
+    - With a scope chosen (a rubber-band range or a measure), an insert inside it shifts only the items within that block or section. Music outside the scope stays put.
+    - Still to decide:
+      - what happens to items pushed past the scope's end: dropped, or refused;
+      - whether a scope's trailing rests absorb the push, the way the piece's trailing filler rests do.
+12. **User guide** (added 2026-10-23; the final phase, after every other phase and feature):
     - An in-app `/guide` of task-based pages, written in Markdown (`priv/guide/*.md`) and rendered with an off-the-shelf library (Earmark or MDEx).
     - Linked from the footer, and from each cheat-sheet entry and the editor's **?** dialog ("more").
     - Pages may reuse the cheat-sheet's diagrams. It gets its own short spec first.
@@ -307,9 +313,10 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
         - keys 1–7 and R.
       - Chords:
         - the Chords menu places a new chord on the clicked root (a scale-degree chord takes only its octave from the click);
-        - stacking same-length notes at one beat builds a chord by hand;
-        - a different length, or a note that duplicates one already there, goes into a second voice or is refused.
-      - The playback instrument vs the version's instrument, and "Use for this version".
+        - a note's right-click menu adds a 3rd above or below its chord;
+        - chordify turns selected notes into the picked chord.
+      - Insert and Overlay as in a text editor: Insert puts the new item in front of the one you click before and moves later music right; Overlay types over the time the new item covers.
+      - The playback instrument vs the version's instrument, and "Set selection to version Instrument".
 
 ## Verification
 - **`mix test`:**

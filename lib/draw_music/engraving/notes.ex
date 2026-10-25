@@ -84,8 +84,8 @@ defmodule DrawMusic.Engraving.Notes do
   }
 
   @doc """
-  Items for `measure` (number `index`) laid out in `geom` (`x`, `width`,
-  `capacity`, `content_x` and `scale` in staff spaces per tick). `tied_in`
+  Items for `measure` (number `index`) laid out in `geom` (see
+  `DrawMusic.Engraving.MeasureGeometry.x_at/2` for where offsets go). `tied_in`
   holds the ids of notes continuing a tie from the previous measure.
 
   Returns `{items, anchors}`; `anchors` maps each note id to its
@@ -143,7 +143,7 @@ defmodule DrawMusic.Engraving.Notes do
   defp chord([first | _] = notes, {staff, _voice, offset}, dir, geom, accidentals) do
     glyph = notehead(first.value)
     width = Smufl.width(glyph)
-    x = geom.content_x + offset * geom.scale
+    x = MeasureGeometry.x_at(geom, offset)
     heads = heads(notes, staff, dir, x, width)
 
     {left, rightmost} =
@@ -430,7 +430,7 @@ defmodule DrawMusic.Engraving.Notes do
 
   defp placed_rest(rest, geom, shift) do
     glyph = Map.fetch!(@rest_glyphs, rest.value)
-    x = geom.content_x + rest.offset * geom.scale
+    x = MeasureGeometry.x_at(geom, rest.offset)
     right = x + Smufl.width(glyph)
     dot_y = Staff.middle(rest.staff) - @half_space + shift
 

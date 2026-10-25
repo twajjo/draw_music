@@ -62,6 +62,10 @@ defmodule DrawMusic.Music.Chords do
     add9: "add9"
   }
 
+  # The editor's names (palette, placing preview): major and minor spelled
+  # out, so a chord reads "Dmaj" or "F♯min"; the rest as the suffixes.
+  @names Map.merge(@suffixes, %{major: "maj", minor: "min"})
+
   @numerals %{
     major: ~w(I ii iii IV V vi vii°),
     minor: ~w(i ii° III iv V VI vii°)
@@ -74,6 +78,10 @@ defmodule DrawMusic.Music.Chords do
   @doc "A quality's chord-name ending, e.g. `\"m\"` in Cm (none for major)."
   @spec suffix(quality()) :: String.t()
   def suffix(quality), do: Map.fetch!(@suffixes, quality)
+
+  @doc "A quality's name in the editor, e.g. `\"min\"` in F♯min."
+  @spec name(quality()) :: String.t()
+  def name(quality), do: Map.fetch!(@names, quality)
 
   @doc "The roman numeral of scale degree `degree` (1..7) in a major or minor key."
   @spec numeral(:major | :minor, 1..7) :: String.t()

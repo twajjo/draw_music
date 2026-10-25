@@ -255,6 +255,8 @@ defmodule DrawMusicWeb.EditorComponents do
       </div>
       <div class="my-1 border-t border-base-300" />
       <%= if @menu.kind == :note do %>
+        <.item id="menu-add-third-above" event="add_third_above">Add a 3rd above</.item>
+        <.item id="menu-add-third-below" event="add_third_below">Add a 3rd below</.item>
         <.item id="menu-to-rest" event="to_rest">Make it a rest</.item>
         <.item id="menu-tie-next" event="tie_next">Tie to the next note</.item>
         <.item id="menu-untie" event="untie">Remove ties</.item>
@@ -390,7 +392,7 @@ defmodule DrawMusicWeb.EditorComponents do
 
   defp filled_bars(score) do
     for {m, i} <- Enum.with_index(score.measures),
-        m.notes != [] or m.rests != [],
+        m.notes != [] or Enum.any?(m.rests, &(not &1.filler)),
         into: MapSet.new() do
       i
     end

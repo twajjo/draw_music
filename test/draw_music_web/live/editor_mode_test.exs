@@ -6,12 +6,17 @@ defmodule DrawMusicWeb.EditorModeTest do
 
   setup :register_and_log_in_user
 
+  # A C4–E4 chord, then G4; the chord's E4 comes from the context menu.
   setup %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/")
-    render_hook(view, "lock", %{"kind" => "note", "value" => "quarter"})
+    render_hook(view, "arm", %{"kind" => "note", "value" => "quarter"})
     place(view, 0, 0, "C4")
-    place(view, 0, 0, "E4")
     place(view, 0, 960, "G4")
+    render_hook(view, "disarm", %{})
+
+    [c | _] = hd(session_of(view).score.measures).notes
+    render_hook(view, "open_menu", %{"id" => c.id, "x" => 0, "y" => 0})
+    view |> element("#menu-add-third-above") |> render_click()
 
     [c, e, g] =
       session_of(view).score.measures
@@ -40,10 +45,11 @@ defmodule DrawMusicWeb.EditorModeTest do
     assert has_element?(view, "#score-editor[data-mode=edit]")
   end
 
-  test "toggle_mode narrows a range to its first note", %{view: view, c: c, e: e, g: g} do
+  test "entering Play keeps a range to play; entering Edit narrows it to its first note",
+       %{view: view, c: c, e: e, g: g} do
     render_hook(view, "select", %{"ids" => [c, g], "add" => false})
     play_mode(view)
-    assert MapSet.to_list(session_of(view).selection) == [c]
+    assert session_of(view).selection == MapSet.new([c, g])
 
     render_hook(view, "select", %{"ids" => [e, g], "add" => false})
     render_hook(view, "toggle_mode", %{})
@@ -57,7 +63,7 @@ defmodule DrawMusicWeb.EditorModeTest do
     before = {notes_of(view), session_of(view).undo, assigns(view).armed, assigns(view).insert?}
 
     edits = [
-      {"lock", %{"kind" => "note", "value" => "half"}},
+      {"arm", %{"kind" => "note", "value" => "half"}},
       {"arm_value", %{"value" => "eighth"}},
       {"arm_tie", %{}},
       {"place", %{"measure" => 0, "offset" => 1920, "staff" => "treble", "step" => 30}},

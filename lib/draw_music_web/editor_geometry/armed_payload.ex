@@ -9,15 +9,14 @@ defmodule DrawMusicWeb.EditorGeometry.ArmedPayload do
   alias DrawMusicWeb.EditorGeometry.ChordShape
 
   @derive Jason.Encoder
-  @enforce_keys [:kind, :value, :dots, :locked, :grid]
-  defstruct [:kind, :value, :dots, :alter, :locked, :glyph, :grid, :chord]
+  @enforce_keys [:kind, :value, :dots, :grid]
+  defstruct [:kind, :value, :dots, :alter, :glyph, :grid, :chord]
 
   @type t :: %__MODULE__{
           kind: :note | :rest | :chord | :tie,
           value: atom(),
           dots: 0..2,
           alter: -2..2 | nil,
-          locked: boolean(),
           glyph: String.t() | nil,
           grid: pos_integer(),
           chord: ChordShape.t() | nil

@@ -21,6 +21,7 @@ defmodule DrawMusic.Engraving.Layout do
     Anchor,
     Beam,
     Brace,
+    Column,
     Engraved,
     Glyph,
     Header,
@@ -40,7 +41,10 @@ defmodule DrawMusic.Engraving.Layout do
   @min_stretch_fill 0.6
 
   # Horizontal gaps, in staff spaces.
-  @left_pad 2.0
+  # Room before every note and rest: clicking there inserts ahead of it.
+  @insert_gap 2.0
+  # The least room after a column's notehead (for dots and flags).
+  @min_note_space 2.5
   @right_pad 1.0
   @brace_gap 0.3
   @clef_pad 0.8
@@ -89,16 +93,7 @@ defmodule DrawMusic.Engraving.Layout do
       |> Enum.zip(Timeline.bars(score, ctx))
       |> Enum.with_index()
       |> Enum.map(fn {{measure, {start, capacity}}, index} ->
-        {measure,
-         %MeasureGeometry{
-           index: index,
-           x: 0.0,
-           width: @left_pad + capacity * scale + @right_pad,
-           start_tick: start,
-           capacity: capacity,
-           content_x: @left_pad,
-           scale: scale
-         }}
+        {measure, natural_geometry(measure, index, start, capacity, scale)}
       end)
 
     {systems, anchors} =
@@ -126,13 +121,52 @@ defmodule DrawMusic.Engraving.Layout do
   @doc "x of absolute tick `tick` in the measure laid out as `geom`."
   @spec x_of(MeasureGeometry.t(), number()) :: float()
   def x_of(%MeasureGeometry{} = geom, tick) do
-    geom.content_x + (tick - geom.start_tick) * geom.scale
+    MeasureGeometry.x_at(geom, tick - geom.start_tick)
   end
 
   @doc "Absolute tick at `x` in the measure laid out as `geom` (not snapped to a grid)."
   @spec tick_at(MeasureGeometry.t(), number()) :: float()
   def tick_at(%MeasureGeometry{} = geom, x) do
-    geom.start_tick + (x - geom.content_x) / geom.scale
+    geom.start_tick + MeasureGeometry.offset_at(geom, x)
+  end
+
+  # A measure at its natural width, x from its left edge: a column for each
+  # moment something starts (and beat 1), each one gap after the room the
+  # previous one needs.
+  defp natural_geometry(measure, index, start, capacity, scale) do
+    starts =
+      [{0, nil} | Enum.map(measure.notes ++ measure.rests, &{&1.offset, &1.staff})]
+      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+      |> Enum.map(fn {offset, staves} ->
+        {offset, staves |> Enum.reject(&is_nil/1) |> Enum.uniq()}
+      end)
+      |> Enum.sort()
+
+    room = fn ticks -> max(@min_note_space, ticks * scale) end
+    nexts = Enum.map(tl(starts), &elem(&1, 0)) ++ [capacity]
+
+    {columns, content_end} =
+      starts
+      |> Enum.zip(nexts)
+      |> Enum.map_reduce(@insert_gap, fn {{offset, staves}, next}, x ->
+        column = %Column{offset: offset, x: x, staves: Enum.sort(staves)}
+        {column, x + room.(next - offset) + @insert_gap}
+      end)
+
+    content_end = content_end - @insert_gap
+
+    %MeasureGeometry{
+      index: index,
+      x: 0.0,
+      width: content_end + @right_pad,
+      start_tick: start,
+      capacity: capacity,
+      content_x: @insert_gap,
+      content_end: content_end,
+      scale: scale,
+      gap: @insert_gap,
+      columns: columns
+    }
   end
 
   ## Systems
@@ -168,12 +202,17 @@ defmodule DrawMusic.Engraving.Layout do
 
     {placed, system_width} =
       Enum.map_reduce(group, header.width, fn {measure, natural_geom}, x ->
+        place = &(x + &1 * factor)
+
         geom = %{
           natural_geom
           | x: x,
             width: natural_geom.width * factor,
-            content_x: x + @left_pad * factor,
-            scale: natural_geom.scale * factor
+            content_x: place.(natural_geom.content_x),
+            content_end: place.(natural_geom.content_end),
+            scale: natural_geom.scale * factor,
+            gap: natural_geom.gap * factor,
+            columns: Enum.map(natural_geom.columns, &%{&1 | x: place.(&1.x)})
         }
 
         {{measure, geom}, x + geom.width}

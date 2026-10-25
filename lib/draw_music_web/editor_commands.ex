@@ -7,7 +7,7 @@ defmodule DrawMusicWeb.EditorCommands do
   """
 
   alias DrawMusic.Music.{Clipboard, Context, Duration, Editing, Note, Pitch, Score, Timeline}
-  alias DrawMusicWeb.{ContextMenu, EditorPalette}
+  alias DrawMusicWeb.{Armed, ContextMenu, EditorPalette, EditorPlacement}
 
   @typedoc "An edit for `DrawMusic.Music.Session.edit/2`."
   @type edit ::
@@ -42,6 +42,26 @@ defmodule DrawMusicWeb.EditorCommands do
            {:ok, score} <- maybe_alter(score, ctx, ids, alter) do
         {:ok, score, ids}
       end
+    end
+  end
+
+  @doc """
+  Deletes the given notes and rests. In Overlay mode nothing else moves: the
+  gap they leave shows as rests. In Insert mode later music on each staff
+  moves left to close it.
+  """
+  @spec delete([Ecto.UUID.t()], boolean()) :: edit()
+  def delete(ids, false = _insert?), do: &Editing.remove(&1, &2, ids)
+  def delete(ids, true = _insert?), do: &Editing.delete(&1, &2, ids)
+
+  @doc """
+  Turns the given notes into `chord`, each built on the lowest note of the
+  chord it belongs to. Gives the new chords' ids.
+  """
+  @spec chordify([Ecto.UUID.t()], Armed.chord()) :: edit()
+  def chordify(ids, chord) do
+    fn score, ctx ->
+      Editing.chordify(score, ctx, ids, &EditorPlacement.chord_pitches(ctx, chord, {&1, &2}))
     end
   end
 
@@ -120,11 +140,20 @@ defmodule DrawMusicWeb.EditorCommands do
 
   def menu("tie_next", _params, menu, _insert?), do: &tie_next(&1, &2, menu.id)
 
+  # A diatonic third above the chord's top note or below its bottom one.
+  def menu("add_third_above", _params, menu, _insert?) do
+    &Editing.add_to_chord(&1, &2, menu.id, 2)
+  end
+
+  def menu("add_third_below", _params, menu, _insert?) do
+    &Editing.add_to_chord(&1, &2, menu.id, -2)
+  end
+
   def menu("untie", _params, menu, _insert?) do
     fn score, _ctx -> {:ok, Editing.untie(score, menu.id)} end
   end
 
-  def menu("menu_delete", _params, menu, _insert?), do: &Editing.delete(&1, &2, menu.ids)
+  def menu("menu_delete", _params, menu, insert?), do: delete(menu.ids, insert?)
   def menu("reverse", _params, menu, _insert?), do: &Editing.reverse(&1, &2, menu.ids)
 
   def menu("transpose", %{"by" => by, "dir" => dir} = params, menu, _insert?) do

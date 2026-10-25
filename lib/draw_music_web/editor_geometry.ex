@@ -18,7 +18,7 @@ defmodule DrawMusicWeb.EditorGeometry do
     SystemPayload
   }
 
-  @doc "The geometry of an engraved layout read against `ctx`."
+  @doc "The geometry of an engraved layout, read against `ctx`."
   @spec encode(Engraved.t(), Context.t()) :: Payload.t()
   def encode(%Engraved{} = engraved, %Context{} = ctx) do
     %Payload{
@@ -47,7 +47,6 @@ defmodule DrawMusicWeb.EditorGeometry do
       value: armed.value,
       dots: armed.dots,
       alter: armed.alter,
-      locked: armed.locked?,
       glyph: EditorPalette.cursor_glyph(armed),
       grid: Duration.ticks(armed.value),
       chord: chord_shape(armed.chord, ctx)
@@ -61,7 +60,7 @@ defmodule DrawMusicWeb.EditorGeometry do
     %ChordShape{
       kind: :quality,
       tones: Enum.map(Chords.intervals(quality), &Tuple.to_list/1),
-      suffix: Chords.suffix(quality)
+      suffix: Chords.name(quality)
     }
   end
 
@@ -83,5 +82,5 @@ defmodule DrawMusicWeb.EditorGeometry do
   defp chord_shape(nil, _ctx), do: nil
 
   defp degree_suffix(nil), do: ""
-  defp degree_suffix(quality), do: Chords.suffix(quality)
+  defp degree_suffix(quality), do: Chords.name(quality)
 end

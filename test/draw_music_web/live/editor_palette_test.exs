@@ -24,13 +24,10 @@ defmodule DrawMusicWeb.EditorPaletteTest do
     assert has_element?(view, "#palette-eighth[value=eighth]")
   end
 
-  test "arming the same item twice keeps it armed; lock keeps it armed and locked", %{view: view} do
+  test "arming the same item twice keeps it armed", %{view: view} do
     view |> element("#palette-eighth") |> render_click()
     view |> element("#palette-eighth") |> render_click()
     assert has_element?(view, "#palette-eighth[aria-pressed=true]")
-
-    render_hook(view, "lock", %{"kind" => "note", "value" => "eighth"})
-    assert has_element?(view, "#palette-eighth[aria-pressed=true][data-locked]")
   end
 
   test "disarm clears the armed item", %{view: view} do
@@ -74,11 +71,12 @@ defmodule DrawMusicWeb.EditorPaletteTest do
     refute has_element?(view, "#palette-tie[aria-pressed=true]")
   end
 
-  test "Insert mode toggles", %{view: view} do
+  test "placing starts in Insert mode; the Overlay/Insert button toggles it", %{view: view} do
+    assert has_element?(view, "#palette-insert[aria-pressed=true]", "Insert")
     view |> element("#palette-insert") |> render_click()
-    assert has_element?(view, "#palette-insert[aria-pressed=true]")
+    assert has_element?(view, "#palette-insert[aria-pressed=false]", "Overlay")
     view |> element("#palette-insert") |> render_click()
-    refute has_element?(view, "#palette-insert[aria-pressed=true]")
+    assert has_element?(view, "#palette-insert[aria-pressed=true]", "Insert")
   end
 
   test "undo and redo are disabled with no history", %{view: view} do

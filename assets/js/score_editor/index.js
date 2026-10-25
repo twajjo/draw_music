@@ -4,15 +4,17 @@
 // the button is down, and sends semantic events (`place`, `drop`, `select`)
 // to EditorLive, which owns the score.
 //
-// A press on a note or rest selects it when let go where it was pressed;
-// a note dragged away lands where it is let go. With a piece armed, the
-// press shows and sounds it, and letting go places it.
+// A press on a note or rest selects it when let go where it was pressed,
+// even with a piece armed; a note dragged away lands where it is let go.
+// With a piece armed, a press anywhere else shows and sounds it, and
+// letting go places it.
 //
 // Server state arrives as data attributes on the hook element:
-// data-geometry (EditorGeometry.encode), data-armed (EditorGeometry.armed)
+// data-geometry (EditorGeometry.encode), data-armed (EditorGeometry.armed),
+// data-insert (Insert mode)
 // and data-instrument (InstrumentSource). Playback lives in audio.js.
 
-import {locate, snap, pitchOf, keyAlter, stepY, ledgerSteps, stepOnStaff, staffStepAt, stepAtY} from "./geometry"
+import {locate, snap, xAt, columnAt, insertColumn, pitchOf, keyAlter, stepY, ledgerSteps, stepOnStaff, staffStepAt, stepAtY} from "./geometry"
 import {chordAt} from "./chord"
 import {cursorFor} from "./cursor"
 import {Audio} from "./audio"
@@ -34,6 +36,9 @@ const PLACEMENT_TONE = 0.25
 const SECOND_OFFSET = 1.2
 const CHORD_LABEL_GAP = 2
 const CHORD_LABEL_SIZE = 1.6
+// About a notehead's width (staff spaces): a click this far right of a
+// column is still on its note or rest.
+const HEAD_WIDTH = 1.3
 
 // The note or rest element (and its id) under an event, if any.
 function eventTarget(e) {
@@ -177,6 +182,7 @@ export default {
     this.geometry = JSON.parse(this.el.dataset.geometry)
     this.armed = JSON.parse(this.el.dataset.armed || "null")
     this.mode = this.el.dataset.mode || "edit"
+    this.insert = this.el.dataset.insert === "true"
     this.el.classList.toggle("play-mode", this.mode === "play")
     this.overlay.setAttribute("viewBox", this.score.getAttribute("viewBox"))
     this.setPageCursor(this.armed && this.armed.glyph)
@@ -191,16 +197,31 @@ export default {
     return point.matrixTransform(this.score.getScreenCTM().inverse())
   },
 
-  // Where the armed piece would land, or null.
+  // Where the armed piece would land, or null, and where its ghost goes
+  // (ghostX). Like a text editor: in Insert, the piece goes in front of the
+  // note or rest whose notehead ends right of the pointer, its ghost in that
+  // item's insertion gap; past a bar's last item it follows the music. In
+  // Overlay, a note or rest's gap or head means its start; anywhere else
+  // the beat grid, and it types over the time it covers.
   target(e) {
     if (!this.armed || !this.armed.glyph) return null
     const {x, y} = this.toScore(e)
     const at = locate(this.geometry, x, y)
     if (!at) return null
 
-    const offset = snap(at.offset, this.armed.grid, at.measure.capacity)
     const modifier = e.shiftKey ? 1 : e.ctrlKey || e.altKey ? -1 : null
-    return {...at, offset, modifier}
+    const {measure} = at
+    const gridded = snap(at.offset, this.armed.grid, measure.capacity)
+
+    if (this.insert) {
+      const column = insertColumn(measure, at.staff, x, HEAD_WIDTH)
+      if (column) return {...at, offset: column.offset, ghostX: column.x - measure.gap / 2 - HEAD_WIDTH / 2, modifier}
+      return {...at, offset: gridded, ghostX: xAt(measure, gridded), modifier}
+    }
+
+    const column = columnAt(measure, at.staff, x, HEAD_WIDTH)
+    const offset = column ? column.offset : gridded
+    return {...at, offset, ghostX: xAt(measure, offset), modifier}
   },
 
   // The ghost follows the pointer; it sounds only while the button is down.
@@ -229,9 +250,11 @@ export default {
     if (this.mode === "play" && hit) return hit.kind === "note" && this.pushEvent("audition", {id: hit.id})
     if (this.mode === "play") return this.startBand(e)
     if (this.armed && this.armed.kind === "tie") return hit && hit.kind === "note" && this.startTie(e, hit)
-    if (this.armed) return this.startPress(e)
+    if (this.armed && !hit) return this.startPress(e)
 
-    // A note or rest: selected on release, unless a note is dragged first.
+    // A note or rest, armed or not: selected on release, unless a note is
+    // dragged first. (A chord is stacked by pressing another line or space
+    // at the note's start, which is not on the note itself.)
     if (hit) {
       this.pending = {hit, start: this.toScore(e), shift: e.shiftKey}
       return this.el.setPointerCapture(e.pointerId)
@@ -472,6 +495,7 @@ export default {
     if (e.key === "Delete" || e.key === "Backspace") return send("delete")
     if (e.key === "Insert") return send("toggle_insert")
     if (/^[1-7]$/.test(e.key)) return send("arm_value", {value: VALUES[Number(e.key) - 1]})
+    if (e.key === "0") return send("disarm")
     if (k === "r") return send("toggle_rest")
     if (e.key === ".") return send("toggle_dot")
     if (k === "t") return send("arm_tie")
@@ -521,7 +545,7 @@ export default {
     g.setAttribute("opacity", "0.6")
     g.style.color = "var(--score-ink)"
 
-    const x = t.measure.content_x + t.offset * t.measure.scale
+    const x = t.ghostX
     const chord = chordAt(this.armed, t, this.geometry.sf)
     if (chord) {
       this.drawChord(g, t, x, chord)

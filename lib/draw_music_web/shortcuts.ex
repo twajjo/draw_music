@@ -34,6 +34,12 @@ defmodule DrawMusicWeb.Shortcuts do
     },
     %Shortcut{
       group: "Placing",
+      keys: ["0"],
+      modes: @edit,
+      action: "Put the picked note, rest, chord or tie tool down (nothing picked)"
+    },
+    %Shortcut{
+      group: "Placing",
       keys: ["R"],
       modes: @edit,
       action: "Switch the palette between notes and rests"
@@ -54,6 +60,13 @@ defmodule DrawMusicWeb.Shortcuts do
     },
     %Shortcut{
       group: "Placing",
+      mouse: "click in the gap before a note or rest",
+      modes: @edit,
+      action:
+        "Every note and rest has a gap before it. Insert: the picked item goes in front of it and everything after moves right; the preview waits in the gap. Overlay: the item starts there and types over the time it covers"
+    },
+    %Shortcut{
+      group: "Placing",
       mouse: "shift-click",
       modes: @edit,
       action: "Place it sharp (hold Shift while placing or dragging)",
@@ -67,12 +80,6 @@ defmodule DrawMusicWeb.Shortcuts do
     },
     %Shortcut{
       group: "Placing",
-      mouse: "double-click palette item",
-      modes: @edit,
-      action: "Keep it picked for several placements"
-    },
-    %Shortcut{
-      group: "Placing",
       keys: ["Escape"],
       modes: @edit,
       action: "Stop placing, or clear the selection"
@@ -80,10 +87,10 @@ defmodule DrawMusicWeb.Shortcuts do
     # Selecting and moving
     %Shortcut{
       group: "Selecting and moving",
-      mouse: "click note",
+      mouse: "click note or rest",
       modes: @edit,
       action:
-        "Select a note or rest; Delete, the arrows, the menu and the palette's dot and accidentals act on it"
+        "Select it, even with something picked (every rest on the page can be selected); Delete, the arrows, the menu and the palette's dot and accidentals act on it"
     },
     %Shortcut{
       group: "Selecting and moving",
@@ -143,7 +150,21 @@ defmodule DrawMusicWeb.Shortcuts do
       mouse: "Chords menu",
       modes: @edit,
       action:
-        "Pick a chord; the cursor shows, sounds and names it as you move; click where its root goes"
+        "Chord mode: pick a chord before or after the length; the ghost shows, sounds and names it (Dmaj, F♯min) as you drag; let go where its root goes. Pick it again, or Single notes, to go back to notes"
+    },
+    %Shortcut{
+      group: "Ties and chords",
+      mouse: "right-click note, Add a 3rd",
+      modes: @edit,
+      action:
+        "Add a note a third above the chord's top note, or below its bottom one, on the key's version of that letter"
+    },
+    %Shortcut{
+      group: "Ties and chords",
+      mouse: "Chords menu, notes selected",
+      modes: @edit,
+      action:
+        "With nothing picked (Esc), turn the selected notes into the chord, each built on its lowest note"
     },
     # Measures
     %Shortcut{
@@ -158,10 +179,16 @@ defmodule DrawMusicWeb.Shortcuts do
       group: "Editing",
       keys: ["Delete", "Backspace"],
       modes: @edit,
-      action: "Delete the selection; later music closes the gap"
+      action:
+        "Delete the selection. Overlay: nothing else moves, and the gap shows as rests. Insert: later music on that staff moves left to close it"
     },
     %Shortcut{group: "Editing", keys: ["Ctrl+C"], modes: @edit, action: "Copy the selection"},
-    %Shortcut{group: "Editing", keys: ["Ctrl+X"], modes: @edit, action: "Cut the selection"},
+    %Shortcut{
+      group: "Editing",
+      keys: ["Ctrl+X"],
+      modes: @edit,
+      action: "Cut the selection (it leaves a gap or closes it, as Delete does)"
+    },
     %Shortcut{
       group: "Editing",
       keys: ["Ctrl+V"],
@@ -174,7 +201,8 @@ defmodule DrawMusicWeb.Shortcuts do
       group: "Editing",
       keys: ["Insert"],
       modes: @edit,
-      action: "Insert mode: placing pushes later music on that staff right",
+      action:
+        "Switch between Insert (the default) and Overlay, like typing in a text editor (also the palette's Overlay/Insert button). Insert: the new item goes in front of the one you click before, everything after it on that staff moves right (only the rests at the very end shrink), a click past the music lands right after it, and deleting pulls later music left. Overlay: the new item replaces the time it covers on that staff, from the beat you click: a half replaces two beats of notes and rests, a note sounding into it is shortened, and what's left of a covered note becomes rests. Either way a note too long for the bar is tied over the bar line",
       diagram: :insert_shift
     },
     %Shortcut{
@@ -215,7 +243,7 @@ defmodule DrawMusicWeb.Shortcuts do
     },
     %Shortcut{
       group: "Playback",
-      mouse: "Use for this version",
+      mouse: "Set selection to version Instrument",
       modes: @play,
       action: "Make the version's instrument the one you're hearing (after you confirm)"
     },
@@ -239,7 +267,7 @@ defmodule DrawMusicWeb.Shortcuts do
       keys: ["P"],
       modes: @both,
       action:
-        "Switch between Edit and Play: each has its own palette, in Play mode nothing can change the score, and a selected range narrows to its first note"
+        "Switch between Edit and Play: each has its own palette, in Play mode nothing can change the score, and going back to Edit narrows a selected range to its first note"
     },
     %Shortcut{group: "Modes", keys: ["?"], modes: @both, action: "Show this cheat-sheet"}
   ]

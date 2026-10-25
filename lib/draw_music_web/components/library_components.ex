@@ -79,25 +79,33 @@ defmodule DrawMusicWeb.LibraryComponents do
 
   @doc """
   The instrument picker's options: GM instruments grouped by family, with
-  the ones not downloaded to this server marked.
+  the ones not downloaded to this server marked "(not installed)" and drawn
+  in the warning colour (yellow).
   """
-  @spec instrument_options() :: [{String.t(), [{String.t(), 0..127}]}]
+  @spec instrument_options() :: [{String.t(), [{String.t(), 0..127} | keyword()]}]
   def instrument_options do
     installed = Samples.installed()
 
     for family <- Samples.families() do
       options =
         for %{family: ^family} = instrument <- Samples.instruments() do
-          {instrument_label(instrument, MapSet.member?(installed, instrument.program)),
-           instrument.program}
+          instrument_option(instrument, MapSet.member?(installed, instrument.program))
         end
 
       {family, options}
     end
   end
 
-  defp instrument_label(instrument, true = _installed?), do: instrument.name
-  defp instrument_label(instrument, false), do: "#{instrument.name} (not installed)"
+  defp instrument_option(instrument, true = _installed?),
+    do: {instrument.name, instrument.program}
+
+  defp instrument_option(instrument, false) do
+    [
+      key: "#{instrument.name} (not installed)",
+      value: instrument.program,
+      class: "text-warning"
+    ]
+  end
 
   @doc "Path of a version's score view."
   @spec version_path(Ecto.UUID.t(), Key.t(), pos_integer()) :: String.t()
