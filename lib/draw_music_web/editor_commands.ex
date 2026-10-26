@@ -6,7 +6,18 @@ defmodule DrawMusicWeb.EditorCommands do
   atoms.
   """
 
-  alias DrawMusic.Music.{Clipboard, Context, Duration, Editing, Note, Pitch, Score, Timeline}
+  alias DrawMusic.Music.{
+    Clipboard,
+    Context,
+    Duration,
+    Editing,
+    Note,
+    Pitch,
+    Score,
+    TempoEditing,
+    Timeline
+  }
+
   alias DrawMusicWeb.{Armed, ContextMenu, EditorPalette, EditorPlacement}
 
   @typedoc "An edit for `DrawMusic.Music.Session.edit/2`."
@@ -46,13 +57,23 @@ defmodule DrawMusicWeb.EditorCommands do
   end
 
   @doc """
-  Deletes the given notes and rests. In Overlay mode nothing else moves: the
-  gap they leave shows as rests. In Insert mode later music on each staff
-  moves left to close it.
+  Deletes the given notes, rests and tempo changes. In Overlay mode nothing
+  else moves: the gap notes and rests leave shows as rests. In Insert mode
+  later music on each staff moves left to close it. Tempo changes never
+  move anything.
   """
   @spec delete([Ecto.UUID.t()], boolean()) :: edit()
-  def delete(ids, false = _insert?), do: &Editing.remove(&1, &2, ids)
-  def delete(ids, true = _insert?), do: &Editing.delete(&1, &2, ids)
+  def delete(ids, insert?) do
+    fn score, ctx ->
+      tempo_ids = MapSet.new(TempoEditing.ids(score))
+      {tempos, events} = Enum.split_with(ids, &(&1 in tempo_ids))
+      delete_events(TempoEditing.remove(score, tempos), ctx, events, insert?)
+    end
+  end
+
+  defp delete_events(score, _ctx, [], _insert?), do: {:ok, score}
+  defp delete_events(score, ctx, ids, false = _insert?), do: Editing.remove(score, ctx, ids)
+  defp delete_events(score, ctx, ids, true = _insert?), do: Editing.delete(score, ctx, ids)
 
   @doc """
   Turns the given notes into `chord`, each built on the lowest note of the

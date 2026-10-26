@@ -23,6 +23,21 @@ defmodule DrawMusicWeb.EditorLiveTest do
   defp path(version),
     do: LibraryComponents.version_path(version.key.composition.id, version.key, version.number)
 
+  # A long score would otherwise be engraved and sent twice; the first,
+  # static page only stands in until the LiveView connects.
+  test "the static page says the score is loading; the live one draws it",
+       %{conn: conn, scope: scope} do
+    {version, id} = version_with_note(scope)
+
+    static = conn |> get(path(version)) |> html_response(200) |> LazyHTML.from_document()
+    assert Enum.count(LazyHTML.query(static, "#score-editor[data-loading='true']")) == 1
+    assert Enum.empty?(LazyHTML.query(static, "#note-#{id}"))
+
+    {:ok, view, _html} = live(conn, path(version))
+    assert has_element?(view, "#score-editor[data-loading='false']")
+    assert has_element?(view, "#note-#{id}")
+  end
+
   describe "main page" do
     test "starts a blank, unsaved composition", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")

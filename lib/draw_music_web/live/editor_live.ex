@@ -25,7 +25,19 @@ defmodule DrawMusicWeb.EditorLive do
   alias DrawMusic.Engraving.Layout
   alias DrawMusic.Library
   alias DrawMusic.Library.{Composition, Key, Version}
-  alias DrawMusic.Music.{Context, Editing, Note, Playback, Score, Session, Timeline, Transpose}
+
+  alias DrawMusic.Music.{
+    Context,
+    Editing,
+    Note,
+    Playback,
+    Score,
+    Session,
+    TempoEditing,
+    TempoMap,
+    Timeline,
+    Transpose
+  }
 
   alias DrawMusicWeb.{
     ContextMenu,
@@ -36,10 +48,15 @@ defmodule DrawMusicWeb.EditorLive do
     EditorSettings,
     InstrumentSource,
     PlaybackPayload,
+    ScoreComponents,
     ScorePreferences,
     Shortcuts,
+    TempoDialog,
+    TempoForm,
     VersionLookup
   }
+
+  alias Phoenix.HTML.Safe
 
   @draft_measures 4
   @menu_events ~w(split set_value toggle_menu_dot to_rest to_note tie_next untie add_third_above
@@ -48,9 +65,11 @@ defmodule DrawMusicWeb.EditorLive do
   @edit_events ~w(arm arm_value arm_chord single_notes arm_tie toggle_rest toggle_dot set_accidental
                   toggle_insert place move delete cut paste drop tie open_menu menu_copy menu_cut
                   insert_measure delete_measure add_measure undo redo open_settings
-                  apply_settings transpose_key) ++ @menu_events
+                  apply_settings transpose_key select_all menu_tempo edit_tempo validate_tempo
+                  save_tempo delete_tempo move_tempo resize_tempo) ++ @menu_events
   # The play controls; Edit mode ignores them.
-  @play_events ~w(play rewind toggle_loop audition set_playback_instrument use_playback_instrument)
+  @play_events ~w(play rewind skip toggle_loop audition set_playback_instrument
+                  use_playback_instrument)
 
   @impl true
   def render(assigns) do
@@ -128,6 +147,17 @@ defmodule DrawMusicWeb.EditorLive do
         ]}
         style="background-color: var(--score-paper)"
       >
+        <%!-- Shown until the score has arrived and the browser has drawn it:
+             the hook hides it (data-loading says whether it has arrived). --%>
+        <p
+          id="score-loading"
+          phx-update="ignore"
+          class="flex items-center gap-2 pb-2 text-sm"
+          style="color: var(--score-ink)"
+        >
+          <span class="loading loading-spinner loading-sm" />
+          <span id="score-loading-text">Loading the score…</span>
+        </p>
         <div
           id="score-editor"
           phx-hook="ScoreEditor"
@@ -138,19 +168,16 @@ defmodule DrawMusicWeb.EditorLive do
               else: "w-fit"
             )
           ]}
-          data-geometry={Jason.encode!(EditorGeometry.encode(@engraved, @session.ctx))}
+          data-geometry={@geometry_json}
           data-insert={to_string(@insert?)}
           data-armed={Jason.encode!(EditorGeometry.armed(@armed, @session.ctx))}
           data-dirty={to_string(@session.dirty?)}
           data-instrument={Jason.encode!(@instrument_source)}
           data-mode={@editor_mode}
+          data-play-start={@editor_mode == :play && play_start(@session)}
+          data-loading={to_string(@score_loading?)}
         >
-          <.score
-            id="score"
-            layout={@engraved}
-            selection={@session.selection}
-            class={["block", @current_scope.user.score_layout == :page && "h-auto w-full"]}
-          />
+          {score_svg(@engraved, @session.selection, @current_scope.user.score_layout)}
           <%!-- The hook draws the cursor glyph and previews here. --%>
           <svg
             id="score-overlay"
@@ -166,6 +193,7 @@ defmodule DrawMusicWeb.EditorLive do
           />
         </div>
         <.context_menu :if={@menu} menu={@menu} />
+        <.tempo_dialog :if={@tempo} dialog={@tempo} />
         <.save_as_dialog :if={@save_as_form} form={@save_as_form} />
         <.settings_panel :if={@settings_form} form={@settings_form} />
         <.help_dialog :if={@help?} shortcuts={Shortcuts.for_mode(@editor_mode)} />
@@ -190,15 +218,27 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign(:version, version)
      |> assign(:session, Session.new(version.score, Context.from_version(version)))
      |> assign(armed: nil, row_kind: :note, insert?: true, last_click: nil, menu: nil)
-     |> assign(save_as_form: nil, settings_form: nil, pending_key: nil)
+     |> assign(save_as_form: nil, settings_form: nil, pending_key: nil, tempo: nil)
      |> assign(playback: :idle, loop?: false, editor_mode: :edit, help?: false)
      |> assign(:instrument_options, instrument_options())
      # The tempo marking and instrument aren't part of the score's Context;
      # they're saved beside it.
      |> assign(:tempo_text, version.tempo_text)
      |> assign_instrument(version.instrument)
-     |> assign_layout()}
+     |> assign_placeholder()
+     |> lay_out_after_join()}
   end
+
+  # Engraving and drawing a long score takes seconds, more than joining the
+  # LiveView may: the join answers with a placeholder, and the score follows
+  # as an ordinary update (`handle_info(:lay_out, ...)`).
+  defp lay_out_after_join(socket) do
+    if connected?(socket), do: send(self(), :lay_out)
+    socket
+  end
+
+  @impl true
+  def handle_info(:lay_out, socket), do: {:noreply, assign_layout(socket)}
 
   defp load(:new, _scope, _params) do
     composition = %Composition{name: "Untitled", keys: []}
@@ -400,6 +440,14 @@ defmodule DrawMusicWeb.EditorLive do
     {:noreply, reselected(socket, &Session.select(&1, ids, false))}
   end
 
+  # Every note and rest, on both staves, and every tempo change.
+  def handle_event("select_all", _params, socket) do
+    %{session: session} = socket.assigns
+    events = for entry <- Timeline.flatten(session.score, session.ctx), do: entry.event.id
+    ids = events ++ TempoEditing.ids(session.score)
+    {:noreply, reselected(socket, &Session.select(&1, ids, false))}
+  end
+
   def handle_event("clear_selection", _params, socket) do
     {:noreply, reselected(socket, &Session.clear_selection/1)}
   end
@@ -505,6 +553,24 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign(:menu, nil)}
   end
 
+  # "Tempo change here…": a new change where the right-clicked note or rest
+  # starts, at the tempo already in force there.
+  def handle_event("menu_tempo", _params, %{assigns: %{menu: %{} = menu}} = socket) do
+    %{session: session} = socket.assigns
+
+    socket =
+      case Enum.find(Timeline.flatten(session.score, session.ctx), &(&1.event.id == menu.id)) do
+        nil ->
+          socket
+
+        entry ->
+          bpm = TempoMap.bpm_at(TempoMap.new(session.score, session.ctx), entry.start)
+          open_tempo(socket, nil, entry.start, TempoForm.params(bpm, session.ctx))
+      end
+
+    {:noreply, assign(socket, :menu, nil)}
+  end
+
   def handle_event(event, params, %{assigns: %{menu: %{} = menu}} = socket)
       when event in @menu_events do
     fun = EditorCommands.menu(event, params, menu, socket.assigns.insert?)
@@ -513,6 +579,68 @@ defmodule DrawMusicWeb.EditorLive do
      socket
      |> edit(fun)
      |> assign(:menu, nil)}
+  end
+
+  ## Tempo changes
+
+  def handle_event("edit_tempo", %{"id" => id}, socket) when is_binary(id) do
+    %{session: session} = socket.assigns
+
+    case TempoEditing.find(session.score, id) do
+      {:ok, change} ->
+        socket = update(socket, :session, &Session.select(&1, [id], false))
+        {:noreply, open_tempo(socket, id, change.tick, TempoForm.params(change, session.ctx))}
+
+      {:error, _not_found} ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event(
+        "validate_tempo",
+        %{"tempo" => params},
+        %{assigns: %{tempo: %{} = dialog}} = socket
+      ) do
+    {:noreply, assign(socket, :tempo, %{dialog | form: tempo_form(params, dialog, socket)})}
+  end
+
+  def handle_event(
+        "save_tempo",
+        %{"tempo" => params},
+        %{assigns: %{tempo: %{} = dialog}} = socket
+      ) do
+    case TempoForm.validate(params, dialog.tick, dialog.id, socket.assigns.session.ctx) do
+      {:ok, change} ->
+        change = %{change | id: change.id || Ecto.UUID.generate()}
+
+        {:noreply,
+         socket
+         |> assign(:tempo, nil)
+         |> edit_and_select(&with_ids(TempoEditing.put(&1, &2, change), [change.id]))}
+
+      {:error, _errors} ->
+        {:noreply, assign(socket, :tempo, %{dialog | form: tempo_form(params, dialog, socket)})}
+    end
+  end
+
+  def handle_event("delete_tempo", _params, %{assigns: %{tempo: %{id: id}}} = socket)
+      when is_binary(id) do
+    {:noreply,
+     socket
+     |> assign(:tempo, nil)
+     |> edit(EditorCommands.delete([id], socket.assigns.insert?))}
+  end
+
+  def handle_event("close_tempo", _params, socket), do: {:noreply, assign(socket, :tempo, nil)}
+
+  def handle_event("move_tempo", %{"id" => id, "tick" => tick}, socket)
+      when is_binary(id) and is_integer(tick) do
+    {:noreply, edit_and_select(socket, &with_ids(TempoEditing.move(&1, &2, id, tick), [id]))}
+  end
+
+  def handle_event("resize_tempo", %{"id" => id, "tick" => tick}, socket)
+      when is_binary(id) and is_integer(tick) do
+    {:noreply, edit_and_select(socket, &with_ids(TempoEditing.resize(&1, &2, id, tick), [id]))}
   end
 
   ## Measures
@@ -667,7 +795,9 @@ defmodule DrawMusicWeb.EditorLive do
      |> push_event("pause", %{})}
   end
 
-  def handle_event("play", _params, %{assigns: %{playback: :paused}} = socket) do
+  # Paused (or paused and rewound to the start point): carry on from there.
+  def handle_event("play", _params, %{assigns: %{playback: state}} = socket)
+      when state in [:paused, :rewound] do
     {:noreply,
      socket
      |> assign(:playback, :playing)
@@ -675,6 +805,15 @@ defmodule DrawMusicWeb.EditorLive do
   end
 
   def handle_event("play", _params, socket), do: {:noreply, start_playback(socket)}
+
+  # Paused, Rewind goes back to the start point and waits there: the button
+  # offers Play again, not Resume.
+  def handle_event("rewind", _params, %{assigns: %{playback: :paused}} = socket) do
+    {:noreply,
+     socket
+     |> assign(:playback, :rewound)
+     |> push_event("rewind", %{})}
+  end
 
   def handle_event("rewind", _params, socket), do: {:noreply, push_event(socket, "rewind", %{})}
 
@@ -685,6 +824,16 @@ defmodule DrawMusicWeb.EditorLive do
      socket
      |> assign(:loop?, loop?)
      |> push_event("loop", %{on: loop?})}
+  end
+
+  # ⏩ the start of the next measure, ⏭ of the next line of music. Playing or
+  # paused, the hook knows where it is and jumps; before playing, the start
+  # point moves there (the first note or rest it begins with is selected).
+  def handle_event("skip", %{"by" => by}, socket) when by in ~w(measure line) do
+    case socket.assigns.playback do
+      state when state in [:idle, :loading] -> {:noreply, skip_start(socket, by)}
+      _sounding -> {:noreply, push_event(socket, "skip", %{by: by})}
+    end
   end
 
   def handle_event("stop", _params, socket) do
@@ -753,6 +902,22 @@ defmodule DrawMusicWeb.EditorLive do
     end
   end
 
+  defp with_ids({:ok, score}, ids), do: {:ok, score, ids}
+  defp with_ids(error, _ids), do: error
+
+  defp open_tempo(socket, id, tick, params) do
+    dialog = %TempoDialog{id: id, tick: tick, form: to_form(params, as: :tempo)}
+    assign(socket, :tempo, dialog)
+  end
+
+  # The form with any errors the params have, shown as they're typed.
+  defp tempo_form(params, dialog, socket) do
+    case TempoForm.validate(params, dialog.tick, dialog.id, socket.assigns.session.ctx) do
+      {:ok, _change} -> to_form(params, as: :tempo)
+      {:error, errors} -> to_form(params, as: :tempo, errors: errors, action: :validate)
+    end
+  end
+
   # `apply_edit/2` when the outcome doesn't matter beyond the socket.
   defp edit(socket, fun) do
     case apply_edit(socket, fun) do
@@ -791,7 +956,9 @@ defmodule DrawMusicWeb.EditorLive do
     no_such_measure: "That bar no longer exists",
     before_start: "That would move before the start",
     not_found: "That note no longer exists",
-    pickup_bar: "Remove the pickup in the score settings first"
+    pickup_bar: "Remove the pickup in the score settings first",
+    past_end: "That's past the end of the score",
+    invalid_tempo: "A rit. or accel. has to end after it starts"
   }
 
   @doc "What to tell the user when an edit is refused for `reason`."
@@ -834,16 +1001,47 @@ defmodule DrawMusicWeb.EditorLive do
         put_flash(socket, :error, "Nothing to play here.")
 
       events ->
+        map = TempoMap.new(session.score, session.ctx)
+
         payload = %PlaybackPayload{
           events: events,
-          span: Playback.seconds(session.ctx, to - from),
-          loop: loop?
+          span: TempoMap.seconds(map, from, to),
+          loop: loop?,
+          anchors: TempoMap.anchors(map, from, to)
         }
 
         socket
         |> assign(:playback, :playing)
         |> push_event("play", payload)
     end
+  end
+
+  # Where Play would start: the hook shows the playhead there in Play mode.
+  defp play_start(session), do: elem(play_span(session), 0)
+
+  defp skip_start(socket, by) do
+    %{session: session, engraved: engraved} = socket.assigns
+    from = play_start(session)
+
+    with tick when is_integer(tick) <- Enum.find(skip_points(engraved, by), &(&1 > from)),
+         %{event: %{id: id}} <-
+           session.score
+           |> Timeline.flatten(session.ctx)
+           |> Enum.filter(&(&1.start >= tick))
+           |> Enum.min_by(& &1.start, fn -> nil end) do
+      update(socket, :session, &Session.select(&1, [id], false))
+    else
+      _none -> socket
+    end
+  end
+
+  # Where measures, or lines of music, start (ticks, in order).
+  defp skip_points(engraved, "measure") do
+    for system <- engraved.systems, measure <- system.measures, do: measure.start_tick
+  end
+
+  defp skip_points(engraved, "line") do
+    for system <- engraved.systems, do: hd(system.measures).start_tick
   end
 
   # Several selected events play from the first to the end of the last;
@@ -870,6 +1068,7 @@ defmodule DrawMusicWeb.EditorLive do
   # What the hook reports; names are only matched, never made atoms.
   defp playback_state(socket, "loading"), do: assign(socket, :playback, :loading)
   defp playback_state(socket, "playing"), do: assign(socket, :playback, :playing)
+  defp playback_state(%{assigns: %{playback: :rewound}} = socket, "paused"), do: socket
   defp playback_state(socket, "paused"), do: assign(socket, :playback, :paused)
   defp playback_state(socket, "idle"), do: assign(socket, :playback, :idle)
   defp playback_state(socket, "ready"), do: loaded(socket)
@@ -906,7 +1105,10 @@ defmodule DrawMusicWeb.EditorLive do
     |> drop_paused()
   end
 
-  defp drop_paused(%{assigns: %{playback: :paused}} = socket), do: stop_playback(socket)
+  defp drop_paused(%{assigns: %{playback: state}} = socket) when state in [:paused, :rewound] do
+    stop_playback(socket)
+  end
+
   defp drop_paused(socket), do: socket
 
   defp narrow_selection_for(socket, :edit),
@@ -1085,8 +1287,43 @@ defmodule DrawMusicWeb.EditorLive do
   # `:engraved`, not `:layout`: LiveView reserves the `layout` assign.
   defp assign_layout(socket) do
     %{session: session, current_scope: scope} = socket.assigns
-    width = layout_width(scope.user.score_layout)
-    assign(socket, :engraved, Layout.layout(session.score, session.ctx, width: width))
+    lay_out(socket, session.score, layout_width(scope.user.score_layout), false)
+  end
+
+  # Until the score is engraved (the static page, and the join), an empty
+  # bar stands in, with a note that the score is loading.
+  defp assign_placeholder(socket) do
+    width = layout_width(socket.assigns.current_scope.user.score_layout)
+    lay_out(socket, Score.new(), width, true)
+  end
+
+  defp lay_out(socket, score, width, loading?) do
+    ctx = socket.assigns.session.ctx
+    engraved = Layout.layout(score, ctx, width: width)
+
+    socket
+    |> assign(:engraved, engraved)
+    |> assign(:geometry_json, Jason.encode!(EditorGeometry.encode(engraved, ctx)))
+    |> assign(:score_loading?, loading?)
+  end
+
+  # The score goes to the browser as one finished piece of SVG, not as a
+  # LiveView diff of every glyph and line: a long piece has tens of
+  # thousands, and building those one by one in the browser takes long
+  # enough for the connection to time out. Parsed whole, it's quick. It is
+  # safe to mark raw: the HEEx it comes from has escaped every value.
+  defp score_svg(engraved, selection, layout) do
+    %{
+      __changed__: nil,
+      id: "score",
+      layout: engraved,
+      selection: selection,
+      space: 10,
+      class: ["block", layout == :page && "h-auto w-full"]
+    }
+    |> ScoreComponents.score()
+    |> Safe.to_iodata()
+    |> raw()
   end
 
   defp export_path(version, extension) do

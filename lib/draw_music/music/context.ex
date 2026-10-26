@@ -9,7 +9,7 @@ defmodule DrawMusic.Music.Context do
 
   @time_denominators [1, 2, 4, 8, 16, 32, 64]
   @max_time_num 32
-  @tempo_range 20..400
+  @tempo_range 5..400
   @beats_per_compound_beat 3
 
   defstruct sf: 0,

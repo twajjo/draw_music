@@ -4,9 +4,7 @@ defmodule DrawMusic.Music.Playback do
   its start and length in ticks and seconds.
   """
 
-  alias DrawMusic.Music.{Context, Duration, Note, Pitch, PlaybackEvent, Score, Sound, Timeline}
-
-  @seconds_per_minute 60
+  alias DrawMusic.Music.{Context, Note, Pitch, PlaybackEvent, Score, Sound, TempoMap, Timeline}
 
   @doc """
   The score's sounds, ordered by start: a tied chain sounds once, for its
@@ -60,6 +58,7 @@ defmodule DrawMusic.Music.Playback do
   @spec chord_at(Score.t(), Context.t(), Ecto.UUID.t()) :: [PlaybackEvent.t()]
   def chord_at(%Score{} = score, %Context{} = ctx, id) do
     notes = for %{kind: :note} = entry <- Timeline.flatten(score, ctx), do: entry
+    map = TempoMap.new(score, ctx)
 
     case Enum.find(notes, &(&1.event.id == id)) do
       nil ->
@@ -75,42 +74,37 @@ defmodule DrawMusic.Music.Playback do
             entry.start,
             entry.start,
             entry.ticks,
-            ctx
+            map
           )
         end
     end
   end
 
   @doc """
-  Sounds to play, timed in seconds at the context's tempo. Options:
-  `:from` and `:to` (ticks) limit playback to sounds starting in that span;
-  times are relative to `:from`.
+  Sounds to play, timed in seconds through the score's tempo changes.
+  Options: `:from` and `:to` (ticks) limit playback to sounds starting in
+  that span; times are relative to `:from`.
   """
   @spec events(Score.t(), Context.t(), from: non_neg_integer(), to: non_neg_integer()) ::
           [PlaybackEvent.t()]
   def events(%Score{} = score, %Context{} = ctx, opts \\ []) do
     from = Keyword.get(opts, :from, 0)
     to = Keyword.get(opts, :to)
+    map = TempoMap.new(score, ctx)
 
     for sound <- sounds(score, ctx), sound.start >= from, is_nil(to) or sound.start < to do
-      event(sound.ids, sound.midi, sound.start, from, sound.ticks, ctx)
+      event(sound.ids, sound.midi, sound.start, from, sound.ticks, map)
     end
   end
 
-  @doc "How long `ticks` last at the context's tempo, in seconds."
-  @spec seconds(Context.t(), non_neg_integer()) :: float()
-  def seconds(%Context{} = ctx, ticks) do
-    ticks * @seconds_per_minute / (ctx.tempo_bpm * Duration.ppq())
-  end
-
-  defp event(ids, midi, tick, from, ticks, ctx) do
+  defp event(ids, midi, tick, from, ticks, map) do
     %PlaybackEvent{
       ids: ids,
       midi: midi,
       frequency: Pitch.frequency(midi),
       tick: tick,
-      start: seconds(ctx, tick - from),
-      duration: seconds(ctx, ticks)
+      start: TempoMap.seconds(map, from, tick),
+      duration: TempoMap.seconds(map, tick, tick + ticks)
     }
   end
 end

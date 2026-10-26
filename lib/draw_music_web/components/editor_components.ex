@@ -123,6 +123,71 @@ defmodule DrawMusicWeb.EditorComponents do
     """
   end
 
+  @doc """
+  Adds or edits a tempo change: its tempo, and for a rit. or accel. the
+  tempo it reaches and over how many beats.
+  """
+  attr :dialog, DrawMusicWeb.TempoDialog, required: true
+
+  @spec tempo_dialog(map()) :: Phoenix.LiveView.Rendered.t()
+  def tempo_dialog(assigns) do
+    assigns =
+      assign(assigns,
+        form: assigns.dialog.form,
+        gradual?: assigns.dialog.form[:gradual].value == "true"
+      )
+
+    ~H"""
+    <div class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
+      <div
+        id="tempo-dialog"
+        role="dialog"
+        aria-label="Tempo change"
+        class="w-full max-w-sm rounded-box border border-base-300 bg-base-100 p-6 shadow-2xl"
+        phx-click-away="close_tempo"
+        phx-window-keydown="close_tempo"
+        phx-key="Escape"
+      >
+        <h2 class="text-lg font-semibold">
+          {if @dialog.id, do: "Tempo change", else: "New tempo change"}
+        </h2>
+        <.form
+          for={@form}
+          id="tempo-form"
+          phx-change="validate_tempo"
+          phx-submit="save_tempo"
+          class="mt-4"
+        >
+          <.input field={@form[:bpm]} type="number" label="Tempo (BPM)" />
+          <.input
+            field={@form[:gradual]}
+            type="checkbox"
+            label="Gradually (rit. or accel.)"
+            checked={@gradual?}
+          />
+          <div :if={@gradual?} class="grid grid-cols-2 gap-x-4">
+            <.input field={@form[:to_bpm]} type="number" label="Reaching (BPM)" />
+            <.input field={@form[:beats]} type="number" step="any" label="Over (beats)" />
+          </div>
+          <div class="flex items-center gap-2 pt-2">
+            <button
+              :if={@dialog.id}
+              id="tempo-delete"
+              type="button"
+              phx-click="delete_tempo"
+              class="btn btn-ghost text-error"
+            >
+              Delete
+            </button>
+            <button type="button" phx-click="close_tempo" class="btn btn-ghost ml-auto">Cancel</button>
+            <button id="tempo-save" type="submit" class="btn btn-primary">Save</button>
+          </div>
+        </.form>
+      </div>
+    </div>
+    """
+  end
+
   @doc "Asks how to move the notes into a newly chosen key."
   attr :key_name, :string, required: true
 
@@ -263,6 +328,7 @@ defmodule DrawMusicWeb.EditorComponents do
       <% else %>
         <.item id="menu-to-note" event="to_note">Make it a note here</.item>
       <% end %>
+      <.item id="menu-tempo" event="menu_tempo">Tempo change here…</.item>
       <div class="my-1 border-t border-base-300" />
       <.item id="menu-delete" event="menu_delete" danger>Delete</.item>
     </div>

@@ -31,10 +31,12 @@ defmodule DrawMusic.MidiCodec do
     Duration,
     Editing,
     Entry,
+    KeyDetection,
     Note,
     Pitch,
     Playback,
     Score,
+    TempoChange,
     Timeline
   }
 
@@ -78,6 +80,16 @@ defmodule DrawMusic.MidiCodec do
   @percussion_channel 9
   # Overlaps shorter than a sixteenth are legato, not a second voice.
   @legato Duration.ticks(:sixteenth)
+  # The key is read from this many opening bars (or the whole piece, when
+  # they hold too few notes to tell).
+  @opening_bars 8
+  @min_key_notes 16
+  # A file's key signature when nobody set one.
+  @unset_key {0, :major}
+  # Tempo steps this small (a share of the tempo before), this close
+  # together, all the same way, make a rit. or accel.
+  @ramp_step 0.15
+  @ramp_gap 2 * @ppq
 
   ## Export
 
@@ -121,8 +133,8 @@ defmodule DrawMusic.MidiCodec do
       [{0, @meta_rank, {:seq_name, composition.name}}] ++
         copyright ++
         credits ++
+        tempo_events(version) ++
         [
-          {0, @meta_rank, {:tempo, [round(@microseconds_per_minute / version.tempo_bpm)]}},
           {0, @meta_rank,
            {:time_signature, [time_signature(version.time_num, version.time_den)]}},
           {0, @meta_rank,
@@ -143,6 +155,37 @@ defmodule DrawMusic.MidiCodec do
         |> Map.take(@version_fields -- [:score])
         |> Map.put(:score, Ecto.embedded_dump(version.score || Score.new(), :json))
     }
+  end
+
+  # The starting tempo, each mark, and a rit. or accel. as a step on every
+  # beat (until the next change takes over), ending on its end tempo.
+  defp tempo_events(version) do
+    changes = Enum.sort_by((version.score || Score.new()).tempos, & &1.tick)
+    next_ticks = Enum.map(tl(changes ++ [nil]), &(&1 && &1.tick))
+
+    steps =
+      changes
+      |> Enum.zip(next_ticks)
+      |> Enum.flat_map(fn {change, next_tick} -> tempo_steps(change, next_tick) end)
+
+    for {tick, bpm} <- [{0, version.tempo_bpm} | steps] do
+      {tick, @meta_rank, {:tempo, [round(@microseconds_per_minute / bpm)]}}
+    end
+  end
+
+  defp tempo_steps(%TempoChange{to_tick: nil} = change, _next_tick),
+    do: [{change.tick, change.bpm}]
+
+  defp tempo_steps(%TempoChange{} = change, next_tick) do
+    stop = min(change.to_tick, next_tick || change.to_tick)
+    span = change.to_tick - change.tick
+
+    beats =
+      for tick <- change.tick..(stop - 1)//@ppq do
+        {tick, change.bpm + (change.to_bpm - change.bpm) * (tick - change.tick) / span}
+      end
+
+    if stop == change.to_tick, do: beats ++ [{stop, change.to_bpm}], else: beats
   end
 
   defp staff_track(name, channel, instrument, sounds) do
@@ -291,24 +334,27 @@ defmodule DrawMusic.MidiCodec do
 
   defp convert(tracks, division, name) do
     all = Enum.concat(tracks)
-    {sf, mode} = key_signature(all)
     {num, den} = time_signature_of(all)
+
+    staves =
+      tracks
+      |> Enum.map(&played_notes(&1, division))
+      |> assign_staves()
+
+    {sf, mode} = start_key(key_signature(all), staves, %Context{time_num: num, time_den: den})
+    {tempo_bpm, tempos} = tempos(all, division)
 
     ctx = %Context{
       sf: sf,
       mode: mode,
       time_num: num,
       time_den: den,
-      tempo_bpm: tempo(all)
+      tempo_bpm: tempo_bpm
     }
 
-    entries =
-      tracks
-      |> Enum.map(&played_notes(&1, division))
-      |> assign_staves()
-      |> Enum.flat_map(fn {staff, notes} -> voiced_entries(notes, staff, sf) end)
+    entries = Enum.flat_map(staves, fn {staff, notes} -> voiced_entries(notes, staff, sf) end)
 
-    with {:ok, score} <- Timeline.rebar(Score.new(), ctx, entries) do
+    with {:ok, score} <- Timeline.rebar(%{Score.new() | tempos: tempos}, ctx, entries) do
       {:ok,
        %Import{
          name: name,
@@ -325,14 +371,33 @@ defmodule DrawMusic.MidiCodec do
     end
   end
 
+  # The file's key signature, or nil when it sets none.
   defp key_signature(events) do
-    Enum.find_value(events, {@defaults.sf, @defaults.mode}, fn
+    Enum.find_value(events, fn
       {_tick, :key_signature, [<<sf::signed-8, mi>>]} when sf in -7..7 ->
         {sf, if(mi == @minor_mode_byte, do: :minor, else: :major)}
 
       _event ->
         nil
     end)
+  end
+
+  # The key the music starts in, from its opening bars. The file's own key
+  # often isn't set (C major is the usual leftover), so the notes decide;
+  # where the file names another key with the same signature, its major or
+  # minor is kept (the notes alone can mistake a key for its relative).
+  defp start_key(file_key, staves, ctx) do
+    opening_end = @opening_bars * Context.measure_ticks(ctx)
+    notes = for {_staff, notes} <- staves, {key, start, ticks} <- notes, do: {key, start, ticks}
+    opening = Enum.filter(notes, fn {_key, start, _ticks} -> start < opening_end end)
+    sample = if length(opening) < @min_key_notes, do: notes, else: opening
+    detected = KeyDetection.detect(Enum.map(sample, fn {key, _start, ticks} -> {key, ticks} end))
+
+    case {file_key, detected} do
+      {file_key, nil} -> file_key || {@defaults.sf, @defaults.mode}
+      {{sf, _mode} = file_key, {sf, _detected_mode}} when file_key != @unset_key -> file_key
+      {_file_key, detected} -> detected
+    end
   end
 
   defp time_signature_of(events) do
@@ -346,17 +411,88 @@ defmodule DrawMusic.MidiCodec do
     end)
   end
 
-  defp tempo(events) do
-    Enum.find_value(events, @midi_default_bpm, fn
-      {_tick, :tempo, [mpq]} when mpq > 0 ->
-        (@microseconds_per_minute / mpq)
-        |> round()
-        |> max(@tempo_range.first)
-        |> min(@tempo_range.last)
+  # The starting tempo and the changes after it. A change to the tempo
+  # already in force is dropped. A run of small steps the same way (each at
+  # most @ramp_step of the last, at most @ramp_gap apart) is a rit. or
+  # accel. from the run's first tempo to its last; any other change is a
+  # mark.
+  defp tempos(events, division) do
+    changes =
+      events
+      |> Enum.flat_map(fn
+        {tick, :tempo, [mpq]} when mpq > 0 -> [{quantize(tick, division), bpm(mpq)}]
+        _event -> []
+      end)
+      |> Enum.sort_by(&elem(&1, 0))
+      # Several at one tick: the last one counts.
+      |> Enum.reverse()
+      |> Enum.uniq_by(&elem(&1, 0))
+      |> Enum.reverse()
 
-      _event ->
-        nil
-    end)
+    {start, later} =
+      case changes do
+        [{0, bpm} | later] -> {bpm, later}
+        later -> {@midi_default_bpm, later}
+      end
+
+    {kept, _bpm} =
+      Enum.flat_map_reduce(later, start, fn
+        {_tick, bpm}, bpm -> {[], bpm}
+        {_tick, bpm} = change, _previous -> {[change], bpm}
+      end)
+
+    {start, group_ramps(kept)}
+  end
+
+  defp bpm(microseconds_per_quarter) do
+    (@microseconds_per_minute / microseconds_per_quarter)
+    |> round()
+    |> max(@tempo_range.first)
+    |> min(@tempo_range.last)
+  end
+
+  defp group_ramps([]), do: []
+
+  defp group_ramps([first | rest] = changes) do
+    case ramp_run(changes) do
+      [_one, _two, _three | _more] = run ->
+        {last_tick, last_bpm} = List.last(run)
+        {tick, bpm} = first
+
+        [
+          %TempoChange{
+            id: Ecto.UUID.generate(),
+            tick: tick,
+            bpm: bpm,
+            to_tick: last_tick,
+            to_bpm: last_bpm
+          }
+          | group_ramps(Enum.drop(changes, length(run)))
+        ]
+
+      _short ->
+        {tick, bpm} = first
+        [%TempoChange{id: Ecto.UUID.generate(), tick: tick, bpm: bpm} | group_ramps(rest)]
+    end
+  end
+
+  # The longest run from the first change whose steps all go one way.
+  defp ramp_run([first | rest]) do
+    {run, _direction} =
+      Enum.reduce_while(rest, {[first], nil}, fn {tick, bpm} = change,
+                                                 {[{last_tick, last_bpm} | _] = run, direction} ->
+        step = bpm - last_bpm
+        way = if step > 0, do: :up, else: :down
+
+        if direction in [way, nil] and abs(step) <= last_bpm * @ramp_step and
+             tick - last_tick <= @ramp_gap do
+          {:cont, {[change | run], way}}
+        else
+          {:halt, {run, direction}}
+        end
+      end)
+
+    Enum.reverse(run)
   end
 
   defp program(events) do
@@ -401,10 +537,13 @@ defmodule DrawMusic.MidiCodec do
 
   defp quantize(tick, division), do: round(tick * @ppq / division / @grid) * @grid
 
+  # One list of notes per staff, so a staff's voices are shared out among
+  # all the tracks that land on it.
   defp assign_staves(per_track) do
     case Enum.reject(per_track, &(&1 == [])) do
       [treble, bass | others] ->
-        [{:treble, treble}, {:bass, bass}] ++ split_at_middle_c(Enum.concat(others))
+        [{:treble, more_treble}, {:bass, more_bass}] = split_at_middle_c(Enum.concat(others))
+        [{:treble, treble ++ more_treble}, {:bass, bass ++ more_bass}]
 
       [only] ->
         split_at_middle_c(only)

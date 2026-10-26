@@ -65,7 +65,7 @@ defmodule DrawMusicWeb.PaletteComponents do
   attr :can_redo?, :boolean, default: false
   attr :mode, :atom, default: :major, doc: "the key's mode, for chord numerals"
   attr :editor_mode, :atom, default: :edit, values: [:edit, :play]
-  attr :playback, :atom, default: :idle, values: [:idle, :loading, :playing, :paused]
+  attr :playback, :atom, default: :idle, values: [:idle, :loading, :playing, :paused, :rewound]
   attr :loop?, :boolean, default: false
   attr :instrument_name, :string, default: "the instrument", doc: "named while it loads"
   attr :playback_instrument, :integer, default: 0, doc: "GM program playback uses"
@@ -272,6 +272,15 @@ defmodule DrawMusicWeb.PaletteComponents do
               <.icon name="hero-adjustments-horizontal" class="size-4" />
             </button>
             <button
+              id="palette-select-all"
+              type="button"
+              title="Select all (Ctrl+A)"
+              phx-click="select_all"
+              class="btn btn-ghost btn-sm btn-square h-auto"
+            >
+              <.icon name="hero-squares-2x2" class="size-4" />
+            </button>
+            <button
               id="palette-undo"
               type="button"
               title="Undo (Ctrl+Z)"
@@ -315,6 +324,15 @@ defmodule DrawMusicWeb.PaletteComponents do
             <.icon name="hero-backward-solid" class="size-4" />
           </button>
           <button
+            id="palette-stop"
+            type="button"
+            title="Stop, back to the start point (Esc)"
+            phx-click="stop"
+            class="btn btn-ghost btn-sm btn-square join-item"
+          >
+            <.icon name="hero-stop-solid" class="size-4" />
+          </button>
+          <button
             id="palette-play"
             type="button"
             title={play_title(@playback)}
@@ -327,6 +345,28 @@ defmodule DrawMusicWeb.PaletteComponents do
           >
             <.icon name={play_icon(@playback)} class="size-4" />
             {play_label(@playback, @instrument_name)}
+          </button>
+          <button
+            id="palette-skip-measure"
+            type="button"
+            title="Skip to the next measure"
+            aria-label="Skip to the next measure"
+            phx-click="skip"
+            phx-value-by="measure"
+            class="btn btn-ghost btn-sm btn-square join-item"
+          >
+            <.arrows count={2} />
+          </button>
+          <button
+            id="palette-skip-line"
+            type="button"
+            title="Skip to the next line of music"
+            aria-label="Skip to the next line of music"
+            phx-click="skip"
+            phx-value-by="line"
+            class="btn btn-ghost btn-sm btn-square join-item"
+          >
+            <.arrows count={3} />
           </button>
           <button
             id="palette-loop"
@@ -484,8 +524,25 @@ defmodule DrawMusicWeb.PaletteComponents do
     """
   end
 
+  # A fast-forward icon of `count` arrowheads, like a tape deck's.
+  attr :count, :integer, required: true
+
+  defp arrows(assigns) do
+    ~H"""
+    <svg
+      viewBox={"0 0 #{6 * @count + 2} 12"}
+      class="h-3.5 w-auto"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path :for={i <- 0..(@count - 1)} d={"M#{1 + 6 * i} 1 L#{7 + 6 * i} 6 L#{1 + 6 * i} 11Z"} />
+    </svg>
+    """
+  end
+
   defp play_label(:playing, _instrument), do: "Pause"
   defp play_label(:paused, _instrument), do: "Resume"
+  defp play_label(:rewound, _instrument), do: "Play"
   defp play_label(:loading, instrument), do: "Loading #{instrument}…"
   defp play_label(:idle, _instrument), do: "Play"
 
@@ -548,6 +605,7 @@ defmodule DrawMusicWeb.PaletteComponents do
 
   defp play_title(:playing), do: "Pause (Space)"
   defp play_title(:paused), do: "Resume (Space)"
+  defp play_title(:rewound), do: "Play from the start point (Space)"
 
   defp play_title(_state) do
     "Play the selection, from the selected note, or from the start (Space)"

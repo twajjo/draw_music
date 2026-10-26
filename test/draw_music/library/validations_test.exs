@@ -82,8 +82,8 @@ defmodule DrawMusic.Library.ValidationsTest do
                errors_on(version(%{time_num: 4, time_den: 4, time_symbol: :cut}))
     end
 
-    test "tempo 20..400 bpm, tempo text at most 60 characters" do
-      assert %{tempo_bpm: [_]} = errors_on(version(%{tempo_bpm: 19}))
+    test "tempo 5..400 bpm, tempo text at most 60 characters" do
+      assert %{tempo_bpm: [_]} = errors_on(version(%{tempo_bpm: 4}))
       assert %{tempo_bpm: [_]} = errors_on(version(%{tempo_bpm: 401}))
       assert %{tempo_text: [_]} = errors_on(version(%{tempo_text: String.duplicate("x", 61)}))
     end

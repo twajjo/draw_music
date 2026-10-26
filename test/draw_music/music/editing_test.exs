@@ -3,7 +3,7 @@ defmodule DrawMusic.Music.EditingTest do
 
   import DrawMusic.MusicHelpers
 
-  alias DrawMusic.Music.{Chords, Context, Editing, Score, Transpose}
+  alias DrawMusic.Music.{Chords, Context, Editing, Score, TempoChange, Transpose}
 
   @ctx %Context{}
 
@@ -131,6 +131,32 @@ defmodule DrawMusic.Music.EditingTest do
   describe "measures, clipboard and rests" do
     test "the last measure cannot be deleted" do
       assert Editing.delete_measure(Score.new(), @ctx, 0) == {:error, :last_measure}
+    end
+
+    # A 4/4 bar is 3840 ticks.
+    test "tempo changes move with the music when bars come and go" do
+      score = %{
+        Score.new(3)
+        | tempos: [
+            %TempoChange{tick: 960, bpm: 80},
+            %TempoChange{tick: 3840, bpm: 120},
+            %TempoChange{tick: 8000, bpm: 90, to_tick: 9000, to_bpm: 60}
+          ]
+      }
+
+      ticks = fn s -> Enum.map(s.tempos, &{&1.tick, &1.to_tick}) end
+
+      {:ok, inserted} = Editing.insert_measure(score, @ctx, 1)
+      assert ticks.(inserted) == [{960, nil}, {7680, nil}, {11_840, 12_840}]
+
+      {:ok, deleted} = Editing.delete_measure(score, @ctx, 1)
+      assert ticks.(deleted) == [{960, nil}, {4160, 5160}]
+    end
+
+    test "re-barring keeps tempo changes where they are in time" do
+      score = %{Score.new(2) | tempos: [%TempoChange{tick: 3840, bpm: 120}]}
+      {:ok, rebarred} = Editing.rebar_to(score, @ctx, %Context{time_num: 3})
+      assert [%TempoChange{tick: 3840, bpm: 120}] = rebarred.tempos
     end
 
     test "paste copies events with fresh ids at a new position" do

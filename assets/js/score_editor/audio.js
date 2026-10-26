@@ -11,12 +11,23 @@
 // {kind: "splendid" | "soundfont" | "synth", url, name, program}.
 
 import * as Tone from "tone"
-import {Soundfont, SplendidGrandPiano} from "smplr"
+import {Scheduler, Soundfont, SplendidGrandPiano} from "smplr"
 
 // Scheduling starts this far ahead of "now" (seconds), so the first note isn't clipped.
 const LEAD_IN = 0.05
 // How far ahead of the clock notes are handed to the player (seconds).
-const LOOKAHEAD = 0.25
+// Once handed over they're timed by the audio thread, so the page being
+// busy (a long score keeps it so) can't make them late. Pausing still
+// silences everything handed over.
+const LOOKAHEAD = 1.5
+// smplr queues notes further ahead than its own lookahead (200 ms by
+// default) and hands them to the audio thread from a timer on the page's
+// thread; a busy page then makes them late. A longer lookahead passes ours
+// straight through.
+const SMPLR_LOOKAHEAD_MS = 2000
+// Notes are handed over from a timer as well as on each frame: frames stop
+// while the tab is hidden, and stall while the page is busy.
+const SCHEDULE_EVERY_MS = 100
 
 // A sawtooth has the overtones small speakers need to make bass notes heard
 // (a triangle's low notes are mostly fundamental, which they can't play).
@@ -67,11 +78,13 @@ function smplrPlayer(context, instrument) {
   }
 }
 
+const scheduler = (context) => new Scheduler(context, {lookaheadMs: SMPLR_LOOKAHEAD_MS})
+
 async function loadSmplr(context, source) {
   const instrument =
     source.kind === "splendid"
-      ? new SplendidGrandPiano(context, {baseUrl: source.url})
-      : new Soundfont(context, {instrumentUrl: source.url})
+      ? new SplendidGrandPiano(context, {baseUrl: source.url, scheduler: scheduler(context)})
+      : new Soundfont(context, {instrumentUrl: source.url, scheduler: scheduler(context)})
   await instrument.ready
   return smplrPlayer(context, instrument)
 }
@@ -80,9 +93,12 @@ const sameSource = (a, b) => a && b && a.kind === b.kind && a.url === b.url && a
 
 export class Audio {
   // onState(state, source): "loading" | "ready" | "fallback" | "playing" | "paused" | "idle".
-  constructor({onState, onEnded}) {
+  // onTick(seconds): how far into the span playback is, each frame; null
+  // once it stops (a pause leaves the last position).
+  constructor({onState, onEnded, onTick}) {
     this.onState = onState
     this.onEnded = onEnded
+    this.onTick = onTick
     this.context = null
     this.source = null
     this.loaded = null // the player for `source`, once ready
@@ -148,11 +164,13 @@ export class Audio {
     this.startSpan(player, 0)
   }
 
-  pause() {
+  // `quiet`: the page paused it at once, and the server, told by the same
+  // key or click, already knows; reporting it too would race that.
+  pause(quiet = false) {
     if (this.state !== "playing") return
     this.elapsed = this.active.now() - this.t0
     this.silence()
-    this.setState("paused")
+    this.setState("paused", quiet)
   }
 
   async resume() {
@@ -170,18 +188,38 @@ export class Audio {
       return this.startSpan(this.nextPlayer(), 0)
     }
     this.elapsed = 0
+    if (this.state === "paused") this.onTick(0)
+  }
+
+  // Seconds into the span: where it is playing, or where it's paused.
+  position() {
+    if (this.state === "playing") return Math.max(0, this.active.now() - this.t0)
+    return this.elapsed || 0
+  }
+
+  // Jumps to `at` seconds into the span: playing carries on from there,
+  // paused waits there.
+  seek(at) {
+    if (this.state === "playing") {
+      this.silence()
+      return this.startSpan(this.active, at)
+    }
+    if (this.state !== "paused") return
+    this.elapsed = at
+    this.onTick(at)
   }
 
   setLoop(on) {
     this.loop = on
   }
 
-  stop() {
+  stop(quiet = false) {
     this.generation++
     this.silence()
     this.events = []
     this.elapsed = 0
-    if (this.state !== "idle") this.setState("idle")
+    if (this.state !== "idle") this.setState("idle", quiet)
+    this.onTick(null)
   }
 
   // Sounds a chord at once, with no highlighting or state change.
@@ -209,13 +247,16 @@ export class Audio {
     this.next = this.events.findIndex((ev) => ev.start + ev.duration > from)
     if (this.next === -1) this.next = this.events.length
     this.from = from
+    this.lit = []
     this.setState("playing")
+    this.timer = setInterval(() => this.schedule(), SCHEDULE_EVERY_MS)
     this.tick()
   }
 
-  // Each frame: hand over the notes due within LOOKAHEAD, light the ones
-  // sounding, and at the end of the span loop or stop.
-  tick() {
+  // Hands over the notes due within LOOKAHEAD, and at the end of the span
+  // loops or stops. Runs on a timer and on each frame. Gives how far into
+  // the span playback is, or null once it has ended.
+  schedule() {
     const at = this.active.now() - this.t0
 
     if (at >= this.span && this.loop) {
@@ -223,32 +264,58 @@ export class Audio {
       this.t0 += this.span
       this.next = 0
       this.from = 0
-      return this.tick()
+      this.unlight()
+      return this.schedule()
     }
 
     if (at >= this.span) {
       this.stop()
-      return this.onEnded()
+      this.onEnded()
+      return null
     }
 
     while (this.next < this.events.length && this.events[this.next].start < at + LOOKAHEAD) {
       const ev = this.events[this.next++]
       const start = Math.max(ev.start, this.from)
       this.active.start(ev.midi, this.t0 + start, ev.start + ev.duration - start)
+      const elements = ev.ids.map((id) => document.getElementById(`note-${id}`)).filter(Boolean)
+      this.lit.push({ev, elements, on: false})
     }
+    return at
+  }
 
-    for (const ev of this.events) {
-      const on = at >= ev.start && at < ev.start + ev.duration
-      for (const id of ev.ids) document.getElementById(`note-${id}`)?.classList.toggle("playing", on)
-    }
+  // Each frame: schedule, light the notes sounding and move the playhead.
+  // Only notes handed over and not yet finished are looked at (`lit`): a
+  // long piece has tens of thousands, and touching them all every frame
+  // stalls the page.
+  tick() {
+    const at = this.schedule()
+    if (at === null) return
+
+    this.lit = this.lit.filter((note) => {
+      const end = note.ev.start + note.ev.duration
+      const on = at >= note.ev.start && at < end
+      if (on !== note.on) note.elements.forEach((el) => el.classList.toggle("playing", on))
+      note.on = on
+      return at < end
+    })
+    // Before the lead-in has passed, `at` is just below 0.
+    this.onTick(Math.max(0, at))
     this.frame = requestAnimationFrame(() => this.tick())
   }
 
   silence() {
     if (this.frame) cancelAnimationFrame(this.frame)
     this.frame = null
+    clearInterval(this.timer)
+    this.timer = null
     if (this.active) this.active.stop()
-    document.querySelectorAll(".playing").forEach((el) => el.classList.remove("playing"))
+    this.unlight()
+  }
+
+  unlight() {
+    for (const note of this.lit || []) if (note.on) note.elements.forEach((el) => el.classList.remove("playing"))
+    this.lit = []
   }
 
   // Leaving the editor: stop, and free the audio objects.
@@ -258,8 +325,8 @@ export class Audio {
     if (this.context) this.context.close()
   }
 
-  setState(state) {
+  setState(state, quiet = false) {
     this.state = state
-    this.onState(state, this.source)
+    if (!quiet) this.onState(state, this.source)
   }
 }

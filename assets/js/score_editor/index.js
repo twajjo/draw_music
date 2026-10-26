@@ -12,11 +12,13 @@
 // Server state arrives as data attributes on the hook element:
 // data-geometry (EditorGeometry.encode), data-armed (EditorGeometry.armed),
 // data-insert (Insert mode)
-// and data-instrument (InstrumentSource). Playback lives in audio.js.
+// and data-instrument (InstrumentSource). Playback lives in audio.js; the
+// hook draws its playhead and keeps it in view.
 
 import {locate, snap, xAt, columnAt, insertColumn, pitchOf, keyAlter, stepY, ledgerSteps, stepOnStaff, staffStepAt, stepAtY} from "./geometry"
 import {chordAt} from "./chord"
 import {cursorFor} from "./cursor"
+import {playheadAt, playheadSpan, secondsAt, tickAt} from "./playhead"
 import {Audio} from "./audio"
 // The keys this hook acts on; the cheat-sheet (DrawMusicWeb.Shortcuts) lists the same ones.
 import KEYS from "./keys.json"
@@ -39,11 +41,32 @@ const CHORD_LABEL_SIZE = 1.6
 // About a notehead's width (staff spaces): a click this far right of a
 // column is still on its note or rest.
 const HEAD_WIDTH = 1.3
+// Following the playhead in Strip layout: past this share of the visible
+// width (or off its left), the score jumps to put it this share in.
+const TURN_AT = 0.85
+const TURN_TO = 0.2
+// A turn still under way after this long (ms) is asked for again.
+const TURN_RETRY = 600
+// While playing, whether to scroll is checked this often (ms).
+const FOLLOW_EVERY = 100
 
-// The note or rest element (and its id) under an event, if any.
+// The note, rest or tempo mark (and its id) under an event, if any. A
+// tempo mark's label is "tempo"; a rit.'s or accel.'s end is "tempo-end".
 function eventTarget(e) {
-  const el = e.target.closest && e.target.closest("[id^='note-'], [id^='rest-']")
-  return el && {kind: el.id.startsWith("note-") ? "note" : "rest", id: el.id.slice(5)}
+  const el = e.target.closest && e.target.closest("[id^='note-'], [id^='rest-'], [id^='tempo-']")
+  if (!el) return null
+  if (el.id.startsWith("tempo-end-")) return {kind: "tempo-end", id: el.id.slice(10)}
+  if (el.id.startsWith("tempo-")) return {kind: "tempo", id: el.id.slice(6)}
+  return {kind: el.id.startsWith("note-") ? "note" : "rest", id: el.id.slice(5)}
+}
+
+const tempoKind = (hit) => hit && (hit.kind === "tempo" || hit.kind === "tempo-end")
+
+// The column (or the measure's end) whose x is nearest `x`: {offset, x}.
+function nearestColumn(measure, x) {
+  const ends = [{offset: 0, x: measure.content_x}, {offset: measure.capacity, x: measure.content_end}]
+  const spots = [...measure.columns, ...ends]
+  return spots.reduce((best, spot) => (Math.abs(spot.x - x) < Math.abs(best.x - x) ? spot : best))
 }
 
 const typing = (e) => e.target.closest && e.target.closest("input, textarea, select, [contenteditable]")
@@ -66,6 +89,7 @@ export default {
     this.readState()
 
     this.onMove = (e) => {
+      if (this.tempoDrag) return this.moveTempoDrag(e)
       if (this.band) return this.dragBand(e)
       if (this.pending) return this.movePending(e)
       if (this.drag) return this.moveDrag(e)
@@ -78,6 +102,11 @@ export default {
     this.onCancel = () => this.cancelPress()
     this.onKey = (e) => this.key(e)
     this.onContext = (e) => this.contextMenu(e)
+    // Double-clicking a tempo mark opens its dialog.
+    this.onDoubleClick = (e) => {
+      const hit = eventTarget(e)
+      if (this.mode === "edit" && tempoKind(hit)) this.pushEvent("edit_tempo", {id: hit.id})
+    }
     // Browsers allow audio only after a gesture: the first press, of a
     // pointer or a key, starts the audio clocks.
     this.onFirstGesture = () => {
@@ -88,10 +117,21 @@ export default {
 
     this.el.addEventListener("pointermove", this.onMove)
     this.el.addEventListener("pointerleave", this.onLeave)
-    this.el.addEventListener("pointerdown", this.onDown)
+    // A press anywhere on the paper counts, margins included: a rubber band
+    // is often started just above and left of the music.
+    this.paper = this.el.closest("#score-paper") || this.el
+    this.paper.addEventListener("pointerdown", this.onDown)
     this.el.addEventListener("pointerup", this.onUp)
     this.el.addEventListener("pointercancel", this.onCancel)
+    this.el.addEventListener("dblclick", this.onDoubleClick)
     window.addEventListener("keydown", this.onKey)
+    // The palette's Pause and Stop buttons, before their click reaches the server.
+    this.onTransport = (e) => {
+      const button = e.target.closest && e.target.closest("#palette-play, #palette-stop")
+      if (button?.id === "palette-play") this.pauseNow()
+      if (button?.id === "palette-stop" && this.audio.state !== "idle") this.audio.stop(true)
+    }
+    document.addEventListener("click", this.onTransport, true)
     window.addEventListener("contextmenu", this.onContext)
     window.addEventListener("pointerdown", this.onFirstGesture)
     window.addEventListener("keydown", this.onFirstGesture)
@@ -119,12 +159,17 @@ export default {
     this.audio = new Audio({
       onState: (state, source) => this.pushEvent("playback_state", {state, name: source && source.name}),
       onEnded: () => this.pushEvent("playback_ended", {}),
+      onTick: (seconds) => this.showPlayhead(seconds),
     })
     this.loadInstrument()
-    this.handleEvent("play", ({events, span, loop}) => this.audio.play(events, span, Boolean(loop)))
+    this.handleEvent("play", ({events, span, loop, anchors}) => {
+      this.anchors = anchors
+      this.audio.play(events, span, Boolean(loop))
+    })
     this.handleEvent("pause", () => this.audio.pause())
     this.handleEvent("resume", () => this.audio.resume())
     this.handleEvent("rewind", () => this.audio.rewind())
+    this.handleEvent("skip", ({by}) => this.skip(by))
     this.handleEvent("loop", ({on}) => this.audio.setLoop(on))
     this.handleEvent("stop", () => this.audio.stop())
     this.handleEvent("audition", ({events}) => this.audio.audition(events))
@@ -168,9 +213,11 @@ export default {
 
   destroyed() {
     window.removeEventListener("keydown", this.onKey)
+    document.removeEventListener("click", this.onTransport, true)
     window.removeEventListener("contextmenu", this.onContext)
     window.removeEventListener("pointerdown", this.onFirstGesture)
     window.removeEventListener("keydown", this.onFirstGesture)
+    this.paper.removeEventListener("pointerdown", this.onDown)
     window.removeEventListener("beforeunload", this.onBeforeUnload)
     window.removeEventListener("popstate", this.onPopState)
     this.audio.destroy()
@@ -187,6 +234,20 @@ export default {
     this.overlay.setAttribute("viewBox", this.score.getAttribute("viewBox"))
     this.setPageCursor(this.armed && this.armed.glyph)
     if (!this.armed && !this.drag) this.clearGhost()
+    this.playStart = this.el.dataset.playStart ? Number(this.el.dataset.playStart) : null
+    this.showIdlePlayhead()
+    this.showLoading(this.el.dataset.loading === "true")
+  },
+
+  // The "Loading the score…" note: once the score has arrived, it says the
+  // score is being drawn and goes once the browser has painted it (a long
+  // score takes a while), so the paper never looks empty.
+  showLoading(loading) {
+    const note = document.getElementById("score-loading")
+    if (!note || note.hidden) return
+    if (loading) return
+    document.getElementById("score-loading-text").textContent = "Drawing the score…"
+    requestAnimationFrame(() => requestAnimationFrame(() => (note.hidden = true)))
   },
 
   // Pointer → staff-space coordinates of the score's viewBox.
@@ -244,6 +305,8 @@ export default {
     if (e.button !== 0) return
     // The bar controls are ordinary buttons.
     if (e.target.closest("button")) return
+    // In the paper's margin, outside the music, a press only starts a band.
+    if (!this.el.contains(e.target)) return this.startBand(e)
 
     const hit = eventTarget(e)
     // Play mode: a note sounds its chord; anywhere else starts a range selection.
@@ -251,6 +314,12 @@ export default {
     if (this.mode === "play") return this.startBand(e)
     if (this.armed && this.armed.kind === "tie") return hit && hit.kind === "note" && this.startTie(e, hit)
     if (this.armed && !hit) return this.startPress(e)
+
+    // A tempo mark: selected on release, or dragged along the music.
+    if (tempoKind(hit)) {
+      this.pending = {hit, start: this.toScore(e), shift: e.shiftKey}
+      return this.el.setPointerCapture(e.pointerId)
+    }
 
     // A note or rest, armed or not: selected on release, unless a note is
     // dragged first. (A chord is stacked by pressing another line or space
@@ -282,7 +351,13 @@ export default {
   movePending(e) {
     const {hit, start} = this.pending
     const point = this.toScore(e)
-    if (hit.kind !== "note" || Math.hypot(point.x - start.x, point.y - start.y) < DRAG_THRESHOLD) return
+    if (Math.hypot(point.x - start.x, point.y - start.y) < DRAG_THRESHOLD) return
+    if (tempoKind(hit)) {
+      this.pending = null
+      this.tempoDrag = {hit, start}
+      return this.moveTempoDrag(e)
+    }
+    if (hit.kind !== "note") return
     this.pending = null
     this.startDrag(hit)
     this.moveDrag(e)
@@ -352,7 +427,33 @@ export default {
     this.clearGhost()
   },
 
-  // A click on a note or rest: Shift toggles it, else it alone is selected.
+  // A dragged tempo mark (or a rit.'s end) snaps to the nearest note or rest
+  // column; a line shows where it would land.
+  moveTempoDrag(e) {
+    const point = this.toScore(e)
+    const at = locate(this.geometry, point.x, this.tempoDrag.start.y)
+    if (!at) return
+    const target = nearestColumn(at.measure, point.x)
+    this.tempoDrag.tick = at.measure.start_tick + target.offset
+    this.clearGhost()
+    const {top, bottom} = playheadSpan(this.geometry)
+    const line = document.createElementNS(SVG, "line")
+    Object.entries({
+      x1: target.x, x2: target.x, y1: at.system.y + top - 2, y2: at.system.y + bottom,
+      stroke: "var(--score-selection)", "stroke-width": 0.2, "stroke-dasharray": "0.5 0.3",
+    }).forEach(([k, v]) => line.setAttribute(k, v))
+    this.overlay.appendChild(line)
+  },
+
+  endTempoDrag() {
+    const {hit, tick} = this.tempoDrag
+    this.tempoDrag = null
+    this.clearGhost()
+    if (tick === undefined) return
+    this.pushEvent(hit.kind === "tempo" ? "move_tempo" : "resize_tempo", {id: hit.id, tick})
+  },
+
+  // A click on a note, rest or tempo mark: Shift toggles it, else it alone is selected.
   select({hit, shift}) {
     this.pushEvent("select", {ids: [hit.id], add: shift})
   },
@@ -363,6 +464,7 @@ export default {
     this.pressing = false
     this.band = null
     this.tieDrag = null
+    this.tempoDrag = null
     this.cancelDrag()
     this.clearGhost()
   },
@@ -392,6 +494,7 @@ export default {
   },
 
   pointerUp(e) {
+    if (this.tempoDrag) return this.endTempoDrag()
     if (this.tieDrag) return this.endTie(e)
     if (this.drag) return this.endDrag(e)
     if (this.pending) {
@@ -456,7 +559,7 @@ export default {
   key(e) {
     if (typing(e)) return
     // A dialog is open: its own keys (Esc) handle it; leave the score alone.
-    if (document.querySelector("#settings-form, #save-as-form, #transpose-dialog, #help-dialog")) return
+    if (document.querySelector("#settings-form, #save-as-form, #transpose-dialog, #help-dialog, #tempo-dialog")) return
     if (!KEYS.includes(keyId(e))) return
     const ctrl = e.ctrlKey || e.metaKey
     const k = e.key.toLowerCase()
@@ -488,6 +591,7 @@ export default {
 
     if (ctrl && k === "z") return send(e.shiftKey ? "redo" : "undo")
     if (ctrl && k === "y") return send("redo")
+    if (ctrl && k === "a") return send("select_all")
     if (ctrl && k === "c") return send("copy")
     if (ctrl && k === "x") return send("cut")
     if (ctrl && k === "v") return send("paste")
@@ -501,14 +605,25 @@ export default {
     if (k === "t") return send("arm_tie")
   },
 
+  // Pausing and stopping happen here at once, not after the round trip to
+  // the server; the server, told by the same key or click, then updates the
+  // controls (and its own "pause" or "stop" finds nothing left to do).
+  pauseNow() {
+    if (this.audio.state === "playing") this.audio.pause(true)
+  },
+
   // Play mode's keys: the play controls, and Esc to stop (or clear the selection).
   playKey(e, send) {
     if (e.ctrlKey || e.metaKey || e.altKey) return
-    if (e.key === " ") return send("play")
+    if (e.key === " ") {
+      this.pauseNow()
+      return send("play")
+    }
     if (e.key === "Home") return send("rewind")
     if (e.key.toLowerCase() === "l") return send("toggle_loop")
     if (e.key === "Escape") {
       const sounding = this.audio.state === "playing" || this.audio.state === "paused"
+      if (sounding) this.audio.stop(true)
       return send(sounding ? "stop" : "clear_selection")
     }
   },
@@ -530,6 +645,7 @@ export default {
     const hit = this.el.contains(e.target) && eventTarget(e)
     if (!hit) return
     e.preventDefault()
+    if (tempoKind(hit)) return this.pushEvent("edit_tempo", {id: hit.id})
     const point = this.toScore(e)
     const at = locate(this.geometry, point.x, point.y)
     this.pushEvent("open_menu", {id: hit.id, x: e.clientX, y: e.clientY, step: at.step, staff: at.staff})
@@ -635,8 +751,116 @@ export default {
     return text
   },
 
+  // Empties the overlay, all but the playhead.
   clearGhost() {
-    this.overlay.replaceChildren()
+    for (const child of [...this.overlay.children]) if (child !== this.playhead) child.remove()
+  },
+
+  // The playhead `seconds` into the span being played (null: none), kept
+  // in view.
+  showPlayhead(seconds) {
+    if (seconds === null) {
+      this.idleAt = null
+      return this.showIdlePlayhead()
+    }
+    if (!this.anchors?.length) return
+    // Whether to scroll is checked every FOLLOW_EVERY ms, not every frame:
+    // measuring the line makes the browser lay out the whole score.
+    const now = performance.now()
+    const follow = now - (this.followedAt ?? -Infinity) >= FOLLOW_EVERY
+    if (follow) this.followedAt = now
+    this.drawPlayhead(tickAt(this.anchors, seconds), follow)
+  },
+
+  // Playing or paused: on to the start of the next measure ("measure") or
+  // line of music ("line") inside the span being played, if there is one.
+  skip(by) {
+    const state = this.audio.state
+    if ((state !== "playing" && state !== "paused") || !this.anchors?.length) return
+    const now = tickAt(this.anchors, this.audio.position())
+    const starts =
+      by === "line"
+        ? this.geometry.systems.map((s) => s.measures[0].start_tick)
+        : this.geometry.systems.flatMap((s) => s.measures.map((m) => m.start_tick))
+    const target = starts.find((tick) => tick > now + 0.5)
+    if (target === undefined || target >= this.anchors[this.anchors.length - 1].tick) return
+    // Scroll to it straight away.
+    this.followedAt = null
+    this.audio.seek(secondsAt(this.anchors, target))
+  },
+
+  // In Play mode, with nothing playing or paused, the playhead waits where
+  // Play would start (data-play-start: the selection's start, or the
+  // beginning). It is scrolled to only when that place changes, so redraws
+  // don't pull the score back from wherever it was scrolled. Edit mode has
+  // no playhead.
+  showIdlePlayhead() {
+    if (this.mode !== "play") {
+      this.idleAt = null
+      return this.playhead?.remove()
+    }
+    const state = this.audio?.state
+    if (state === "playing" || state === "paused" || this.playStart === null) return
+    const moved = this.idleAt !== this.playStart
+    this.idleAt = this.playStart
+    this.drawPlayhead(this.playStart, moved)
+  },
+
+  // The playhead at `tick`, scrolled into view if `follow`.
+  drawPlayhead(tick, follow) {
+    const at = playheadAt(this.geometry, tick)
+    if (!at) return
+
+    if (!this.playhead) {
+      this.playhead = document.createElementNS(SVG, "line")
+      this.playhead.setAttribute("class", "playhead")
+    }
+    if (!this.playhead.isConnected) this.overlay.appendChild(this.playhead)
+    const {top, bottom} = playheadSpan(this.geometry)
+    Object.entries({x1: at.x, x2: at.x, y1: at.system.y + top, y2: at.system.y + bottom}).forEach(([k, v]) => this.playhead.setAttribute(k, v))
+    if (follow) this.followPlayhead()
+  },
+
+  // Strip: the score scrolls sideways in jumps, like turning pages. Either
+  // layout: the window scrolls the playhead's system into view. A smooth
+  // scroll is asked for once and left to run: asking again every frame (the
+  // target creeps on with the playhead) restarts it from rest each time, so
+  // it never gets anywhere. Only one still not done after TURN_RETRY ms
+  // (say, scrolled away from by hand) is asked for again.
+  followPlayhead() {
+    const line = this.playhead.getBoundingClientRect()
+    const paper = this.el.closest("#score-paper")
+    this.turning = this.turning || {}
+
+    const turn = (axis, needed, target, scroll) => {
+      if (!needed) return delete this.turning[axis]
+      const now = performance.now()
+      if (now - (this.turning[axis] ?? -Infinity) < TURN_RETRY) return
+      this.turning[axis] = now
+      scroll(target)
+    }
+
+    if (paper && paper.scrollWidth > paper.clientWidth) {
+      const box = paper.getBoundingClientRect()
+      const left = line.left - box.left
+      turn("x", left < 0 || left > box.width * TURN_AT, paper.scrollLeft + left - box.width * TURN_TO, (to) =>
+        paper.scrollTo({left: to, behavior: "smooth"}),
+      )
+    }
+
+    // Down the page: each new system, or one out of view, is centred in what
+    // the window shows below the sticky palette.
+    const palette = document.getElementById("palette")
+    const viewTop = palette ? Math.max(0, palette.getBoundingClientRect().bottom) : 0
+    const middle = viewTop + (window.innerHeight - viewTop) / 2
+    const system = this.playhead.getAttribute("y1")
+    const newSystem = system !== this.followedSystem
+    this.followedSystem = system
+    const hidden = line.top < viewTop || line.bottom > window.innerHeight
+
+    turn("y", newSystem || hidden, window.scrollY + (line.top + line.bottom) / 2 - middle, (to) =>
+      window.scrollTo({top: to, behavior: "smooth"}),
+    )
   },
 
   // While armed: the piece as the pointer outside the score, no pointer
