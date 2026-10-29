@@ -22,7 +22,9 @@ defmodule DrawMusicWeb.EditorComponents do
     {:eighth, :note8thUp, "Eighth"},
     {:sixteenth, :note16thUp, "16th"},
     {:thirty_second, :note32ndUp, "32nd"},
-    {:sixty_fourth, :note64thUp, "64th"}
+    {:sixty_fourth, :note64thUp, "64th"},
+    {:hundred_twenty_eighth, :note128thUp, "128th"},
+    {:two_hundred_fifty_sixth, :note256thUp, "256th"}
   ]
 
   @doc "Asks for the new composition's name (and credits) when saving as a new composition."
@@ -33,7 +35,7 @@ defmodule DrawMusicWeb.EditorComponents do
     ~H"""
     <div class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
       <div
-        class="w-full max-w-md rounded-box border border-base-300 bg-base-100 p-6 shadow-2xl"
+        class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-box border border-base-300 bg-base-100 p-6 shadow-2xl"
         phx-click-away="close_save_as"
         phx-window-keydown="close_save_as"
         phx-key="Escape"
@@ -44,10 +46,9 @@ defmodule DrawMusicWeb.EditorComponents do
           id="save-as-form"
           phx-change="validate_save_as"
           phx-submit="save_as"
-          class="mt-4 space-y-2"
+          class="mt-4 space-y-1"
         >
-          <.input field={@form[:name]} label="Name" required phx-debounce="300" autofocus />
-          <.input field={@form[:composer]} label="Composer" />
+          <LibraryComponents.composition_fields form={@form} />
           <div class="flex justify-end gap-2 pt-2">
             <button type="button" phx-click="close_save_as" class="btn btn-ghost">Cancel</button>
             <button type="submit" class="btn btn-primary" phx-disable-with="Saving...">Save</button>

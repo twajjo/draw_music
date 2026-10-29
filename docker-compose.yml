@@ -1,0 +1,38 @@
+# Draw Music on one machine: the app and its Postgres.
+#
+#   cp .env.example .env   # then fill in SECRET_KEY_BASE and PHX_HOST
+#   docker compose up -d --build
+#
+# The app runs its migrations each time it starts. Put a TLS-terminating
+# proxy (Caddy, nginx, Traefik) in front of port 4000 for HTTPS.
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: draw_music
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-draw_music}
+      POSTGRES_DB: draw_music
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U draw_music"]
+      interval: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: ecto://draw_music:${POSTGRES_PASSWORD:-draw_music}@db/draw_music
+      PORT: "4000"
+    ports:
+      - "4000:4000"
+    command: ["sh", "-c", "/app/bin/migrate && exec /app/bin/server"]
+
+volumes:
+  db-data:

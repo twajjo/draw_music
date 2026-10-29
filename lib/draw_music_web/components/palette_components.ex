@@ -20,6 +20,7 @@ defmodule DrawMusicWeb.PaletteComponents do
 
   alias DrawMusic.Engraving.Smufl
   alias DrawMusic.Music.Chords
+  alias DrawMusicWeb.EditorPalette
 
   @values [
     {:whole, "Whole", "1", :noteWhole, :restWhole},
@@ -28,7 +29,9 @@ defmodule DrawMusicWeb.PaletteComponents do
     {:eighth, "Eighth", "4", :note8thUp, :rest8th},
     {:sixteenth, "16th", "5", :note16thUp, :rest16th},
     {:thirty_second, "32nd", "6", :note32ndUp, :rest32nd},
-    {:sixty_fourth, "64th", "7", :note64thUp, :rest64th}
+    {:sixty_fourth, "64th", "7", :note64thUp, :rest64th},
+    {:hundred_twenty_eighth, "128th", "8", :note128thUp, :rest128th},
+    {:two_hundred_fifty_sixth, "256th", "9", :note256thUp, :rest256th}
   ]
 
   @qualities [
@@ -47,11 +50,13 @@ defmodule DrawMusicWeb.PaletteComponents do
   ]
 
   @note_glyphs for {_value, _label, _key, note_glyph, _rest} <- @values, do: note_glyph
-  # SMuFL y (up) from the lowest notehead's bottom to the 64th's flag tip.
-  @note_range {-0.6, 4.9}
-  # Staff spaces around each glyph, and rem per staff space.
+  # SMuFL y (up) from the lowest notehead's bottom to the 256th's flag tip.
+  @note_range {-0.6, 6.4}
+  # Staff spaces around each glyph, rem per staff space, and the tallest a
+  # glyph may be drawn (rem).
   @glyph_pad 0.2
   @glyph_rem 0.34
+  @glyph_max_rem 2.0
 
   @doc """
   The editor's toolbar: the Edit/Play switch, then the palette for the
@@ -67,6 +72,7 @@ defmodule DrawMusicWeb.PaletteComponents do
   attr :editor_mode, :atom, default: :edit, values: [:edit, :play]
   attr :playback, :atom, default: :idle, values: [:idle, :loading, :playing, :paused, :rewound]
   attr :loop?, :boolean, default: false
+  attr :lines?, :boolean, default: true, doc: "whether the score has lines of music to skip by"
   attr :instrument_name, :string, default: "the instrument", doc: "named while it loads"
   attr :playback_instrument, :integer, default: 0, doc: "GM program playback uses"
   attr :version_instrument, :integer, default: 0, doc: "GM program saved with the version"
@@ -218,15 +224,21 @@ defmodule DrawMusicWeb.PaletteComponents do
             <.piece
               id="palette-rest-toggle"
               event="toggle_rest"
-              title="Rests instead of notes (R)"
+              title={row_kind_title(@row_kind)}
               pressed={@row_kind == :rest}
-              glyph={:restQuarter}
+              glyph={if @row_kind == :rest, do: :noteQuarterUp, else: :restQuarter}
+              own_box
             />
             <.piece
               id="palette-dot"
               event="toggle_dot"
-              title="Dotted (.)"
+              title={
+                if EditorPalette.dottable?(@armed),
+                  do: "Dotted (.)",
+                  else: "A 256th can't be dotted"
+              }
               pressed={@armed != nil and Map.get(@armed, :dots, 0) > 0}
+              disabled={!EditorPalette.dottable?(@armed)}
               glyph={:augmentationDot}
             />
             <.piece
@@ -321,7 +333,32 @@ defmodule DrawMusicWeb.PaletteComponents do
             phx-click="rewind"
             class="btn btn-ghost btn-sm btn-square join-item"
           >
-            <.icon name="hero-backward-solid" class="size-4" />
+            <.arrows count={1} back bar />
+          </button>
+          <button
+            id="palette-back-line"
+            type="button"
+            title="Back to the start of this line of music, or the one before"
+            aria-label="Back a line of music"
+            disabled={!@lines?}
+            phx-click="skip"
+            phx-value-by="line"
+            phx-value-dir="back"
+            class="btn btn-ghost btn-sm btn-square join-item"
+          >
+            <.arrows count={3} back />
+          </button>
+          <button
+            id="palette-back-measure"
+            type="button"
+            title="Back to the start of this measure, or the one before"
+            aria-label="Back a measure"
+            phx-click="skip"
+            phx-value-by="measure"
+            phx-value-dir="back"
+            class="btn btn-ghost btn-sm btn-square join-item"
+          >
+            <.arrows count={2} back />
           </button>
           <button
             id="palette-stop"
@@ -362,6 +399,7 @@ defmodule DrawMusicWeb.PaletteComponents do
             type="button"
             title="Skip to the next line of music"
             aria-label="Skip to the next line of music"
+            disabled={!@lines?}
             phx-click="skip"
             phx-value-by="line"
             class="btn btn-ghost btn-sm btn-square join-item"
@@ -496,10 +534,15 @@ defmodule DrawMusicWeb.PaletteComponents do
   attr :event, :string, required: true
   attr :title, :string, required: true
   attr :pressed, :boolean, default: false
+  attr :disabled, :boolean, default: false
   attr :kind, :atom, default: nil
   attr :value, :atom, default: nil
   attr :alter, :integer, default: nil
   attr :glyph, :atom, required: true, doc: "the SMuFL glyph it shows"
+
+  attr :own_box, :boolean,
+    default: false,
+    doc: "box a note glyph by itself, centred, not on the duration row's shared range"
 
   defp piece(assigns) do
     ~H"""
@@ -509,6 +552,7 @@ defmodule DrawMusicWeb.PaletteComponents do
       title={@title}
       aria-label={@title}
       aria-pressed={to_string(@pressed)}
+      disabled={@disabled}
       data-kind={@kind}
       data-value={@value}
       phx-click={@event}
@@ -517,25 +561,37 @@ defmodule DrawMusicWeb.PaletteComponents do
       phx-value-alter={@alter}
       class={piece_class(@pressed)}
     >
-      <svg viewBox={glyph_view_box(@glyph)} style={glyph_size(@glyph)} aria-hidden="true">
+      <svg
+        viewBox={glyph_view_box(@glyph, @own_box)}
+        style={glyph_size(@glyph, @own_box)}
+        aria-hidden="true"
+      >
         <text font-family="Bravura" font-size="4" fill="currentColor">{Smufl.char(@glyph)}</text>
       </svg>
     </button>
     """
   end
 
-  # A fast-forward icon of `count` arrowheads, like a tape deck's.
+  # A fast-forward icon of `count` arrowheads, like a tape deck's; `back`
+  # points them left, and `bar` puts a bar in front (|<, to the start).
   attr :count, :integer, required: true
+  attr :back, :boolean, default: false
+  attr :bar, :boolean, default: false
 
   defp arrows(assigns) do
+    assigns = assign(assigns, :width, 6 * assigns.count + 2 + if(assigns.bar, do: 3, else: 0))
+
     ~H"""
     <svg
-      viewBox={"0 0 #{6 * @count + 2} 12"}
+      viewBox={"0 0 #{@width} 12"}
       class="h-3.5 w-auto"
       fill="currentColor"
       aria-hidden="true"
     >
-      <path :for={i <- 0..(@count - 1)} d={"M#{1 + 6 * i} 1 L#{7 + 6 * i} 6 L#{1 + 6 * i} 11Z"} />
+      <g transform={@back && "translate(#{@width} 0) scale(-1 1)"}>
+        <path :for={i <- 0..(@count - 1)} d={"M#{1 + 6 * i} 1 L#{7 + 6 * i} 6 L#{1 + 6 * i} 11Z"} />
+        <rect :if={@bar} x={6 * @count + 2} y="1" width="2" height="10" />
+      </g>
     </svg>
     """
   end
@@ -550,27 +606,35 @@ defmodule DrawMusicWeb.PaletteComponents do
   # of them, y pointing down), boxed by its SMuFL bounding box. The notes
   # share one vertical range, the tallest note's, so their noteheads sit on
   # one line and the 64th's flags stay inside the button.
-  defp glyph_view_box(glyph) do
-    {x, y, width, height} = glyph_box(glyph)
+  defp glyph_view_box(glyph, own_box?) do
+    {x, y, width, height} = glyph_box(glyph, own_box?)
     Enum.map_join([x, y, width, height], " ", &Float.round(&1 / 1, 3))
   end
 
-  defp glyph_size(glyph) do
-    {_x, _y, width, height} = glyph_box(glyph)
+  # Glyphs taller than @glyph_max_rem (the 128th and 256th, whose flags
+  # reach highest) are drawn smaller to fit the button.
+  defp glyph_size(glyph, own_box?) do
+    {_x, _y, width, height} = glyph_box(glyph, own_box?)
+    scale = min(@glyph_rem, @glyph_max_rem / height)
 
-    "width: #{Float.round(width * @glyph_rem, 3)}rem; height: #{Float.round(height * @glyph_rem, 3)}rem"
+    "width: #{Float.round(width * scale, 3)}rem; height: #{Float.round(height * scale, 3)}rem"
   end
 
-  defp glyph_box(glyph) do
+  defp glyph_box(glyph, own_box?) do
     {x0, y0, x1, y1} = Smufl.bbox(glyph)
-    {bottom, top} = vertical_range(glyph, y0, y1)
+    {bottom, top} = vertical_range(glyph, own_box?, y0, y1)
 
     {x0 - @glyph_pad, -(top + @glyph_pad), x1 - x0 + 2 * @glyph_pad,
      top - bottom + 2 * @glyph_pad}
   end
 
-  defp vertical_range(glyph, _y0, _y1) when glyph in @note_glyphs, do: @note_range
-  defp vertical_range(_glyph, y0, y1), do: {y0, y1}
+  defp vertical_range(glyph, false, _y0, _y1) when glyph in @note_glyphs, do: @note_range
+
+  # The half rest sits on the button's middle and the whole rest hangs from
+  # it, as they do from their staff lines, so the two look different.
+  defp vertical_range(:restHalf, _own_box?, y0, y1), do: {y0 - (y1 - y0), y1}
+  defp vertical_range(:restWhole, _own_box?, y0, y1), do: {y0, y1 + (y1 - y0)}
+  defp vertical_range(_glyph, _own_box?, y0, y1), do: {y0, y1}
 
   # Edit and Play fill the grid's first two columns; Page and Strip
   # (the `:below_mode` slot) fall into the same columns below them.
@@ -591,6 +655,10 @@ defmodule DrawMusicWeb.PaletteComponents do
   defp chords_title(_row_kind) do
     "Chord mode: place chords at the picked length; with notes selected and nothing picked, turn them into the chord"
   end
+
+  # The button shows what it switches to.
+  defp row_kind_title(:rest), do: "Switch to note (R)"
+  defp row_kind_title(_note), do: "Switch to rest (R)"
 
   defp insert_title(true = _insert?) do
     "Insert: placing pushes later music on that staff right; deleting pulls it left. Click for Overlay (Ins)"
@@ -617,6 +685,7 @@ defmodule DrawMusicWeb.PaletteComponents do
     [
       "join-item relative grid h-10 w-10 cursor-pointer place-items-center border border-base-300",
       "transition-all duration-150 focus-visible:outline-2 focus-visible:outline-primary",
+      "disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0",
       piece_state_class(pressed)
     ]
   end

@@ -40,7 +40,7 @@ defmodule DrawMusic.Music.Rest do
     |> validate_required([:staff, :voice, :offset, :value, :dots])
     |> validate_inclusion(:voice, Note.voices())
     |> validate_number(:offset, greater_than_or_equal_to: 0)
-    |> validate_inclusion(:dots, Duration.dot_counts())
+    |> Duration.validate_dots()
   end
 
   @doc "Length in ticks."

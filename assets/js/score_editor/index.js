@@ -26,7 +26,7 @@ import KEYS from "./keys.json"
 const SVG = "http://www.w3.org/2000/svg"
 const CURSOR_STYLE_ID = "score-editor-cursor"
 const ACCIDENTALS = {"-2": "", "-1": "", 0: "", 1: "", 2: ""}
-const VALUES = ["whole", "half", "quarter", "eighth", "sixteenth", "thirty_second", "sixty_fourth"]
+const VALUES = ["whole", "half", "quarter", "eighth", "sixteenth", "thirty_second", "sixty_fourth", "hundred_twenty_eighth", "two_hundred_fifty_sixth"]
 // A pointer drag shorter than this (staff spaces) is a click.
 const DRAG_THRESHOLD = 0.5
 // Clicks on empty staff remember a paste position on this grid (a 16th).
@@ -49,6 +49,27 @@ const TURN_TO = 0.2
 const TURN_RETRY = 600
 // While playing, whether to scroll is checked this often (ms).
 const FOLLOW_EVERY = 100
+// Skipping back within this long (s) of a measure's or line's start goes to
+// the one before.
+const BACK_GRACE = 0.75
+// A band's highlight reaches this far (staff spaces) above and below the
+// grand staff; a staff is four spaces tall.
+const BAND_PAD = 1.5
+const STAFF_SPACES = 4
+
+const clamp = (x, low, high) => Math.min(high, Math.max(low, x))
+
+// Dragging a band within this many pixels of the view's edge (or past it)
+// scrolls the score, up to this many pixels a frame.
+const SCROLL_EDGE = 40
+const SCROLL_MAX = 24
+
+// Pixels to scroll this frame for a pointer at `at` between `low` and
+// `high`: negative near (or past) low, positive near high, 0 between.
+const edgeSpeed = (at, low, high) => {
+  const depth = at < low + SCROLL_EDGE ? at - (low + SCROLL_EDGE) : at > high - SCROLL_EDGE ? at - (high - SCROLL_EDGE) : 0
+  return Math.round(clamp((depth / SCROLL_EDGE) * SCROLL_MAX, -SCROLL_MAX, SCROLL_MAX))
+}
 
 // The note, rest or tempo mark (and its id) under an event, if any. A
 // tempo mark's label is "tempo"; a rit.'s or accel.'s end is "tempo-end".
@@ -169,7 +190,7 @@ export default {
     this.handleEvent("pause", () => this.audio.pause())
     this.handleEvent("resume", () => this.audio.resume())
     this.handleEvent("rewind", () => this.audio.rewind())
-    this.handleEvent("skip", ({by}) => this.skip(by))
+    this.handleEvent("skip", ({by, back}) => this.skip(by, back))
     this.handleEvent("loop", ({on}) => this.audio.setLoop(on))
     this.handleEvent("stop", () => this.audio.stop())
     this.handleEvent("audition", ({events}) => this.audio.audition(events))
@@ -183,6 +204,9 @@ export default {
     }
     window.addEventListener("beforeunload", this.onBeforeUnload)
     document.addEventListener("click", this.onLinkClick, true)
+
+    this.onRedraw = (e) => this.startRedrawing(e.detail.layout)
+    window.addEventListener("score:redraw", this.onRedraw)
   },
 
   dirty() {
@@ -222,6 +246,7 @@ export default {
     window.removeEventListener("popstate", this.onPopState)
     this.audio.destroy()
     document.removeEventListener("click", this.onLinkClick, true)
+    window.removeEventListener("score:redraw", this.onRedraw)
     this.setPageCursor(null)
   },
 
@@ -231,12 +256,28 @@ export default {
     this.mode = this.el.dataset.mode || "edit"
     this.insert = this.el.dataset.insert === "true"
     this.el.classList.toggle("play-mode", this.mode === "play")
-    this.overlay.setAttribute("viewBox", this.score.getAttribute("viewBox"))
+    this.overlay.setAttribute("viewBox", this.score.dataset.viewBox)
     this.setPageCursor(this.armed && this.armed.glyph)
     if (!this.armed && !this.drag) this.clearGhost()
     this.playStart = this.el.dataset.playStart ? Number(this.el.dataset.playStart) : null
     this.showIdlePlayhead()
     this.showLoading(this.el.dataset.loading === "true")
+    this.showRedrawing()
+  },
+
+  // "Redrawing the music…": up from the click on a new layout
+  // ("score:redraw") until the score has arrived in that layout and the
+  // browser has painted it.
+  startRedrawing(layout) {
+    this.redrawTo = layout
+    document.getElementById("score-redrawing").hidden = false
+  },
+
+  showRedrawing() {
+    if (!this.redrawTo || this.el.dataset.layout !== this.redrawTo) return
+    this.redrawTo = null
+    const note = document.getElementById("score-redrawing")
+    requestAnimationFrame(() => requestAnimationFrame(() => (note.hidden = true)))
   },
 
   // The "Loading the score…" note: once the score has arrived, it says the
@@ -250,12 +291,13 @@ export default {
     requestAnimationFrame(() => requestAnimationFrame(() => (note.hidden = true)))
   },
 
-  // Pointer → staff-space coordinates of the score's viewBox.
+  // Pointer → staff-space coordinates of the score's viewBox. The score is
+  // drawn in pieces; the overlay spans them all with the whole viewBox.
   toScore(e) {
-    const point = this.score.createSVGPoint()
+    const point = this.overlay.createSVGPoint()
     point.x = e.clientX
     point.y = e.clientY
-    return point.matrixTransform(this.score.getScreenCTM().inverse())
+    return point.matrixTransform(this.overlay.getScreenCTM().inverse())
   },
 
   // Where the armed piece would land, or null, and where its ghost goes
@@ -374,7 +416,7 @@ export default {
     const notes = elements.map((el) => {
       const staff = el.dataset.staff
       const y = Number(el.getAttribute("y"))
-      const system = this.geometry.systems[Number(el.closest("[id^='system-']").id.slice(7))]
+      const system = this.geometry.systems[Number(el.closest("[data-system]").dataset.system)]
       return {el, id: el.id.slice(5), staff, step: stepAtY(this.geometry, staff, y), x: Number(el.getAttribute("x")), system}
     })
 
@@ -467,6 +509,7 @@ export default {
     this.tempoDrag = null
     this.cancelDrag()
     this.clearGhost()
+    this.endPreview()
   },
 
   // Tie tool: drag from one note to another.
@@ -510,6 +553,7 @@ export default {
     const {start, end} = this.band
     this.band = null
     this.clearGhost()
+    this.endPreview()
 
     if (Math.hypot(end.x - start.x, end.y - start.y) < DRAG_THRESHOLD) {
       const at = this.tickAt(start)
@@ -529,22 +573,120 @@ export default {
     return at && at.measure.start_tick + at.offset
   },
 
+  // The band selects the music between where it was pressed and where it
+  // is now, in either direction, across lines. It is drawn like a text
+  // selection: from the earlier point to the end of its line, whole lines
+  // between, and the last line up to the later point. What letting go
+  // would select lights up meanwhile. Near the edge of what's in view the
+  // score scrolls on (autoScrollBand).
   dragBand(e) {
-    this.band.end = this.toScore(e)
+    this.band.pointer = {clientX: e.clientX, clientY: e.clientY}
+    this.autoScrollBand()
+    this.drawBandTo(this.band.pointer)
+  },
+
+  // While the band's pointer is near an edge of the view (under the sticky
+  // palette, the window's bottom, or in Strip layout the paper's sides),
+  // the score scrolls every frame, faster the nearer the pointer is, and
+  // the band follows the music under the pointer.
+  autoScrollBand() {
+    if (this.bandScrolling) return
+    const step = () => {
+      if (!this.band?.pointer) return (this.bandScrolling = false)
+      const {clientX, clientY} = this.band.pointer
+      const palette = document.getElementById("palette")
+      const viewTop = palette ? Math.max(0, palette.getBoundingClientRect().bottom) : 0
+      const dy = edgeSpeed(clientY, viewTop, window.innerHeight)
+      const paper = this.el.closest("#score-paper")
+      const sideways = paper && paper.scrollWidth > paper.clientWidth
+      const box = sideways && paper.getBoundingClientRect()
+      const dx = sideways ? edgeSpeed(clientX, box.left, box.right) : 0
+      if (!dx && !dy) return (this.bandScrolling = false)
+
+      const before = [window.scrollY, paper?.scrollLeft]
+      window.scrollBy(0, dy)
+      if (dx) paper.scrollLeft += dx
+      // At the end of the page (or the strip) there's nowhere left to go.
+      if (window.scrollY === before[0] && paper?.scrollLeft === before[1]) return (this.bandScrolling = false)
+      this.drawBandTo(this.band.pointer)
+      requestAnimationFrame(step)
+    }
+    this.bandScrolling = true
+    requestAnimationFrame(step)
+  },
+
+  drawBandTo(pointer) {
+    this.band.end = this.toScore(pointer)
     const {start, end} = this.band
     this.clearGhost()
-    const rect = document.createElementNS(SVG, "rect")
-    Object.entries({
-      x: Math.min(start.x, end.x),
-      y: Math.min(start.y, end.y),
-      width: Math.abs(end.x - start.x),
-      height: Math.abs(end.y - start.y),
-      fill: "var(--score-selection)",
-      "fill-opacity": 0.12,
-      stroke: "var(--score-selection)",
-      "stroke-width": 0.1,
-    }).forEach(([k, v]) => rect.setAttribute(k, v))
-    this.overlay.appendChild(rect)
+    const a = locate(this.geometry, start.x, start.y)
+    const b = locate(this.geometry, end.x, end.y)
+    if (!a || !b) return
+
+    const tick = (at) => at.measure.start_tick + at.offset
+    const [first, last] =
+      tick(a) < tick(b) || (tick(a) === tick(b) && start.x <= end.x)
+        ? [{at: a, x: start.x}, {at: b, x: end.x}]
+        : [{at: b, x: end.x}, {at: a, x: start.x}]
+    const systems = this.geometry.systems
+    const from = systems.indexOf(first.at.system)
+    const to = systems.indexOf(last.at.system)
+    const top = this.geometry.staff_top.treble - BAND_PAD
+    const bottom = this.geometry.staff_top.bass + STAFF_SPACES + BAND_PAD
+
+    for (let i = from; i <= to; i++) {
+      const system = systems[i]
+      const measures = system.measures
+      const lineStart = measures[0].x
+      const lineEnd = measures[measures.length - 1].x + measures[measures.length - 1].width
+      const x0 = i === from ? clamp(first.x, lineStart, lineEnd) : lineStart
+      const x1 = i === to ? clamp(last.x, lineStart, lineEnd) : lineEnd
+      const rect = document.createElementNS(SVG, "rect")
+      Object.entries({
+        x: x0,
+        y: system.y + top,
+        width: Math.max(0, x1 - x0),
+        height: bottom - top,
+        fill: "var(--score-selection)",
+        "fill-opacity": 0.12,
+        stroke: "var(--score-selection)",
+        "stroke-width": 0.1,
+      }).forEach(([k, v]) => rect.setAttribute(k, v))
+      this.overlay.appendChild(rect)
+    }
+
+    this.previewBand(Math.round(tick(first.at)), Math.round(tick(last.at)))
+  },
+
+  // Asks the server what the range would select (one request at a time,
+  // only when the range changes) and lights those notes and rests up.
+  previewBand(from, to) {
+    this.preview = this.preview || {}
+    this.preview.wanted = [from, to]
+    const key = `${from}:${to}`
+    if (this.preview.waiting || key === this.preview.shown) return
+    this.preview.waiting = true
+    this.pushEvent("preview_range", {from, to}, ({ids}) => {
+      // Let go (or cancelled) before the answer came.
+      if (!this.preview) return
+      this.preview.waiting = false
+      this.preview.shown = key
+      this.lightBand(ids)
+      this.previewBand(...this.preview.wanted)
+    })
+  },
+
+  lightBand(ids) {
+    for (const el of this.el.querySelectorAll(".banded")) el.classList.remove("banded")
+    for (const id of ids) {
+      const el = document.getElementById(`note-${id}`) || document.getElementById(`rest-${id}`)
+      if (el) el.classList.add("banded")
+    }
+  },
+
+  endPreview() {
+    this.preview = null
+    this.lightBand([])
   },
 
   place(e) {
@@ -598,7 +740,7 @@ export default {
     if (ctrl || e.altKey) return
     if (e.key === "Delete" || e.key === "Backspace") return send("delete")
     if (e.key === "Insert") return send("toggle_insert")
-    if (/^[1-7]$/.test(e.key)) return send("arm_value", {value: VALUES[Number(e.key) - 1]})
+    if (/^[1-9]$/.test(e.key)) return send("arm_value", {value: VALUES[Number(e.key) - 1]})
     if (e.key === "0") return send("disarm")
     if (k === "r") return send("toggle_rest")
     if (e.key === ".") return send("toggle_dot")
@@ -774,15 +916,22 @@ export default {
 
   // Playing or paused: on to the start of the next measure ("measure") or
   // line of music ("line") inside the span being played, if there is one.
-  skip(by) {
+  // Going `back`: to the start of this one, or, just after it starts
+  // (BACK_GRACE seconds), of the one before, like a CD player; never
+  // before the span's start.
+  skip(by, back) {
     const state = this.audio.state
     if ((state !== "playing" && state !== "paused") || !this.anchors?.length) return
-    const now = tickAt(this.anchors, this.audio.position())
+    const position = this.audio.position()
+    const now = tickAt(this.anchors, position)
     const starts =
       by === "line"
         ? this.geometry.systems.map((s) => s.measures[0].start_tick)
         : this.geometry.systems.flatMap((s) => s.measures.map((m) => m.start_tick))
-    const target = starts.find((tick) => tick > now + 0.5)
+    const first = this.anchors[0].tick
+    const target = back
+      ? (starts.filter((tick) => tick > first && secondsAt(this.anchors, tick) < position - BACK_GRACE).pop() ?? first)
+      : starts.find((tick) => tick > now + 0.5)
     if (target === undefined || target >= this.anchors[this.anchors.length - 1].tick) return
     // Scroll to it straight away.
     this.followedAt = null

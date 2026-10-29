@@ -28,9 +28,9 @@ defmodule DrawMusicWeb.Shortcuts do
     # Placing
     %Shortcut{
       group: "Placing",
-      keys: ~w(1 2 3 4 5 6 7),
+      keys: ~w(1 2 3 4 5 6 7 8 9),
       modes: @edit,
-      action: "Pick a whole note (1) down to a 64th (7) to place"
+      action: "Pick a whole note (1) down to a 256th (9) to place"
     },
     %Shortcut{
       group: "Placing",
@@ -48,7 +48,7 @@ defmodule DrawMusicWeb.Shortcuts do
       group: "Placing",
       keys: ["."],
       modes: @edit,
-      action: "Dot the picked value, or the selected notes"
+      action: "Dot the picked value, or the selected notes (a 128th takes one dot, a 256th none)"
     },
     %Shortcut{
       group: "Placing",
@@ -109,7 +109,8 @@ defmodule DrawMusicWeb.Shortcuts do
       group: "Selecting and moving",
       mouse: "drag empty area",
       modes: @edit,
-      action: "Select everything in a span of time, on both staves",
+      action:
+        "Select everything in a span of time, on both staves, like selecting text: from where you press to where you let go, forwards or backwards and across lines. What it will select lights up as you drag",
       diagram: :rubber_band
     },
     %Shortcut{
@@ -251,6 +252,13 @@ defmodule DrawMusicWeb.Shortcuts do
     },
     %Shortcut{
       group: "Saving",
+      mouse: "Details button",
+      modes: @both,
+      action:
+        "Change the composition's name, subtitle, credits and notes (beside its title here, or on the Compositions page). They're shared by every key and version and saved at once; an unsaved score keeps them for its first save"
+    },
+    %Shortcut{
+      group: "Saving",
       mouse: "Import .mid",
       modes: @both,
       action:
@@ -264,7 +272,27 @@ defmodule DrawMusicWeb.Shortcuts do
       action:
         "Play the selection, from the selected note, or from the start; again to pause or resume"
     },
-    %Shortcut{group: "Playback", keys: ["Home"], modes: @play, action: "Back to the start point"},
+    %Shortcut{
+      group: "Playback",
+      keys: ["Home"],
+      mouse: "⏮ (bar and arrow) button",
+      modes: @play,
+      action: "Back to the start point"
+    },
+    %Shortcut{
+      group: "Playback",
+      mouse: "⏪ button",
+      modes: @play,
+      action:
+        "Back to the start of this measure, or of the one before if it has only just begun; before playing, Play will start there"
+    },
+    %Shortcut{
+      group: "Playback",
+      mouse: "⏪⏪ (three arrows) button",
+      modes: @play,
+      action:
+        "Back to the start of this line of music, or of the one before if it has only just begun (Page layout; off in Strip, a single line)"
+    },
     %Shortcut{
       group: "Playback",
       keys: ["L"],
@@ -290,7 +318,7 @@ defmodule DrawMusicWeb.Shortcuts do
       mouse: "⏩⏩ (three arrows) button",
       modes: @play,
       action:
-        "Skip to the start of the next line of music (Page layout; Strip layout is a single line)"
+        "Skip to the start of the next line of music (Page layout; off in Strip, a single line)"
     },
     %Shortcut{
       group: "Playback",
@@ -323,7 +351,7 @@ defmodule DrawMusicWeb.Shortcuts do
       group: "Playback",
       mouse: "drag (Play mode)",
       modes: @play,
-      action: "Select a span to play",
+      action: "Select a span to play, from where you press to where you let go, across lines",
       diagram: :range_playback
     },
     # Modes

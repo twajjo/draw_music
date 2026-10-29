@@ -36,6 +36,21 @@ defmodule DrawMusicWeb.EditorSelectTest do
     assert count(view, "#score [id^='rest-'].selected") == 2
   end
 
+  test "while a band is dragged, the preview names what it would select and selects nothing",
+       %{view: view} do
+    ids = Enum.sort([id_at(view, 0), id_at(view, 960)])
+
+    render_hook(view, "preview_range", %{"from" => 0, "to" => 1920})
+    assert_reply(view, %{ids: forwards})
+    # Backwards, from after the E4 to before the C4: the same notes.
+    render_hook(view, "preview_range", %{"from" => 1920, "to" => 0})
+    assert_reply(view, %{ids: backwards})
+
+    assert Enum.sort(forwards) == ids
+    assert Enum.sort(backwards) == ids
+    refute has_element?(view, "#score .selected")
+  end
+
   describe "select all" do
     defp all_selected?(view) do
       has_element?(view, "#score [id^='note-'].selected") and

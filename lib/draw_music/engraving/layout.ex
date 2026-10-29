@@ -548,6 +548,8 @@ defmodule DrawMusic.Engraving.Layout do
 
   # Each system gets room above and below for whatever sticks out of the
   # grand staff.
+  # Each system's band runs from where the one above ended to past its gap;
+  # the last one's ends with its own ink, at the page's height.
   defp stack(systems) do
     {systems, bottom} =
       Enum.map_reduce(systems, 0.0, fn system, y ->
@@ -559,10 +561,12 @@ defmodule DrawMusic.Engraving.Layout do
         above = max(@margin, -top + @clearance)
         below = max(@margin, bottom - Staff.bottom() + @clearance)
         system_y = y + above
-        {%{system | y: system_y}, system_y + Staff.bottom() + below + @system_gap}
+        next = system_y + Staff.bottom() + below + @system_gap
+        {%{system | y: system_y, top: y, bottom: next}, next}
       end)
 
-    {systems, bottom - @system_gap}
+    height = bottom - @system_gap
+    {List.update_at(systems, -1, &%{&1 | bottom: height}), height}
   end
 
   @spec y_range(Item.t()) :: [number()]

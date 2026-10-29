@@ -51,6 +51,8 @@ defmodule DrawMusicWeb.LibraryLive do
         name={@import_form && @import_form[:name].value}
         key_name={@import_key_name}
       />
+
+      <.details_dialog :if={@details_form} form={@details_form} />
     </Layouts.app>
     """
   end
@@ -62,6 +64,7 @@ defmodule DrawMusicWeb.LibraryLive do
     {:ok,
      socket
      |> assign(:page_title, "Compositions")
+     |> assign(details_composition: nil, details_form: nil)
      |> reset_import()
      |> allow_upload(:midi,
        accept: ~w(.mid .midi),
@@ -130,6 +133,47 @@ defmodule DrawMusicWeb.LibraryLive do
      |> assign(import_step: :name, import_error: nil)
      |> assign(:import_form, name_form(name, name: {"is already in your library", []}))}
   end
+
+  ## Details
+
+  def handle_event("edit_details", %{"id" => id}, socket) when is_binary(id) do
+    scope = socket.assigns.current_scope
+    composition = Library.get_composition!(scope, id)
+
+    {:noreply,
+     assign(socket,
+       details_composition: composition,
+       details_form: to_form(Library.change_composition(scope, composition))
+     )}
+  end
+
+  def handle_event("validate_details", %{"composition" => params}, socket) do
+    %{current_scope: scope, details_composition: composition} = socket.assigns
+    changeset = Library.change_composition(scope, composition, params)
+    {:noreply, assign(socket, :details_form, to_form(changeset, action: :validate))}
+  end
+
+  def handle_event("save_details", %{"composition" => params}, socket) do
+    %{current_scope: scope, details_composition: composition} = socket.assigns
+
+    case Library.update_composition(scope, composition, params) do
+      {:ok, updated} ->
+        {:noreply,
+         socket
+         |> assign(details_composition: nil, details_form: nil)
+         |> stream_insert(:compositions, Library.get_composition!(scope, updated.id))
+         |> put_flash(:info, "Details saved.")}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, :details_form, to_form(changeset, action: :update))}
+    end
+  end
+
+  def handle_event("close_details", _params, socket) do
+    {:noreply, assign(socket, details_composition: nil, details_form: nil)}
+  end
+
+  ## Versions
 
   # The browser asked first (data-confirm). The composition's only version
   # takes the composition with it.

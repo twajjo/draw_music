@@ -1,0 +1,49 @@
+# Fly.io: built from the Dockerfile. See DEPLOY.md.
+# `fly launch --no-deploy` will offer to change the app name and region.
+app = "draw-music"
+primary_region = "iad"
+kill_signal = "SIGTERM"
+
+[build]
+
+[deploy]
+  release_command = "/app/bin/migrate"
+
+[env]
+  PHX_HOST = "draw-music.fly.dev"
+  PORT = "8080"
+  # Fly's private network is IPv6.
+  ECTO_IPV6 = "true"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 1000
+    soft_limit = 1000
+
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1
+
+# For instruments fetched after deploy, mount a volume and point SAMPLES_DIR
+# at it (fly volumes create samples --size 1):
+#
+# [mounts]
+#   source = "samples"
+#   destination = "/data/samples"
+#
+# and under [env]: SAMPLES_DIR = "/data/samples"

@@ -7,6 +7,8 @@ defmodule DrawMusicWeb.SettingsComponents do
 
   use Phoenix.Component
 
+  alias Phoenix.LiveView.JS
+
   @ink_presets [
     {"White", "#ffffff"},
     {"Cream", "#fff4d6"},
@@ -41,7 +43,7 @@ defmodule DrawMusicWeb.SettingsComponents do
         type="button"
         title={hint}
         aria-pressed={to_string(@layout == layout)}
-        phx-click="set_score_layout"
+        phx-click={redraw_to(@layout, layout)}
         phx-value-layout={layout}
         class={[
           "join-item btn btn-sm transition-colors",
@@ -53,6 +55,16 @@ defmodule DrawMusicWeb.SettingsComponents do
       </button>
     </div>
     """
+  end
+
+  # A change of layout first announces itself ("score:redraw"), so the score
+  # view can say it's redrawing while the server lays the score out again.
+  defp redraw_to(layout, layout), do: "set_score_layout"
+
+  defp redraw_to(_current, layout) do
+    "score:redraw"
+    |> JS.dispatch(detail: %{layout: layout})
+    |> JS.push("set_score_layout")
   end
 
   @doc """

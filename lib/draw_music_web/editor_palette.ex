@@ -22,7 +22,9 @@ defmodule DrawMusicWeb.EditorPalette do
     eighth: :note8thUp,
     sixteenth: :note16thUp,
     thirty_second: :note32ndUp,
-    sixty_fourth: :note64thUp
+    sixty_fourth: :note64thUp,
+    hundred_twenty_eighth: :note128thUp,
+    two_hundred_fifty_sixth: :note256thUp
   }
 
   @rest_glyphs %{
@@ -32,7 +34,9 @@ defmodule DrawMusicWeb.EditorPalette do
     eighth: :rest8th,
     sixteenth: :rest16th,
     thirty_second: :rest32nd,
-    sixty_fourth: :rest64th
+    sixty_fourth: :rest64th,
+    hundred_twenty_eighth: :rest128th,
+    two_hundred_fifty_sixth: :rest256th
   }
 
   @doc "Parses a note value name; nil for anything else."
@@ -58,9 +62,15 @@ defmodule DrawMusicWeb.EditorPalette do
     with kind when not is_nil(kind) <- Map.get(@kinds, kind_name),
          value when not is_nil(value) <- value(value_name) do
       case armed do
-        %Armed{kind: ^kind, value: ^value} -> {:ok, armed}
-        %Armed{kind: :chord} when kind == :note -> {:ok, %{armed | value: value}}
-        _ -> {:ok, %Armed{kind: kind, value: value}}
+        %Armed{kind: ^kind, value: ^value} ->
+          {:ok, armed}
+
+        %Armed{kind: :chord} when kind == :note ->
+          {:ok,
+           %{armed | value: value, dots: min(armed.dots, Enum.max(Duration.dot_counts(value)))}}
+
+        _ ->
+          {:ok, %Armed{kind: kind, value: value}}
       end
     else
       _ -> :error
@@ -123,10 +133,18 @@ defmodule DrawMusicWeb.EditorPalette do
     {row_kind, armed}
   end
 
-  @doc "Toggles one dot on the armed item."
+  @doc "Toggles one dot on the armed item (never on a 256th, which takes none)."
   @spec toggle_dot(Armed.t()) :: Armed.t()
-  def toggle_dot(%Armed{dots: 0} = armed), do: %{armed | dots: 1}
+  def toggle_dot(%Armed{dots: 0, value: value} = armed) do
+    %{armed | dots: if(Duration.dots_allowed?(value, 1), do: 1, else: 0)}
+  end
+
   def toggle_dot(%Armed{} = armed), do: %{armed | dots: 0}
+
+  @doc "Whether the armed item can take a dot."
+  @spec dottable?(Armed.t() | nil) :: boolean()
+  def dottable?(%Armed{value: value}) when not is_nil(value), do: Duration.dots_allowed?(value, 1)
+  def dottable?(_armed), do: true
 
   @doc "Sets the armed item's accidental; choosing the same one again clears it."
   @spec set_accidental(Armed.t(), -2..2) :: Armed.t()

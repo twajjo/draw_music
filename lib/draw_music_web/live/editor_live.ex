@@ -48,17 +48,16 @@ defmodule DrawMusicWeb.EditorLive do
     EditorSettings,
     InstrumentSource,
     PlaybackPayload,
-    ScoreComponents,
     ScorePreferences,
+    ScoreSvg,
     Shortcuts,
     TempoDialog,
     TempoForm,
     VersionLookup
   }
 
-  alias Phoenix.HTML.Safe
-
   @draft_measures 4
+  @draft_name "Untitled"
   @menu_events ~w(split set_value toggle_menu_dot to_rest to_note tie_next untie add_third_above
                   add_third_below menu_delete transpose reverse)
   # Everything that changes the score or arms the palette; Play mode ignores them.
@@ -78,7 +77,10 @@ defmodule DrawMusicWeb.EditorLive do
       <%!-- Version status and downloads sit on the title's row, at the right. --%>
       <header class="flex flex-wrap items-start justify-between gap-4">
         <div class="space-y-1">
-          <h1 id="composition-name" class="text-2xl font-semibold">{@composition.name}</h1>
+          <div class="flex flex-wrap items-center gap-2">
+            <h1 id="composition-name" class="text-2xl font-semibold">{@composition.name}</h1>
+            <.details_button id="edit-details" />
+          </div>
           <p :if={@composition.subtitle} class="opacity-80">{@composition.subtitle}</p>
           <p :if={credits(@composition) != ""} class="text-sm opacity-60">{credits(@composition)}</p>
         </div>
@@ -119,6 +121,7 @@ defmodule DrawMusicWeb.EditorLive do
         editor_mode={@editor_mode}
         playback={@playback}
         loop?={@loop?}
+        lines?={@current_scope.user.score_layout == :page}
         instrument_name={@instrument_source.name}
         playback_instrument={@playback_instrument}
         version_instrument={@instrument}
@@ -158,6 +161,18 @@ defmodule DrawMusicWeb.EditorLive do
           <span class="loading loading-spinner loading-sm" />
           <span id="score-loading-text">Loading the score…</span>
         </p>
+        <%!-- Shown by the hook from a change of layout until the browser has
+             drawn the score in the new one; it floats so it's seen wherever
+             the page is scrolled. --%>
+        <p
+          id="score-redrawing"
+          phx-update="ignore"
+          hidden
+          role="status"
+          class="fixed inset-x-0 top-1/3 z-40 mx-auto flex w-fit items-center gap-2 rounded-full border border-base-300 bg-base-100 px-4 py-2 text-sm shadow-lg"
+        >
+          <span class="loading loading-spinner loading-sm" /> Redrawing the music…
+        </p>
         <div
           id="score-editor"
           phx-hook="ScoreEditor"
@@ -176,8 +191,14 @@ defmodule DrawMusicWeb.EditorLive do
           data-mode={@editor_mode}
           data-play-start={@editor_mode == :play && play_start(@session)}
           data-loading={to_string(@score_loading?)}
+          data-layout={@current_scope.user.score_layout}
         >
-          {score_svg(@engraved, @session.selection, @current_scope.user.score_layout)}
+          <.score
+            id="score"
+            layout={@engraved}
+            pieces={ScoreSvg.select(@pieces, @session.selection)}
+            strip?={@current_scope.user.score_layout == :strip}
+          />
           <%!-- The hook draws the cursor glyph and previews here. --%>
           <svg
             id="score-overlay"
@@ -195,6 +216,7 @@ defmodule DrawMusicWeb.EditorLive do
         <.context_menu :if={@menu} menu={@menu} />
         <.tempo_dialog :if={@tempo} dialog={@tempo} />
         <.save_as_dialog :if={@save_as_form} form={@save_as_form} />
+        <.details_dialog :if={@details_form} form={@details_form} />
         <.settings_panel :if={@settings_form} form={@settings_form} />
         <.help_dialog :if={@help?} shortcuts={Shortcuts.for_mode(@editor_mode)} />
         <.transpose_dialog
@@ -219,6 +241,7 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign(:session, Session.new(version.score, Context.from_version(version)))
      |> assign(armed: nil, row_kind: :note, insert?: true, last_click: nil, menu: nil)
      |> assign(save_as_form: nil, settings_form: nil, pending_key: nil, tempo: nil)
+     |> assign(:details_form, nil)
      |> assign(playback: :idle, loop?: false, editor_mode: :edit, help?: false)
      |> assign(:instrument_options, instrument_options())
      # The tempo marking and instrument aren't part of the score's Context;
@@ -241,9 +264,9 @@ defmodule DrawMusicWeb.EditorLive do
   def handle_info(:lay_out, socket), do: {:noreply, assign_layout(socket)}
 
   defp load(:new, _scope, _params) do
-    composition = %Composition{name: "Untitled", keys: []}
+    composition = %Composition{name: @draft_name, keys: []}
     key = %Key{sf: 0, mode: :major, composition: composition}
-    {composition, %Version{key: key, score: Score.new(@draft_measures)}, "Untitled"}
+    {composition, %Version{key: key, score: Score.new(@draft_measures)}, @draft_name}
   end
 
   defp load(:show, scope, params) do
@@ -438,6 +461,15 @@ defmodule DrawMusicWeb.EditorLive do
     %{session: session} = socket.assigns
     ids = Editing.select_range(session.score, session.ctx, min(from, to), max(from, to))
     {:noreply, reselected(socket, &Session.select(&1, ids, false))}
+  end
+
+  # While a band is dragged: what letting go would select, for the hook to
+  # light up. Nothing changes until it does.
+  def handle_event("preview_range", %{"from" => from, "to" => to}, socket)
+      when is_integer(from) and is_integer(to) do
+    %{session: session} = socket.assigns
+    ids = Editing.select_range(session.score, session.ctx, min(from, to), max(from, to))
+    {:reply, %{ids: ids}, socket}
   end
 
   # Every note and rest, on both staves, and every tempo change.
@@ -728,6 +760,41 @@ defmodule DrawMusicWeb.EditorLive do
     end
   end
 
+  ## Composition details
+
+  def handle_event("edit_details", _params, socket) do
+    %{current_scope: scope, composition: composition} = socket.assigns
+
+    {:noreply,
+     assign(socket, :details_form, to_form(Library.change_composition(scope, composition)))}
+  end
+
+  def handle_event("validate_details", %{"composition" => params}, socket) do
+    %{current_scope: scope, composition: composition} = socket.assigns
+    changeset = Library.change_composition(scope, composition, params)
+    {:noreply, assign(socket, :details_form, to_form(changeset, action: :validate))}
+  end
+
+  # A saved composition's details are stored at once (they aren't part of
+  # the score, so not of its undo or its unsaved changes); a draft's are
+  # kept until its first save.
+  def handle_event("save_details", %{"composition" => params}, socket) do
+    case store_details(socket, params) do
+      {:ok, composition} ->
+        {:noreply,
+         socket
+         |> assign(composition: composition, page_title: composition.name, details_form: nil)
+         |> put_flash(:info, "Details saved.")}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, :details_form, to_form(changeset, action: :update))}
+    end
+  end
+
+  def handle_event("close_details", _params, socket) do
+    {:noreply, assign(socket, :details_form, nil)}
+  end
+
   ## Score settings
 
   def handle_event("open_settings", _params, socket) do
@@ -826,13 +893,16 @@ defmodule DrawMusicWeb.EditorLive do
      |> push_event("loop", %{on: loop?})}
   end
 
-  # ⏩ the start of the next measure, ⏭ of the next line of music. Playing or
+  # ⏩ the start of the next measure, ⏩⏩ of the next line of music; with
+  # dir "back", ⏪ and ⏪⏪ the start of this or the previous one. Playing or
   # paused, the hook knows where it is and jumps; before playing, the start
   # point moves there (the first note or rest it begins with is selected).
-  def handle_event("skip", %{"by" => by}, socket) when by in ~w(measure line) do
+  def handle_event("skip", %{"by" => by} = params, socket) when by in ~w(measure line) do
+    back? = match?(%{"dir" => "back"}, params)
+
     case socket.assigns.playback do
-      state when state in [:idle, :loading] -> {:noreply, skip_start(socket, by)}
-      _sounding -> {:noreply, push_event(socket, "skip", %{by: by})}
+      state when state in [:idle, :loading] -> {:noreply, skip_start(socket, by, back?)}
+      _sounding -> {:noreply, push_event(socket, "skip", %{by: by, back: back?})}
     end
   end
 
@@ -1019,11 +1089,11 @@ defmodule DrawMusicWeb.EditorLive do
   # Where Play would start: the hook shows the playhead there in Play mode.
   defp play_start(session), do: elem(play_span(session), 0)
 
-  defp skip_start(socket, by) do
+  defp skip_start(socket, by, back?) do
     %{session: session, engraved: engraved} = socket.assigns
     from = play_start(session)
 
-    with tick when is_integer(tick) <- Enum.find(skip_points(engraved, by), &(&1 > from)),
+    with tick when is_integer(tick) <- skip_target(skip_points(engraved, by), from, back?),
          %{event: %{id: id}} <-
            session.score
            |> Timeline.flatten(session.ctx)
@@ -1033,6 +1103,15 @@ defmodule DrawMusicWeb.EditorLive do
     else
       _none -> socket
     end
+  end
+
+  # The first of `points` after `from`, or going back, the last before it.
+  defp skip_target(points, from, false), do: Enum.find(points, &(&1 > from))
+
+  defp skip_target(points, from, true) do
+    points
+    |> Enum.filter(&(&1 < from))
+    |> List.last()
   end
 
   # Where measures, or lines of music, start (ticks, in order).
@@ -1251,10 +1330,36 @@ defmodule DrawMusicWeb.EditorLive do
     EditorSettings.version_attrs(session, tempo_text, instrument)
   end
 
+  defp store_details(%{assigns: %{version: %Version{id: nil}}} = socket, params) do
+    %{current_scope: scope, composition: composition} = socket.assigns
+
+    scope
+    |> Library.change_composition(composition, params)
+    |> Ecto.Changeset.apply_action(:update)
+  end
+
+  defp store_details(socket, params) do
+    %{current_scope: scope, composition: composition} = socket.assigns
+    Library.update_composition(scope, composition, params)
+  end
+
+  # A new composition starts from the current one's credits and notes. It
+  # needs its own name, unless this is a draft that was given one.
   defp open_save_as(socket) do
-    changeset = Library.change_composition(socket.assigns.current_scope, %Composition{})
+    %{current_scope: scope, composition: composition, version: version} = socket.assigns
+
+    starting =
+      composition
+      |> Map.take([:subtitle, :composer, :arranger, :lyricist, :copyright, :notes])
+      |> Map.put(:name, draft_name(composition, version))
+
+    changeset = Library.change_composition(scope, struct(Composition, starting))
     assign(socket, :save_as_form, to_form(changeset))
   end
+
+  defp draft_name(%Composition{name: @draft_name}, _version), do: nil
+  defp draft_name(%Composition{name: name}, %Version{id: nil}), do: name
+  defp draft_name(_composition, _saved), do: nil
 
   # A key change on a saved version is stored as a new version in that key;
   # on the draft it just applies.
@@ -1301,29 +1406,16 @@ defmodule DrawMusicWeb.EditorLive do
     ctx = socket.assigns.session.ctx
     engraved = Layout.layout(score, ctx, width: width)
 
+    # The score goes to the browser in pieces, each one finished piece of
+    # SVG, not as a LiveView diff of every glyph and line: a long piece has
+    # tens of thousands, and building those one by one in the browser takes
+    # long enough for the connection to time out. Parsed whole, it's quick,
+    # and only the pieces an edit changes are sent again.
     socket
     |> assign(:engraved, engraved)
+    |> assign(:pieces, ScoreSvg.pieces(engraved, socket.assigns.current_scope.user.score_layout))
     |> assign(:geometry_json, Jason.encode!(EditorGeometry.encode(engraved, ctx)))
     |> assign(:score_loading?, loading?)
-  end
-
-  # The score goes to the browser as one finished piece of SVG, not as a
-  # LiveView diff of every glyph and line: a long piece has tens of
-  # thousands, and building those one by one in the browser takes long
-  # enough for the connection to time out. Parsed whole, it's quick. It is
-  # safe to mark raw: the HEEx it comes from has escaped every value.
-  defp score_svg(engraved, selection, layout) do
-    %{
-      __changed__: nil,
-      id: "score",
-      layout: engraved,
-      selection: selection,
-      space: 10,
-      class: ["block", layout == :page && "h-auto w-full"]
-    }
-    |> ScoreComponents.score()
-    |> Safe.to_iodata()
-    |> raw()
   end
 
   defp export_path(version, extension) do

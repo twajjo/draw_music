@@ -59,7 +59,7 @@ defmodule DrawMusic.Music.Note do
     |> validate_required([:staff, :voice, :offset, :value, :dots, :step, :alter])
     |> validate_inclusion(:voice, @voices)
     |> validate_number(:offset, greater_than_or_equal_to: 0)
-    |> validate_inclusion(:dots, Duration.dot_counts())
+    |> Duration.validate_dots()
     |> validate_inclusion(:alter, Pitch.alters())
     |> validate_range()
   end

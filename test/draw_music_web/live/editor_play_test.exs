@@ -126,20 +126,50 @@ defmodule DrawMusicWeb.EditorPlayTest do
     assert has_element?(view, "#score-editor[data-play-start='3840']")
   end
 
-  test "Strip layout is one line, so ⏭ has no next line to go to", %{view: view} do
-    view |> element("#palette-skip-line") |> render_click()
+  test "Strip layout is one line, so the line skips are disabled; Page enables them",
+       %{view: view} do
+    assert has_element?(view, "#palette-skip-line[disabled]")
+    assert has_element?(view, "#palette-back-line[disabled]")
+
+    view |> element("#score-layout-page") |> render_click()
+    refute has_element?(view, "#palette-skip-line[disabled]")
+    refute has_element?(view, "#palette-back-line[disabled]")
+  end
+
+  test "before playing, ⏪ moves the start point back to the measure's start", %{view: view} do
+    select(view, [1920])
+    view |> element("#palette-back-measure") |> render_click()
+    assert has_element?(view, "#score-editor[data-play-start='0']")
+
+    view |> element("#palette-skip-measure") |> render_click()
+    view |> element("#palette-back-measure") |> render_click()
+    assert has_element?(view, "#score-editor[data-play-start='0']")
+  end
+
+  test "before playing, ⏪ from the start goes nowhere", %{view: view} do
+    view |> element("#score-layout-page") |> render_click()
+    view |> element("#palette-back-measure") |> render_click()
+    view |> element("#palette-back-line") |> render_click()
     assert has_element?(view, "#score-editor[data-play-start='0']")
   end
 
   test "playing or paused, the skips go to the browser, which knows where it is",
        %{view: view} do
+    view |> element("#score-layout-page") |> render_click()
     play(view)
     view |> element("#palette-skip-measure") |> render_click()
-    assert_push_event(view, "skip", %{by: "measure"})
+    assert_push_event(view, "skip", %{by: "measure", back: false})
 
     play(view)
     view |> element("#palette-skip-line") |> render_click()
-    assert_push_event(view, "skip", %{by: "line"})
+    assert_push_event(view, "skip", %{by: "line", back: false})
+
+    play(view)
+    view |> element("#palette-back-measure") |> render_click()
+    assert_push_event(view, "skip", %{by: "measure", back: true})
+
+    view |> element("#palette-back-line") |> render_click()
+    assert_push_event(view, "skip", %{by: "line", back: true})
   end
 
   test "Rewind while paused goes back to the start point and offers Play", %{view: view} do

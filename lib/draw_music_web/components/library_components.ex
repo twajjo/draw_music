@@ -22,6 +22,93 @@ defmodule DrawMusicWeb.LibraryComponents do
   end
 
   @doc """
+  A composition's details: its name, subtitle, credits and notes. They
+  belong to the composition, so every key and version shares them.
+  """
+  attr :form, Phoenix.HTML.Form, required: true
+
+  @spec composition_fields(map()) :: Phoenix.LiveView.Rendered.t()
+  def composition_fields(assigns) do
+    ~H"""
+    <.input field={@form[:name]} label="Name" required phx-debounce="300" />
+    <.input field={@form[:subtitle]} label="Subtitle" />
+    <div class="grid gap-x-4 sm:grid-cols-2">
+      <.input field={@form[:composer]} label="Composer" />
+      <.input field={@form[:arranger]} label="Arranger" />
+      <.input field={@form[:lyricist]} label="Lyricist" />
+      <.input field={@form[:copyright]} label="Copyright" />
+    </div>
+    <.input field={@form[:notes]} type="textarea" label="Notes" rows="3" />
+    """
+  end
+
+  @doc """
+  Changes a composition's details (see `composition_fields/1`), from the
+  library or the editor.
+  """
+  attr :form, Phoenix.HTML.Form, required: true
+
+  @spec details_dialog(map()) :: Phoenix.LiveView.Rendered.t()
+  def details_dialog(assigns) do
+    ~H"""
+    <div class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
+      <div
+        id="details-dialog"
+        role="dialog"
+        aria-label="Composition details"
+        class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-box border border-base-300 bg-base-100 p-6 shadow-2xl"
+        phx-click-away="close_details"
+        phx-window-keydown="close_details"
+        phx-key="Escape"
+      >
+        <h2 class="text-lg font-semibold">Composition details</h2>
+        <p class="mt-1 text-sm opacity-70">Shared by every key and version of this composition.</p>
+        <.form
+          for={@form}
+          id="details-form"
+          phx-change="validate_details"
+          phx-submit="save_details"
+          class="mt-4 space-y-1"
+        >
+          <.composition_fields form={@form} />
+          <div class="flex justify-end gap-2 pt-3">
+            <button type="button" phx-click="close_details" class="btn btn-ghost">Cancel</button>
+            <button
+              id="details-save"
+              type="submit"
+              class="btn btn-primary"
+              phx-disable-with="Saving..."
+            >
+              Save
+            </button>
+          </div>
+        </.form>
+      </div>
+    </div>
+    """
+  end
+
+  @doc "The button that opens a composition's details."
+  attr :id, :string, required: true
+  attr :rest, :global
+
+  @spec details_button(map()) :: Phoenix.LiveView.Rendered.t()
+  def details_button(assigns) do
+    ~H"""
+    <button
+      id={@id}
+      type="button"
+      phx-click="edit_details"
+      class="btn btn-ghost btn-sm gap-1 transition-colors"
+      title="Edit the name, credits and notes"
+      {@rest}
+    >
+      <.icon name="hero-pencil-square" class="size-4" /> Details
+    </button>
+    """
+  end
+
+  @doc """
   A score's settings inputs: key, time signature, tempo and pickup. The
   caller's form lays them out; see `DrawMusicWeb.EditorSettings`.
   """
@@ -130,9 +217,14 @@ defmodule DrawMusicWeb.LibraryComponents do
       id={@id}
       class="rounded-box border border-base-300 bg-base-100 p-4 shadow-sm transition-shadow hover:shadow-md"
     >
-      <header class="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 class="text-lg font-semibold">{@composition.name}</h2>
-        <p :if={credits(@composition) != ""} class="text-sm opacity-70">{credits(@composition)}</p>
+      <header class="flex flex-wrap items-center justify-between gap-2">
+        <div class="flex flex-wrap items-baseline gap-x-3">
+          <h2 class="text-lg font-semibold">{@composition.name}</h2>
+          <p :if={credits(@composition) != ""} class="text-sm opacity-70">
+            {credits(@composition)}
+          </p>
+        </div>
+        <.details_button id={"details-#{@composition.id}"} phx-value-id={@composition.id} />
       </header>
       <ul class="mt-3 flex flex-wrap gap-2">
         <%= for key <- @composition.keys, version <- key.versions do %>
