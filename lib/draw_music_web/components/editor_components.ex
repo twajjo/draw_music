@@ -10,7 +10,10 @@ defmodule DrawMusicWeb.EditorComponents do
   import DrawMusicWeb.CoreComponents, only: [icon: 1, input: 1]
 
   alias DrawMusic.Engraving.Smufl
-  alias DrawMusicWeb.{BarControl, ScoreComponents}
+  alias DrawMusicWeb.{BarControl, HelpComponents, LibraryComponents, ScoreComponents}
+
+  # Bar controls sit this far above a system's top line (staff spaces).
+  @controls_raise 2.2
 
   @lengths [
     {:whole, :noteWhole, "Whole"},
@@ -55,13 +58,45 @@ defmodule DrawMusicWeb.EditorComponents do
     """
   end
 
+  @doc "The cheat-sheet over the score, the current mode's groups first."
+  attr :shortcuts, :list, required: true
+
+  @spec help_dialog(map()) :: Phoenix.LiveView.Rendered.t()
+  def help_dialog(assigns) do
+    ~H"""
+    <div class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
+      <div
+        id="help-dialog"
+        role="dialog"
+        aria-label="Keys and mouse"
+        class="max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-box border border-base-300 bg-base-100 p-6 shadow-2xl"
+        phx-click-away="close_help"
+        phx-window-keydown="close_help"
+        phx-key="Escape"
+      >
+        <div class="mb-4 flex items-center justify-between">
+          <p class="text-lg font-semibold">Keys and mouse</p>
+          <button
+            id="help-close"
+            type="button"
+            phx-click="close_help"
+            class="btn btn-ghost btn-sm btn-square"
+            aria-label="Close"
+          >
+            <.icon name="hero-x-mark" class="size-5" />
+          </button>
+        </div>
+        <HelpComponents.cheat_sheet shortcuts={@shortcuts} />
+      </div>
+    </div>
+    """
+  end
+
   @doc "The score's settings: key, time signature, tempo and pickup."
   attr :form, Phoenix.HTML.Form, required: true
 
   @spec settings_panel(map()) :: Phoenix.LiveView.Rendered.t()
   def settings_panel(assigns) do
-    assigns = assign(assigns, :key_options, DrawMusicWeb.LibraryComponents.key_options())
-
     ~H"""
     <div class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
       <div
@@ -77,28 +112,7 @@ defmodule DrawMusicWeb.EditorComponents do
           phx-submit="apply_settings"
           class="mt-4 grid gap-x-4 sm:grid-cols-2"
         >
-          <.input field={@form[:key]} type="select" label="Key" options={@key_options} />
-          <div class="flex items-end gap-2">
-            <.input
-              field={@form[:time_num]}
-              type="number"
-              label="Time"
-              min="1"
-              max="32"
-              class="input w-20"
-            />
-            <span class="pb-3 text-lg">/</span>
-            <.input field={@form[:time_den]} type="select" options={~w(1 2 4 8 16 32 64)} />
-          </div>
-          <.input
-            field={@form[:time_symbol]}
-            type="select"
-            label="Written as"
-            options={[{"Numbers", "none"}, {"Common time (4/4)", "common"}, {"Cut time (2/2)", "cut"}]}
-          />
-          <.input field={@form[:pickup_beats]} type="number" label="Pickup beats" min="0" />
-          <.input field={@form[:tempo_bpm]} type="number" label="Tempo (BPM)" min="20" max="400" />
-          <.input field={@form[:tempo_text]} label="Tempo marking" placeholder="Allegro" />
+          <LibraryComponents.score_settings_fields form={@form} />
           <div class="flex justify-end gap-2 pt-2 sm:col-span-2">
             <button type="button" phx-click="close_settings" class="btn btn-ghost">Cancel</button>
             <button type="submit" class="btn btn-primary">Apply</button>
@@ -223,7 +237,7 @@ defmodule DrawMusicWeb.EditorComponents do
           title={label}
           aria-label={label}
           phx-click="set_value"
-          phx-value-value={value}
+          value={value}
           class="grid h-8 w-7 place-items-center rounded transition-colors hover:bg-base-200"
         >
           <span class="font-['Bravura'] text-xl leading-none">{Smufl.char(glyph)}</span>
@@ -241,6 +255,8 @@ defmodule DrawMusicWeb.EditorComponents do
       </div>
       <div class="my-1 border-t border-base-300" />
       <%= if @menu.kind == :note do %>
+        <.item id="menu-add-third-above" event="add_third_above">Add a 3rd above</.item>
+        <.item id="menu-add-third-below" event="add_third_below">Add a 3rd below</.item>
         <.item id="menu-to-rest" event="to_rest">Make it a rest</.item>
         <.item id="menu-tie-next" event="tie_next">Tie to the next note</.item>
         <.item id="menu-untie" event="untie">Remove ties</.item>
@@ -318,9 +334,9 @@ defmodule DrawMusicWeb.EditorComponents do
       for system <- assigns.engraved.systems, m <- system.measures do
         %BarControl{
           index: m.index,
-          left: (m.x + padding) / total * 100,
-          top: max(system.y - 2.2, 0) / assigns.engraved.height * 100,
-          end_left: (m.x + m.width + padding) / total * 100
+          left: percent(m.x + padding, total),
+          top: percent(max(system.y - @controls_raise, 0), assigns.engraved.height),
+          end_left: percent(m.x + m.width + padding, total)
         }
       end
 
@@ -372,10 +388,13 @@ defmodule DrawMusicWeb.EditorComponents do
     """
   end
 
+  defp percent(part, whole), do: part / whole * 100
+
   defp filled_bars(score) do
     for {m, i} <- Enum.with_index(score.measures),
-        m.notes != [] or m.rests != [],
-        into: MapSet.new(),
-        do: i
+        m.notes != [] or Enum.any?(m.rests, &(not &1.filler)),
+        into: MapSet.new() do
+      i
+    end
   end
 end

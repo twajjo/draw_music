@@ -10,7 +10,7 @@ defmodule DrawMusic.Music.Session do
   in the current score.
   """
 
-  alias DrawMusic.Music.{Context, Score}
+  alias DrawMusic.Music.{Context, Editing, Score, Timeline}
 
   defstruct score: nil,
             ctx: %Context{},
@@ -32,11 +32,15 @@ defmodule DrawMusic.Music.Session do
 
   @doc """
   A clean session over `score` read against `ctx`. A score with no measures
-  starts with one empty bar, so there is somewhere to write.
+  starts with one empty bar, so there is somewhere to write. Gaps are filled
+  with filler rests, so every rest drawn can be selected.
   """
   @spec new(Score.t(), Context.t()) :: t()
   def new(%Score{measures: []}, %Context{} = ctx), do: new(Score.new(), ctx)
-  def new(%Score{} = score, %Context{} = ctx), do: %__MODULE__{score: score, ctx: ctx}
+
+  def new(%Score{} = score, %Context{} = ctx) do
+    %__MODULE__{score: Editing.fill_rests(score, ctx), ctx: ctx}
+  end
 
   @doc """
   Applies an edit: `fun.(score, ctx)` returns `{:ok, score}`, `{:ok, score,
@@ -60,8 +64,9 @@ defmodule DrawMusic.Music.Session do
 
   @doc "Replaces the context (and the score re-read against it), undoably."
   @spec change_context(t(), Context.t(), Score.t()) :: t()
-  def change_context(%__MODULE__{} = session, %Context{} = ctx, %Score{} = score),
-    do: record(session, score, ctx)
+  def change_context(%__MODULE__{} = session, %Context{} = ctx, %Score{} = score) do
+    record(session, score, ctx)
+  end
 
   @doc "Steps back one change; does nothing at the start of the history."
   @spec undo(t()) :: t()
@@ -102,20 +107,44 @@ defmodule DrawMusic.Music.Session do
   @doc "Selects `ids` (unknown ones are ignored), adding to the selection when `add?`."
   @spec select(t(), [Ecto.UUID.t()], boolean()) :: t()
   def select(%__MODULE__{} = session, ids, add?) do
-    known = session |> event_ids() |> MapSet.intersection(MapSet.new(ids))
-    %{session | selection: if(add?, do: MapSet.union(session.selection, known), else: known)}
+    known =
+      session
+      |> event_ids()
+      |> MapSet.intersection(MapSet.new(ids))
+
+    %{session | selection: selected(session.selection, known, add?)}
   end
+
+  defp selected(current, known, true = _add?), do: MapSet.union(current, known)
+  defp selected(_current, known, false), do: known
 
   @doc "Adds `id` to the selection, or removes it if already selected."
   @spec toggle(t(), Ecto.UUID.t()) :: t()
   def toggle(%__MODULE__{} = session, id) do
-    if MapSet.member?(session.selection, id),
-      do: %{session | selection: MapSet.delete(session.selection, id)},
-      else: select(session, [id], true)
+    if MapSet.member?(session.selection, id) do
+      %{session | selection: MapSet.delete(session.selection, id)}
+    else
+      select(session, [id], true)
+    end
   end
 
   @spec clear_selection(t()) :: t()
   def clear_selection(%__MODULE__{} = session), do: %{session | selection: MapSet.new()}
+
+  @doc "Narrows the selection to its earliest event; an empty selection stays empty."
+  @spec collapse_selection(t()) :: t()
+  def collapse_selection(%__MODULE__{score: score, ctx: ctx, selection: selection} = session) do
+    first =
+      score
+      |> Timeline.flatten(ctx)
+      |> Enum.filter(&(&1.event.id in selection))
+      |> Enum.min_by(& &1.start, fn -> nil end)
+
+    case first do
+      nil -> session
+      entry -> %{session | selection: MapSet.new([entry.event.id])}
+    end
+  end
 
   @doc "Ids of every note and rest in the score."
   @spec event_ids(t()) :: MapSet.t(Ecto.UUID.t())
@@ -135,6 +164,7 @@ defmodule DrawMusic.Music.Session do
     |> prune_selection()
   end
 
-  defp prune_selection(session),
-    do: %{session | selection: MapSet.intersection(session.selection, event_ids(session))}
+  defp prune_selection(session) do
+    %{session | selection: MapSet.intersection(session.selection, event_ids(session))}
+  end
 end

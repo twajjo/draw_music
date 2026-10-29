@@ -24,6 +24,9 @@ config :draw_music,
   ecto_repos: [DrawMusic.Repo],
   generators: [timestamp_type: :utc_datetime, binary_id: true]
 
+# Instrument samples (`mix samples.fetch`), served at /samples.
+config :draw_music, :samples_dir, Path.expand("../priv/samples", __DIR__)
+
 # UUID primary and foreign keys everywhere, so ids stay globally unique
 # across backup and restore.
 config :draw_music, DrawMusic.Repo,

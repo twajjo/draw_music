@@ -7,7 +7,7 @@ defmodule DrawMusicWeb.EditorCommands do
   """
 
   alias DrawMusic.Music.{Clipboard, Context, Duration, Editing, Note, Pitch, Score, Timeline}
-  alias DrawMusicWeb.{ContextMenu, EditorPalette}
+  alias DrawMusicWeb.{Armed, ContextMenu, EditorPalette, EditorPlacement}
 
   @typedoc "An edit for `DrawMusic.Music.Session.edit/2`."
   @type edit ::
@@ -29,13 +29,53 @@ defmodule DrawMusicWeb.EditorCommands do
     "M7" => {6, 11},
     "P8" => {7, 12}
   }
+  @octave Map.fetch!(@intervals, "P8")
 
-  @doc "Drops picked-up notes `steps` scale steps away, with `alter` if a modifier was held."
+  @doc """
+  Drops dragged notes `steps` scale steps away, with `alter` if a modifier
+  was held. Gives their ids.
+  """
   @spec drop([Ecto.UUID.t()], integer(), -2..2 | nil) :: edit()
   def drop(ids, steps, alter) do
     fn score, ctx ->
       with {:ok, score} <- Editing.move_steps(score, ctx, ids, steps),
-           do: maybe_alter(score, ctx, ids, alter)
+           {:ok, score} <- maybe_alter(score, ctx, ids, alter) do
+        {:ok, score, ids}
+      end
+    end
+  end
+
+  @doc """
+  Deletes the given notes and rests. In Overlay mode nothing else moves: the
+  gap they leave shows as rests. In Insert mode later music on each staff
+  moves left to close it.
+  """
+  @spec delete([Ecto.UUID.t()], boolean()) :: edit()
+  def delete(ids, false = _insert?), do: &Editing.remove(&1, &2, ids)
+  def delete(ids, true = _insert?), do: &Editing.delete(&1, &2, ids)
+
+  @doc """
+  Turns the given notes into `chord`, each built on the lowest note of the
+  chord it belongs to. Gives the new chords' ids.
+  """
+  @spec chordify([Ecto.UUID.t()], Armed.chord()) :: edit()
+  def chordify(ids, chord) do
+    fn score, ctx ->
+      Editing.chordify(score, ctx, ids, &EditorPlacement.chord_pitches(ctx, chord, {&1, &2}))
+    end
+  end
+
+  @doc """
+  Drops one note on `step` of `staff`, which may be the other staff, with
+  `alter` if a modifier was held. Gives the note's id (new if it changed staff).
+  """
+  @spec drop_on_staff(Ecto.UUID.t(), Note.staff(), integer(), -2..2 | nil) :: edit()
+  def drop_on_staff(id, staff, step, alter) do
+    fn score, ctx ->
+      with {:ok, score, id} <- Editing.move_to_staff(score, ctx, id, staff, step),
+           {:ok, score} <- maybe_alter(score, ctx, [id], alter) do
+        {:ok, score, [id]}
+      end
     end
   end
 
@@ -49,25 +89,23 @@ defmodule DrawMusicWeb.EditorCommands do
   @spec transpose([Ecto.UUID.t()], String.t(), String.t()) :: edit()
   @spec transpose([Ecto.UUID.t()], String.t(), String.t(), String.t() | nil) :: edit()
   def transpose(ids, by, dir, interval \\ nil) do
-    sign = if dir == "down", do: -1, else: 1
+    sign = sign(dir)
 
     case {by, Map.get(@intervals, interval)} do
-      {"step", _} ->
-        &Editing.move_steps(&1, &2, ids, sign)
-
+      {"step", _} -> &Editing.move_steps(&1, &2, ids, sign)
       # An exact octave keeps each note's accidental.
-      {"octave", _} ->
-        &Editing.transpose_interval(&1, &2, ids, 7 * sign, 12 * sign)
-
-      {"semitone", _} ->
-        &Editing.transpose_chromatic(&1, &2, ids, sign)
-
-      {"interval", {steps, semis}} ->
-        &Editing.transpose_interval(&1, &2, ids, steps * sign, semis * sign)
-
-      _ ->
-        refused(:not_found)
+      {"octave", _} -> by_interval(ids, @octave, sign)
+      {"semitone", _} -> &Editing.transpose_chromatic(&1, &2, ids, sign)
+      {"interval", {_steps, _semitones} = interval} -> by_interval(ids, interval, sign)
+      _ -> refused(:not_found)
     end
+  end
+
+  defp sign("down"), do: -1
+  defp sign(_up), do: 1
+
+  defp by_interval(ids, {steps, semitones}, sign) do
+    &Editing.transpose_interval(&1, &2, ids, steps * sign, semitones * sign)
   end
 
   @doc """
@@ -77,8 +115,9 @@ defmodule DrawMusicWeb.EditorCommands do
   # Split, length, dot and make-rest act on the right-clicked note's whole
   # chord, which must stay one chord.
   @spec menu(String.t(), map(), ContextMenu.t(), boolean()) :: edit()
-  def menu("split", _params, menu, _insert?),
-    do: &Editing.split(&1, &2, Editing.chord_ids(&1, &2, menu.id))
+  def menu("split", _params, menu, _insert?) do
+    &Editing.split(&1, &2, Editing.chord_ids(&1, &2, menu.id))
+  end
 
   def menu("set_value", %{"value" => name}, menu, insert?) do
     case EditorPalette.value(name) do
@@ -87,25 +126,39 @@ defmodule DrawMusicWeb.EditorCommands do
     end
   end
 
-  def menu("toggle_menu_dot", _params, menu, insert?),
-    do: lengthen(menu.id, nil, :toggle, insert?)
+  def menu("toggle_menu_dot", _params, menu, insert?) do
+    lengthen(menu.id, nil, :toggle, insert?)
+  end
 
-  def menu("to_rest", _params, menu, _insert?),
-    do: &Editing.to_rest(&1, &2, Editing.chord_ids(&1, &2, menu.id))
+  def menu("to_rest", _params, menu, _insert?) do
+    &Editing.to_rest(&1, &2, Editing.chord_ids(&1, &2, menu.id))
+  end
 
-  def menu("to_note", _params, %{step: step} = menu, _insert?) when is_integer(step),
-    do: &Editing.to_note(&1, &2, menu.id, step, Pitch.key_alter(&2.sf, Pitch.letter(step)))
+  def menu("to_note", _params, %{step: step} = menu, _insert?) when is_integer(step) do
+    &Editing.to_note(&1, &2, menu.id, step, Pitch.key_alter(&2.sf, Pitch.letter(step)))
+  end
 
   def menu("tie_next", _params, menu, _insert?), do: &tie_next(&1, &2, menu.id)
 
-  def menu("untie", _params, menu, _insert?),
-    do: fn score, _ctx -> {:ok, Editing.untie(score, menu.id)} end
+  # A diatonic third above the chord's top note or below its bottom one.
+  def menu("add_third_above", _params, menu, _insert?) do
+    &Editing.add_to_chord(&1, &2, menu.id, 2)
+  end
 
-  def menu("menu_delete", _params, menu, _insert?), do: &Editing.delete(&1, &2, menu.ids)
+  def menu("add_third_below", _params, menu, _insert?) do
+    &Editing.add_to_chord(&1, &2, menu.id, -2)
+  end
+
+  def menu("untie", _params, menu, _insert?) do
+    fn score, _ctx -> {:ok, Editing.untie(score, menu.id)} end
+  end
+
+  def menu("menu_delete", _params, menu, insert?), do: delete(menu.ids, insert?)
   def menu("reverse", _params, menu, _insert?), do: &Editing.reverse(&1, &2, menu.ids)
 
-  def menu("transpose", %{"by" => by, "dir" => dir} = params, menu, _insert?),
-    do: transpose(menu.ids, by, dir, params["interval"])
+  def menu("transpose", %{"by" => by, "dir" => dir} = params, menu, _insert?) do
+    transpose(menu.ids, by, dir, params["interval"])
+  end
 
   def menu(_event, _params, _menu, _insert?), do: refused(:not_found)
 
@@ -130,29 +183,32 @@ defmodule DrawMusicWeb.EditorCommands do
     end
   end
 
-  defp new_dots(entry, :toggle), do: if(entry.event.dots > 0, do: 0, else: 1)
+  defp new_dots(%{event: %{dots: 0}}, :toggle), do: 1
+  defp new_dots(_entry, :toggle), do: 0
   defp new_dots(_entry, dots), do: dots
 
   defp set_length(score, ctx, entry, value, dots, insert?) do
     extra = Duration.ticks(value, dots) - entry.ticks
 
-    room =
-      if insert? and extra > 0,
-        do: Editing.insert_time(score, ctx, entry.start + entry.ticks, extra, entry.event.staff),
-        else: {:ok, score}
-
-    with {:ok, score} <- room do
+    with {:ok, score} <- make_room(score, ctx, entry, extra, insert?) do
       Editing.set_value(score, ctx, Editing.chord_ids(score, ctx, entry.event.id), value, dots)
     end
   end
+
+  defp make_room(score, ctx, entry, extra, true = _insert?) when extra > 0 do
+    Editing.insert_time(score, ctx, entry.start + entry.ticks, extra, entry.event.staff)
+  end
+
+  defp make_room(score, _ctx, _entry, _extra, _insert?), do: {:ok, score}
 
   # Ties a note to the note of the same pitch that starts where it ends.
   defp tie_next(score, ctx, id) do
     notes = for %{kind: :note} = entry <- Timeline.flatten(score, ctx), do: entry
 
     with {:ok, from} <- find(notes, &(&1.event.id == id), :not_found),
-         {:ok, to} <- find(notes, &follows?(&1, from), :not_tieable),
-         do: Editing.tie(score, ctx, id, to.event.id)
+         {:ok, to} <- find(notes, &follows?(&1, from), :not_tieable) do
+      Editing.tie(score, ctx, id, to.event.id)
+    end
   end
 
   defp follows?(entry, from) do
@@ -174,20 +230,29 @@ defmodule DrawMusicWeb.EditorCommands do
   """
   @spec paste(Clipboard.t(), non_neg_integer()) :: edit()
   def paste(clipboard, at) do
-    length = clipboard.entries |> Enum.map(&(&1.start + &1.ticks)) |> Enum.max(fn -> 0 end)
-    staves = clipboard.entries |> Enum.map(& &1.event.staff) |> Enum.uniq()
+    length =
+      clipboard.entries
+      |> Enum.map(&(&1.start + &1.ticks))
+      |> Enum.max(fn -> 0 end)
+
+    staves =
+      clipboard.entries
+      |> Enum.map(& &1.event.staff)
+      |> Enum.uniq()
 
     fn score, ctx ->
-      with {:ok, score} <- insert_on(score, ctx, staves, at, length),
-           do: Editing.paste(score, ctx, clipboard, at)
+      with {:ok, score} <- insert_on(score, ctx, staves, at, length) do
+        Editing.paste(score, ctx, clipboard, at)
+      end
     end
   end
 
   defp insert_on(score, _ctx, [], _at, _length), do: {:ok, score}
 
   defp insert_on(score, ctx, [staff | rest], at, length) do
-    with {:ok, score} <- Editing.insert_time(score, ctx, at, length, staff),
-         do: insert_on(score, ctx, rest, at, length)
+    with {:ok, score} <- Editing.insert_time(score, ctx, at, length, staff) do
+      insert_on(score, ctx, rest, at, length)
+    end
   end
 
   defp refused(reason), do: fn _score, _ctx -> {:error, reason} end

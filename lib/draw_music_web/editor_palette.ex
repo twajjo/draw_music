@@ -50,50 +50,74 @@ defmodule DrawMusicWeb.EditorPalette do
 
   @doc """
   Arms a note or rest of `value`. Arming what is already armed keeps it as
-  it is (a double-click sends two clicks before the lock).
+  it is (with its dots and accidental). In chord mode a note value changes
+  the chord's length and keeps the chord.
   """
-  @spec arm(Armed.t() | nil, term(), term(), boolean()) :: {:ok, Armed.t()} | :error
-  def arm(armed, kind_name, value_name, locked? \\ false) do
+  @spec arm(Armed.t() | nil, term(), term()) :: {:ok, Armed.t()} | :error
+  def arm(armed, kind_name, value_name) do
     with kind when not is_nil(kind) <- Map.get(@kinds, kind_name),
          value when not is_nil(value) <- value(value_name) do
       case armed do
-        %Armed{kind: ^kind, value: ^value} -> {:ok, %{armed | locked?: armed.locked? or locked?}}
-        _ -> {:ok, %Armed{kind: kind, value: value, locked?: locked?}}
+        %Armed{kind: ^kind, value: ^value} -> {:ok, armed}
+        %Armed{kind: :chord} when kind == :note -> {:ok, %{armed | value: value}}
+        _ -> {:ok, %Armed{kind: kind, value: value}}
       end
     else
       _ -> :error
     end
   end
 
-  @doc "Arms a chord: a quality or a scale degree, at the armed value (else a quarter)."
-  @spec arm_chord(Armed.t() | nil, map()) :: {:ok, Armed.t()} | :error
-  def arm_chord(armed, %{"quality" => name}) do
+  @doc "Parses a chord pick: a quality or a scale degree; `:error` for anything else."
+  @spec chord(map()) :: {:ok, Armed.chord()} | :error
+  def chord(%{"quality" => name}) do
     case quality(name) do
       nil -> :error
-      quality -> {:ok, %Armed{kind: :chord, value: value_of(armed), chord: {:quality, quality}}}
+      quality -> {:ok, {:quality, quality}}
     end
   end
 
-  def arm_chord(armed, %{"degree" => degree}) when degree in ~w(1 2 3 4 5 6 7),
-    do:
-      {:ok,
-       %Armed{kind: :chord, value: value_of(armed), chord: {:degree, String.to_integer(degree)}}}
+  def chord(%{"degree" => degree}) when degree in ~w(1 2 3 4 5 6 7),
+    do: {:ok, {:degree, String.to_integer(degree)}}
 
-  def arm_chord(_armed, _params), do: :error
+  def chord(_params), do: :error
+
+  @doc """
+  Chord mode: places `chord` at the armed note's length, dots and
+  accidental (a quarter with nothing armed), whichever was picked first.
+  Picking the chord that is already on turns chord mode off.
+  """
+  @spec arm_chord(Armed.t() | nil, Armed.chord()) :: Armed.t()
+  def arm_chord(%Armed{kind: :chord, chord: chord} = armed, chord), do: single_notes(armed)
+
+  def arm_chord(%Armed{kind: kind} = armed, chord) when kind in [:note, :chord],
+    do: %{armed | kind: :chord, chord: chord}
+
+  def arm_chord(_armed, chord), do: %Armed{kind: :chord, value: :quarter, chord: chord}
+
+  @doc "Turns chord mode off, keeping the length, dots and accidental."
+  @spec single_notes(Armed.t() | nil) :: Armed.t() | nil
+  def single_notes(%Armed{kind: :chord} = armed), do: %{armed | kind: :note, chord: nil}
+  def single_notes(armed), do: armed
 
   @doc "Arms the tie tool."
   @spec arm_tie() :: Armed.t()
   def arm_tie, do: %Armed{kind: :tie, value: :quarter}
 
-  @doc "Flips the duration row between notes and rests, converting an armed note or rest."
+  @doc """
+  Flips the duration row between notes and rests, converting an armed note
+  or rest. An armed chord becomes a rest: chord mode doesn't apply to rests.
+  """
   @spec toggle_rest(:note | :rest, Armed.t() | nil) :: {:note | :rest, Armed.t() | nil}
   def toggle_rest(row_kind, armed) do
     row_kind = if row_kind == :rest, do: :note, else: :rest
 
     armed =
       case armed do
-        %Armed{kind: kind} when kind in [:note, :rest] -> %{armed | kind: row_kind}
-        other -> other
+        %Armed{kind: kind} when kind in [:note, :rest, :chord] ->
+          %{armed | kind: row_kind, chord: nil}
+
+        other ->
+          other
       end
 
     {row_kind, armed}
@@ -111,15 +135,14 @@ defmodule DrawMusicWeb.EditorPalette do
 
   @doc "The character drawn as the cursor for an armed item (nil for the tie tool)."
   @spec cursor_glyph(Armed.t()) :: String.t() | nil
-  def cursor_glyph(%Armed{kind: :note, value: value}),
-    do: Smufl.char(Map.fetch!(@note_glyphs, value))
+  def cursor_glyph(%Armed{kind: :note, value: value}) do
+    Smufl.char(Map.fetch!(@note_glyphs, value))
+  end
 
-  def cursor_glyph(%Armed{kind: :rest, value: value}),
-    do: Smufl.char(Map.fetch!(@rest_glyphs, value))
+  def cursor_glyph(%Armed{kind: :rest, value: value}) do
+    Smufl.char(Map.fetch!(@rest_glyphs, value))
+  end
 
   def cursor_glyph(%Armed{kind: :chord}), do: Smufl.char(:noteheadBlack)
   def cursor_glyph(%Armed{kind: :tie}), do: nil
-
-  defp value_of(%Armed{kind: kind, value: value}) when kind in [:note, :rest, :chord], do: value
-  defp value_of(_armed), do: :quarter
 end

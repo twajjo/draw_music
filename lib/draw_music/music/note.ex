@@ -16,6 +16,8 @@ defmodule DrawMusic.Music.Note do
 
   alias DrawMusic.Music.{Duration, Pitch}
 
+  @voices 1..4
+
   @primary_key {:id, :binary_id, autogenerate: true}
   embedded_schema do
     field :staff, Ecto.Enum, values: [:treble, :bass]
@@ -31,10 +33,13 @@ defmodule DrawMusic.Music.Note do
   @typedoc "A staff of the grand staff."
   @type staff :: :treble | :bass
 
+  @typedoc "One of a staff's independent rhythmic lines; matches `voices/0`."
+  @type voice :: 1..4
+
   @type t :: %__MODULE__{
           id: Ecto.UUID.t() | nil,
           staff: staff(),
-          voice: 1..4,
+          voice: voice(),
           offset: non_neg_integer(),
           value: Duration.value(),
           dots: 0..2,
@@ -43,28 +48,35 @@ defmodule DrawMusic.Music.Note do
           tie_to: Ecto.UUID.t() | nil
         }
 
+  @doc "The voices a staff holds (shared by rests)."
+  @spec voices() :: Range.t()
+  def voices, do: @voices
+
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(note, attrs) do
     note
     |> cast(attrs, [:id, :staff, :voice, :offset, :value, :dots, :step, :alter, :tie_to])
     |> validate_required([:staff, :voice, :offset, :value, :dots, :step, :alter])
-    |> validate_inclusion(:voice, 1..4)
+    |> validate_inclusion(:voice, @voices)
     |> validate_number(:offset, greater_than_or_equal_to: 0)
-    |> validate_inclusion(:dots, 0..2)
-    |> validate_inclusion(:alter, -2..2)
+    |> validate_inclusion(:dots, Duration.dot_counts())
+    |> validate_inclusion(:alter, Pitch.alters())
     |> validate_range()
   end
 
   defp validate_range(changeset) do
-    step = get_field(changeset, :step)
-    alter = get_field(changeset, :alter)
+    range_error(changeset, get_field(changeset, :step), get_field(changeset, :alter))
+  end
 
-    if is_integer(step) and is_integer(alter) and not Pitch.in_range?(Pitch.midi(step, alter)) do
-      add_error(changeset, :step, "is outside the piano's range (A0–C8)")
-    else
+  defp range_error(changeset, step, alter) when is_integer(step) and is_integer(alter) do
+    if Pitch.in_range?(Pitch.midi(step, alter)) do
       changeset
+    else
+      add_error(changeset, :step, "is outside the piano's range (A0–C8)")
     end
   end
+
+  defp range_error(changeset, _step, _alter), do: changeset
 
   @doc "Sounding pitch as a MIDI number."
   @spec midi(t()) :: integer()

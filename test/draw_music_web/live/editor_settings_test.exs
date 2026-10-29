@@ -17,7 +17,8 @@ defmodule DrawMusicWeb.EditorSettingsTest do
     "time_symbol" => "none",
     "tempo_bpm" => "100",
     "tempo_text" => "",
-    "pickup_beats" => "0"
+    "pickup_beats" => "0",
+    "instrument" => "0"
   }
 
   defp apply_settings(view, changes) do
@@ -27,7 +28,7 @@ defmodule DrawMusicWeb.EditorSettingsTest do
 
   defp draft(conn) do
     {:ok, view, _html} = live(conn, ~p"/")
-    view
+    placing_mode(view, :overlay)
   end
 
   test "a new time signature re-flows the notes into the new bars, undoably", %{conn: conn} do
@@ -92,6 +93,47 @@ defmodule DrawMusicWeb.EditorSettingsTest do
     apply_settings(view, %{"pickup_beats" => "1"})
     view |> element("#measure-0-delete") |> render_click()
     assert has_element?(view, "#flash-error", "Remove the pickup in the score settings first")
+  end
+
+  describe "instrument" do
+    test "the settings form offers instruments grouped by family", %{conn: conn} do
+      view = draft(conn)
+      view |> element("#settings-button") |> render_click()
+
+      assert has_element?(view, "#settings-instrument optgroup[label='Pipe']")
+      assert has_element?(view, "#settings-instrument option[value='73']")
+    end
+
+    test "applying settings changes the instrument, and saving stores it",
+         %{conn: conn, scope: scope} do
+      version = version_fixture(scope)
+
+      {:ok, view, _html} =
+        live(conn, LibraryComponents.version_path(version.key.composition.id, version.key, 1))
+
+      apply_settings(view, %{"instrument" => "73"})
+      assert has_element?(view, "#dirty-marker")
+      view |> element("#save") |> render_click()
+
+      assert Library.get_version!(scope, version.id).instrument == 73
+    end
+
+    test "an instrument outside 0..127 is refused", %{conn: conn} do
+      view = draft(conn)
+      view |> element("#settings-button") |> render_click()
+
+      render_hook(view, "apply_settings", %{"settings" => Map.put(@settings, "instrument", "128")})
+
+      assert has_element?(view, "#settings-form", "must be less than or equal to 127")
+      assert :sys.get_state(view.pid).socket.assigns.instrument == 0
+    end
+
+    test "the hook is told the instrument", %{conn: conn} do
+      view = draft(conn)
+      apply_settings(view, %{"instrument" => "73"})
+
+      assert has_element?(view, ~s(#score-editor[data-instrument*='"program":73']))
+    end
   end
 
   test "a tempo change is saved with the version", %{conn: conn, scope: scope} do

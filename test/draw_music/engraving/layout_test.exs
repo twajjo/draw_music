@@ -3,7 +3,7 @@ defmodule DrawMusic.Engraving.LayoutTest do
 
   import DrawMusic.MusicHelpers
 
-  alias DrawMusic.Engraving.{Beam, Layout, Staff, Tie}
+  alias DrawMusic.Engraving.{Beam, Layout, MeasureGeometry, Staff, Tie}
   alias DrawMusic.Music.{Context, Editing, Score}
 
   @ctx %Context{}
@@ -78,11 +78,32 @@ defmodule DrawMusic.Engraving.LayoutTest do
   end
 
   describe "rests and accidentals" do
-    test "an empty staff shows a whole-bar rest" do
+    test "an empty staff shows a whole-bar rest, which can be selected" do
       {score, _id} = place("C5", %{})
       rests = role(Layout.layout(score, @ctx), :rest)
-      assert [%{glyph: :restWhole, id: nil, y: y}] = rests
+      assert [%{y: y, id: id}] = Enum.filter(rests, &(&1.glyph == :restWhole))
+      assert is_binary(id)
       assert y == Staff.top(:bass) + 1
+    end
+
+    test "the gaps around a note show rests on the beats, which can be selected" do
+      {score, _id} = place("C5", %{})
+
+      treble_rests =
+        score
+        |> Layout.layout(@ctx)
+        |> role(:rest)
+        |> Enum.reject(&(&1.glyph == :restWhole))
+
+      assert [%{glyph: :restQuarter, id: a}, %{glyph: :restHalf, id: b}] =
+               Enum.sort_by(treble_rests, & &1.x)
+
+      assert is_binary(a) and is_binary(b)
+    end
+
+    test "an unfilled gap is drawn as an implied rest" do
+      rests = role(Layout.layout(Score.new(), @ctx), :rest)
+      assert [%{glyph: :restWhole, id: nil}, %{glyph: :restWhole, id: nil}] = rests
     end
 
     test "a note tied in from the previous bar shows no accidental, nor do later ones in that bar" do
@@ -109,6 +130,38 @@ defmodule DrawMusic.Engraving.LayoutTest do
       assert Layout.tick_at(geom, Layout.x_of(geom, 5000)) == 5000
       assert [%{x: x}] = items(layout, &(Map.get(&1, :id) == id))
       assert x == Layout.x_of(geom, 3840 + 1440)
+    end
+
+    test "every note and rest has an insertion gap before it, shared by both staves" do
+      {score, _id} = place("C5", %{offset: 0, value: :quarter})
+      {score, _id} = place(score, @ctx, 0, "C3", %{staff: :bass, offset: 960, value: :quarter})
+      [geom] = hd(Layout.layout(score, @ctx).systems).measures
+
+      offsets = Enum.map(geom.columns, & &1.offset)
+      assert offsets == [0, 960, 1920]
+      assert %{staves: [:bass, :treble]} = Enum.at(geom.columns, 1)
+
+      for [a, b] <- Enum.chunk_every(geom.columns, 2, 1, :discard) do
+        assert b.x - a.x >= geom.gap + 2
+      end
+
+      # A click in a gap means the next column's start.
+      second = Enum.at(geom.columns, 1)
+      assert MeasureGeometry.offset_at(geom, second.x - geom.gap / 2) == 960
+      assert MeasureGeometry.offset_at(geom, MeasureGeometry.x_at(geom, 1440)) == 1440
+    end
+
+    test "a bar stretches to hold its notes" do
+      sixteenths =
+        Enum.reduce(0..15, Score.new(), fn i, score ->
+          {score, _id} = place(score, @ctx, 0, "C5", %{offset: i * 240, value: :sixteenth})
+          score
+        end)
+
+      {whole, _id} = place("C5", %{offset: 0, value: :whole})
+      width = fn score -> hd(hd(Layout.layout(score, @ctx).systems).measures).width end
+
+      assert width.(sixteenths) > width.(whole)
     end
   end
 
@@ -154,15 +207,23 @@ defmodule DrawMusic.Engraving.LayoutTest do
              end)
     end
 
-    test "a tie across a system break is drawn as two halves", %{score: score} do
+    test "a tie across a system break is drawn as two halves" do
+      # Tie from the last bar of the first system into the next one.
+      [first | _] = Layout.layout(Score.new(6), @ctx, width: @page).systems
+      k = List.last(first.measures).index
+
+      {score, a} = place(Score.new(6), @ctx, k, "G4", %{offset: 1920, value: :half})
+      {score, b} = place(score, @ctx, k + 1, "G4", %{offset: 0, value: :half})
+      {:ok, score} = Editing.tie(score, @ctx, a, b)
+
       assert length(items(Layout.layout(score, @ctx), &match?(%Tie{}, &1))) == 1
 
       layout = Layout.layout(score, @ctx, width: @page)
       system_of = for s <- layout.systems, m <- s.measures, into: %{}, do: {m.index, s.index}
-      assert system_of[1] != system_of[2]
+      assert system_of[k] != system_of[k + 1]
 
       ties = for s <- layout.systems, %Tie{} <- s.items, do: s.index
-      assert Enum.sort(ties) == [system_of[1], system_of[2]]
+      assert Enum.sort(ties) == [system_of[k], system_of[k + 1]]
     end
   end
 end

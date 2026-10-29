@@ -8,13 +8,14 @@ defmodule DrawMusicWeb.EditorToolsTest do
 
   setup :register_and_log_in_user
 
+  # Notes are put at exact positions, in Overlay.
   setup %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/")
-    %{view: view}
+    %{view: placing_mode(view, :overlay)}
   end
 
   defp put_notes(view, notes) do
-    render_hook(view, "lock", %{"kind" => "note", "value" => "quarter"})
+    render_hook(view, "arm", %{"kind" => "note", "value" => "quarter"})
     for {offset, spn} <- notes, do: place(view, 0, offset, spn)
     render_hook(view, "disarm", %{})
   end
@@ -23,7 +24,7 @@ defmodule DrawMusicWeb.EditorToolsTest do
     session_of(view).score.measures
     |> hd()
     |> then(&(&1.notes ++ &1.rests))
-    |> Enum.find(&(&1.offset == offset))
+    |> Enum.find(&(&1.offset == offset and &1.staff == :treble))
     |> Map.fetch!(:id)
   end
 
@@ -42,11 +43,31 @@ defmodule DrawMusicWeb.EditorToolsTest do
     id
   end
 
-  describe "pick-up" do
-    test "dropping moves the lifted notes by scale steps", %{view: view} do
+  describe "dragging" do
+    test "dropping moves the dragged notes by scale steps and selects them", %{view: view} do
       put_notes(view, [{0, "C4"}])
-      render_hook(view, "drop", %{"ids" => [id_at(view, 0)], "steps" => 2})
+      id = id_at(view, 0)
+      render_hook(view, "drop", %{"ids" => [id], "steps" => 2})
       assert notes_of(view) == [{0, 0, "E4", :quarter, 0}]
+      assert session_of(view).selection == MapSet.new([id])
+    end
+
+    test "a note dropped on the other staff moves there and stays selected", %{view: view} do
+      put_notes(view, [{960, "C4"}])
+      {step, _alter} = MusicHelpers.pitch!("G3")
+
+      render_hook(view, "drop", %{"ids" => [id_at(view, 960)], "staff" => "bass", "step" => step})
+
+      [note] = hd(session_of(view).score.measures).notes
+      assert {note.staff, note.offset} == {:bass, 960}
+      assert notes_of(view) == [{0, 960, "G3", :quarter, 0}]
+      assert session_of(view).selection == MapSet.new([note.id])
+    end
+
+    test "a drop naming an unknown staff changes nothing", %{view: view} do
+      put_notes(view, [{0, "C4"}])
+      render_hook(view, "drop", %{"ids" => [id_at(view, 0)], "staff" => "alto", "step" => 20})
+      assert notes_of(view) == [{0, 0, "C4", :quarter, 0}]
     end
 
     test "a modifier held while dropping sets the accidental", %{view: view} do
@@ -57,7 +78,7 @@ defmodule DrawMusicWeb.EditorToolsTest do
   end
 
   describe "ties" do
-    test "the tie tool ties touching notes of the same pitch", %{view: view} do
+    test "the tie tool ties touching notes of the same pitch and stays picked", %{view: view} do
       put_notes(view, [{0, "C4"}, {960, "C4"}])
       view |> element("#palette-tie") |> render_click()
       a = id_at(view, 0)
@@ -65,7 +86,7 @@ defmodule DrawMusicWeb.EditorToolsTest do
       render_hook(view, "tie", %{"from" => b, "to" => a})
 
       assert MusicHelpers.tie_chain(session_of(view).score, a) == [a, b]
-      refute has_element?(view, "#palette-tie[aria-pressed=true]")
+      assert has_element?(view, "#palette-tie[aria-pressed=true]")
     end
 
     test "other pairs are refused with an explanation", %{view: view} do
@@ -89,6 +110,13 @@ defmodule DrawMusicWeb.EditorToolsTest do
       refute has_element?(view, "#context-menu")
     end
 
+    # The browser sends a button's own `value`, not phx-value-value.
+    test "length buttons carry their value for the browser", %{view: view} do
+      put_notes(view, [{0, "C4"}])
+      open_menu(view, 0)
+      assert has_element?(view, "#menu-length-half[value=half]")
+    end
+
     test "split", %{view: view} do
       put_notes(view, [{0, "C4"}])
       open_menu(view, 0)
@@ -96,6 +124,27 @@ defmodule DrawMusicWeb.EditorToolsTest do
 
       assert notes_of(view) == [{0, 0, "C4", :eighth, 0}, {0, 480, "C4", :eighth, 0}]
       refute has_element?(view, "#context-menu")
+    end
+
+    test "splitting a half gives two tied quarters and leaves the rest of the bar alone",
+         %{view: view} do
+      render_hook(view, "arm", %{"kind" => "note", "value" => "half"})
+      place(view, 0, 0, "D4")
+      place(view, 0, 1920, "A4")
+      render_hook(view, "disarm", %{})
+
+      open_menu(view, 0)
+      view |> element("#menu-split") |> render_click()
+
+      assert notes_of(view) == [
+               {0, 0, "D4", :quarter, 0},
+               {0, 960, "D4", :quarter, 0},
+               {0, 1920, "A4", :half, 0}
+             ]
+
+      measure = hd(session_of(view).score.measures)
+      refute Enum.any?(measure.rests, &(&1.staff == :treble))
+      assert Enum.all?(measure.notes, &(&1.voice == 1))
     end
 
     test "change length", %{view: view} do
@@ -107,7 +156,7 @@ defmodule DrawMusicWeb.EditorToolsTest do
 
     test "in Insert mode a longer length moves later music on that staff", %{view: view} do
       put_notes(view, [{0, "C4"}, {960, "E4"}])
-      view |> element("#palette-insert") |> render_click()
+      placing_mode(view, :insert)
       open_menu(view, 0)
       view |> element("#menu-length-half") |> render_click()
 
@@ -137,7 +186,7 @@ defmodule DrawMusicWeb.EditorToolsTest do
 
       open_menu(view, 0)
       view |> element("#menu-delete") |> render_click()
-      assert notes_of(view) == [{0, 0, "C4", :quarter, 0}]
+      assert notes_of(view) == [{0, 960, "C4", :quarter, 0}]
     end
 
     test "length changes apply to the whole chord", %{view: view} do

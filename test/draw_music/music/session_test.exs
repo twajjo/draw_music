@@ -93,6 +93,17 @@ defmodule DrawMusic.Music.SessionTest do
     assert Session.clear_selection(s).selection == MapSet.new()
   end
 
+  test "collapse_selection keeps only the earliest selected event", %{session: session} do
+    {:ok, s, late} = place(session, "G4", 1920)
+    {:ok, s, early} = place(s, "C4", 0)
+    {:ok, s, middle} = place(s, "E4", 960)
+
+    collapsed = s |> Session.select([late, middle, early], false) |> Session.collapse_selection()
+    assert collapsed.selection == MapSet.new([early])
+
+    assert Session.collapse_selection(s).selection == MapSet.new()
+  end
+
   test "a context change is undoable", %{session: session} do
     {:ok, s, _id} = place(session, "C4", 0)
     three_four = %Context{time_num: 3, time_den: 4}

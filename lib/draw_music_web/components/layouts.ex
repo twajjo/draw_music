@@ -72,6 +72,11 @@ defmodule DrawMusicWeb.Layouts do
       </div>
     </main>
 
+    <footer class="flex items-center justify-center gap-4 border-t border-base-300 px-4 py-4 text-sm opacity-70">
+      <.link id="footer-help" navigate={~p"/help"} class="link link-hover">Keys and mouse</.link>
+      <.link id="footer-credits" navigate={~p"/credits"} class="link link-hover">Credits</.link>
+    </footer>
+
     <.flash_group flash={@flash} />
     """
   end
@@ -149,8 +154,9 @@ defmodule DrawMusicWeb.Layouts do
   `#rrggbb` when saved.
   """
   @spec score_ink_style(DrawMusic.Accounts.Scope.t() | nil) :: String.t() | nil
-  def score_ink_style(%{user: %{score_ink_dark: "#" <> _ = color}}),
-    do: "--score-ink-dark: #{color}"
+  def score_ink_style(%{user: %{score_ink_dark: "#" <> _ = color}}) do
+    "--score-ink-dark: #{color}"
+  end
 
   def score_ink_style(_scope), do: nil
 

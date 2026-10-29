@@ -7,25 +7,15 @@ defmodule DrawMusicWeb.NewCompositionLive do
 
   use DrawMusicWeb, :live_view
 
-  import DrawMusicWeb.LibraryComponents, only: [version_path: 3, key_options: 0]
+  import DrawMusicWeb.LibraryComponents, only: [version_path: 3, score_settings_fields: 1]
 
   alias DrawMusic.Library
   alias DrawMusic.Library.{Composition, Key, Version}
   alias DrawMusic.Music.{Context, Score}
+  alias DrawMusicWeb.EditorSettings
 
   @measures 4
   @credit_fields ~w(subtitle composer arranger lyricist copyright)
-  @time_denominators ~w(1 2 4 8 16 32 64)
-  @defaults %{
-    "name" => "",
-    "key" => "c-major",
-    "time_num" => "4",
-    "time_den" => "4",
-    "time_symbol" => "none",
-    "tempo_bpm" => "100",
-    "tempo_text" => "",
-    "pickup_beats" => "0"
-  }
 
   @impl true
   def render(assigns) do
@@ -55,28 +45,7 @@ defmodule DrawMusicWeb.NewCompositionLive do
         </fieldset>
 
         <fieldset class="grid gap-x-4 sm:grid-cols-3">
-          <.input field={@form[:key]} type="select" label="Key" options={key_options()} />
-          <div class="flex items-end gap-2">
-            <.input
-              field={@form[:time_num]}
-              type="number"
-              label="Time"
-              min="1"
-              max="32"
-              class="input w-20"
-            />
-            <span class="pb-3 text-lg">/</span>
-            <.input field={@form[:time_den]} type="select" options={@time_denominators} />
-          </div>
-          <.input
-            field={@form[:time_symbol]}
-            type="select"
-            label="Written as"
-            options={[{"Numbers", "none"}, {"Common time (4/4)", "common"}, {"Cut time (2/2)", "cut"}]}
-          />
-          <.input field={@form[:tempo_bpm]} type="number" label="Tempo (BPM)" min="20" max="400" />
-          <.input field={@form[:tempo_text]} label="Tempo marking" placeholder="Allegro" />
-          <.input field={@form[:pickup_beats]} type="number" label="Pickup beats" min="0" />
+          <.score_settings_fields form={@form} />
         </fieldset>
 
         <div class="flex gap-2">
@@ -93,8 +62,7 @@ defmodule DrawMusicWeb.NewCompositionLive do
     {:ok,
      socket
      |> assign(:page_title, "New composition")
-     |> assign(:time_denominators, @time_denominators)
-     |> assign(:form, to_form(@defaults, as: :composition))}
+     |> assign(:form, to_form(defaults(), as: :composition))}
   end
 
   @impl true
@@ -103,69 +71,63 @@ defmodule DrawMusicWeb.NewCompositionLive do
   end
 
   def handle_event("save", %{"composition" => params}, socket) do
+    case Key.from_slug(params["key"] || "") do
+      {:ok, key} -> {:noreply, create(socket, params, key)}
+      :error -> {:noreply, assign(socket, :form, form(socket, params, :insert))}
+    end
+  end
+
+  defp create(socket, params, {sf, mode}) do
     scope = socket.assigns.current_scope
+    key_attrs = %{sf: sf, mode: mode}
 
-    with {:ok, {sf, mode}} <- Key.from_slug(params["key"] || ""),
-         {:ok, version} <-
-           Library.create_composition(
-             scope,
-             composition_attrs(params),
-             %{sf: sf, mode: mode},
-             version_attrs(params)
-           ) do
-      {:noreply,
-       socket
-       |> put_flash(:info, "Composition created.")
-       |> push_navigate(to: version_path(version.key.composition.id, version.key, version.number))}
-    else
+    case Library.create_composition(
+           scope,
+           composition_attrs(params),
+           key_attrs,
+           version_attrs(params)
+         ) do
+      {:ok, version} ->
+        socket
+        |> put_flash(:info, "Composition created.")
+        |> push_navigate(
+          to: version_path(version.key.composition.id, version.key, version.number)
+        )
+
       {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign(socket, :form, form(socket, params, :insert, changeset.errors))}
-
-      :error ->
-        {:noreply, assign(socket, :form, form(socket, params, :insert))}
+        assign(socket, :form, form(socket, params, :insert, changeset.errors))
     end
   end
 
   defp form(socket, params, action, extra_errors \\ []) do
     errors = Enum.uniq(validation_errors(socket.assigns.current_scope, params) ++ extra_errors)
-    to_form(params, as: :composition, errors: rename_pickup(errors), action: action)
+    to_form(params, as: :composition, errors: EditorSettings.form_errors(errors), action: action)
+  end
+
+  defp defaults do
+    %Context{}
+    |> EditorSettings.params(nil, %Version{}.instrument)
+    |> Map.put("name", "")
   end
 
   defp validation_errors(scope, params) do
     composition = Composition.changeset(%Composition{}, composition_attrs(params), scope)
     version = Version.changeset(%Version{number: 1}, version_attrs(params))
-    key = if Key.from_slug(params["key"] || "") == :error, do: [key: {"is invalid", []}], else: []
-    composition.errors ++ version.errors ++ key
+    composition.errors ++ version.errors ++ key_errors(params["key"])
   end
 
-  # The form asks for pickup beats; the version stores ticks.
-  defp rename_pickup(errors) do
-    Enum.map(errors, fn
-      {:pickup_ticks, error} -> {:pickup_beats, error}
-      error -> error
-    end)
+  defp key_errors(slug) do
+    case Key.from_slug(slug || "") do
+      {:ok, _key} -> []
+      :error -> [key: {"is invalid", []}]
+    end
   end
 
   defp composition_attrs(params), do: Map.take(params, ["name" | @credit_fields])
 
   defp version_attrs(params) do
-    %{
-      time_num: params["time_num"],
-      time_den: params["time_den"],
-      time_symbol: params["time_symbol"],
-      tempo_bpm: params["tempo_bpm"],
-      tempo_text: params["tempo_text"],
-      pickup_ticks: pickup_ticks(params),
-      score: Score.new(@measures)
-    }
-  end
-
-  defp pickup_ticks(params) do
-    with {beats, ""} <- Integer.parse(params["pickup_beats"] || ""),
-         den when den in @time_denominators <- params["time_den"] do
-      beats * Context.beat_ticks(%Context{time_den: String.to_integer(den)})
-    else
-      _ -> 0
-    end
+    params
+    |> EditorSettings.form_attrs()
+    |> Map.put("score", Score.new(@measures))
   end
 end

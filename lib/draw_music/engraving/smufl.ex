@@ -24,8 +24,15 @@ defmodule DrawMusic.Engraving.Smufl do
     noteWhole noteHalfUp noteQuarterUp note8thUp note16thUp note32ndUp note64thUp
   )a
 
-  glyphnames = @glyphnames_path |> File.read!() |> JSON.decode!()
-  metadata = @metadata_path |> File.read!() |> JSON.decode!()
+  glyphnames =
+    @glyphnames_path
+    |> File.read!()
+    |> JSON.decode!()
+
+  metadata =
+    @metadata_path
+    |> File.read!()
+    |> JSON.decode!()
 
   @chars Map.new(@glyphs, fn glyph ->
            %{"codepoint" => "U+" <> hex} = Map.fetch!(glyphnames, Atom.to_string(glyph))
@@ -39,10 +46,11 @@ defmodule DrawMusic.Engraving.Smufl do
             {glyph, {x0, y0, x1, y1}}
           end)
 
-  @anchors for glyph <- @glyphs,
-               {name, [x, y]} <- metadata["glyphsWithAnchors"][Atom.to_string(glyph)] || %{},
-               into: %{},
-               do: {{glyph, name}, {x, y}}
+  @anchors (for glyph <- @glyphs,
+                {name, [x, y]} <- metadata["glyphsWithAnchors"][Atom.to_string(glyph)] || %{},
+                into: %{} do
+              {{glyph, name}, {x, y}}
+            end)
 
   @defaults metadata["engravingDefaults"]
 

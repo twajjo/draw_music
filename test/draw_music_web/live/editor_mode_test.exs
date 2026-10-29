@@ -1,0 +1,152 @@
+defmodule DrawMusicWeb.EditorModeTest do
+  use DrawMusicWeb.ConnCase, async: true
+
+  import Phoenix.LiveViewTest
+  import DrawMusicWeb.EditorHelpers
+
+  setup :register_and_log_in_user
+
+  # A C4–E4 chord, then G4; the chord's E4 comes from the context menu.
+  setup %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/")
+    render_hook(view, "arm", %{"kind" => "note", "value" => "quarter"})
+    place(view, 0, 0, "C4")
+    place(view, 0, 960, "G4")
+    render_hook(view, "disarm", %{})
+
+    [c | _] = hd(session_of(view).score.measures).notes
+    render_hook(view, "open_menu", %{"id" => c.id, "x" => 0, "y" => 0})
+    view |> element("#menu-add-third-above") |> render_click()
+
+    [c, e, g] =
+      session_of(view).score.measures
+      |> hd()
+      |> Map.fetch!(:notes)
+      |> Enum.sort_by(&{&1.offset, &1.step})
+      |> Enum.map(& &1.id)
+
+    %{view: view, c: c, e: e, g: g}
+  end
+
+  defp assigns(view), do: :sys.get_state(view.pid).socket.assigns
+
+  defp play_mode(view), do: view |> element("#palette-mode-play") |> render_click()
+
+  test "toggle_mode switches, disarms, and keeps the selection", %{view: view, g: g} do
+    render_hook(view, "select", %{"ids" => [g], "add" => false})
+    play_mode(view)
+
+    assert assigns(view).armed == nil
+    assert MapSet.to_list(session_of(view).selection) == [g]
+    assert has_element?(view, "#score-editor[data-mode=play]")
+    assert has_element?(view, "#palette-mode-play[aria-pressed=true]")
+
+    render_hook(view, "toggle_mode", %{})
+    assert has_element?(view, "#score-editor[data-mode=edit]")
+  end
+
+  test "entering Play keeps a range to play; entering Edit narrows it to its first note",
+       %{view: view, c: c, e: e, g: g} do
+    render_hook(view, "select", %{"ids" => [c, g], "add" => false})
+    play_mode(view)
+    assert session_of(view).selection == MapSet.new([c, g])
+
+    render_hook(view, "select", %{"ids" => [e, g], "add" => false})
+    render_hook(view, "toggle_mode", %{})
+    assert MapSet.to_list(session_of(view).selection) == [e]
+  end
+
+  test "editing events change nothing in play mode", %{view: view, c: c, g: g} do
+    render_hook(view, "select", %{"ids" => [g], "add" => false})
+    render_hook(view, "copy", %{})
+    play_mode(view)
+    before = {notes_of(view), session_of(view).undo, assigns(view).armed, assigns(view).insert?}
+
+    edits = [
+      {"arm", %{"kind" => "note", "value" => "half"}},
+      {"arm_value", %{"value" => "eighth"}},
+      {"arm_tie", %{}},
+      {"place", %{"measure" => 0, "offset" => 1920, "staff" => "treble", "step" => 30}},
+      {"move", %{"dir" => "up"}},
+      {"move", %{"dir" => "right"}},
+      {"drop", %{"ids" => [g], "steps" => 2}},
+      {"delete", %{}},
+      {"cut", %{}},
+      {"paste", %{"at" => 1920}},
+      {"undo", %{}},
+      {"redo", %{}},
+      {"tie", %{"from" => c, "to" => g}},
+      {"toggle_dot", %{}},
+      {"set_accidental", %{"alter" => "1"}},
+      {"toggle_insert", %{}},
+      {"toggle_rest", %{}},
+      {"open_menu", %{"id" => g, "x" => 1, "y" => 1}},
+      {"insert_measure", %{"index" => 0}},
+      {"delete_measure", %{"index" => 0}},
+      {"add_measure", %{}}
+    ]
+
+    for {event, params} <- edits, do: render_hook(view, event, params)
+
+    assert {notes_of(view), session_of(view).undo, assigns(view).armed, assigns(view).insert?} ==
+             before
+
+    assert assigns(view).menu == nil
+  end
+
+  test "Play, Rewind, Loop and Stop still work in play mode", %{view: view} do
+    play_mode(view)
+
+    render_hook(view, "play", %{})
+    assert_push_event(view, "play", %{events: [_, _, _]})
+    render_hook(view, "rewind", %{})
+    assert_push_event(view, "rewind", %{})
+    render_hook(view, "toggle_loop", %{})
+    assert_push_event(view, "loop", %{on: true})
+    render_hook(view, "stop", %{})
+    assert_push_event(view, "stop", %{})
+  end
+
+  test "audition pushes the chord and selects the note", %{view: view, e: e} do
+    play_mode(view)
+    render_hook(view, "audition", %{"id" => e})
+
+    assert_push_event(view, "audition", %{events: events})
+    assert events |> Enum.map(& &1.midi) |> Enum.sort() == [60, 64]
+    assert MapSet.to_list(session_of(view).selection) == [e]
+  end
+
+  test "audition does nothing in edit mode", %{view: view, e: e} do
+    render_hook(view, "audition", %{"id" => e})
+    refute_push_event(view, "audition", _payload)
+  end
+
+  test "each mode shows only its own palette", %{view: view} do
+    assert has_element?(view, "#palette-edit")
+    refute has_element?(view, "#palette-play-controls")
+    assert has_element?(view, "#settings-button")
+
+    play_mode(view)
+    refute has_element?(view, "#palette-edit")
+    refute has_element?(view, "#settings-button")
+    assert has_element?(view, "#palette-play-controls #palette-play")
+    assert has_element?(view, "#palette-help")
+    assert has_element?(view, "#save")
+  end
+
+  test "score settings can't be changed in play mode", %{view: view} do
+    play_mode(view)
+    render_hook(view, "open_settings", %{})
+    refute has_element?(view, "#settings-form")
+
+    settings = %{
+      "key" => "g-major",
+      "time_num" => "3",
+      "time_den" => "4",
+      "time_symbol" => "none"
+    }
+
+    render_hook(view, "apply_settings", %{"settings" => settings})
+    assert session_of(view).ctx.time_num == 4
+  end
+end
