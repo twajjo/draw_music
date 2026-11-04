@@ -76,11 +76,85 @@ defmodule DrawMusicWeb.EditorPlayTest do
     assert {first.midi, first.start, second.midi} == {64, 0.0, 67}
   end
 
+  # The playhead maps the clock to the score through anchors: with no tempo
+  # changes, just the span's ends (four bars of 4/4 at 100 BPM: 9.6 s).
+  test "Play sends anchors from where it starts to where it ends", %{view: view} do
+    play(view)
+    assert_push_event(view, "play", %{anchors: [first, last]})
+    assert {first.seconds, first.tick, last.tick} == {0.0, 0, 15_360}
+    assert_in_delta last.seconds, 9.6, 1.0e-9
+
+    render_hook(view, "stop", %{})
+    select(view, [960])
+    play(view)
+    assert_push_event(view, "play", %{anchors: [%{tick: 960} | _rest]})
+  end
+
   test "Play while playing pauses; again resumes", %{view: view} do
     play(view)
     play(view)
     assert_push_event(view, "pause", %{})
     assert has_element?(view, "#palette-play", "Resume")
+
+    play(view)
+    assert_push_event(view, "resume", %{})
+    assert has_element?(view, "#palette-play", "Pause")
+  end
+
+  # The hook shows the playhead where Play would start, before playing.
+  test "Play mode tells the hook where Play would start; Edit mode doesn't", %{view: view} do
+    assert has_element?(view, "#score-editor[data-play-start='0']")
+
+    select(view, [960, 1920])
+    assert has_element?(view, "#score-editor[data-play-start='960']")
+
+    view |> element("#palette-mode-edit") |> render_click()
+    refute has_element?(view, "#score-editor[data-play-start]")
+  end
+
+  test "Stop ends playback and offers Play from the start point again", %{view: view} do
+    play(view)
+    view |> element("#palette-stop") |> render_click()
+
+    assert_push_event(view, "stop", %{})
+    assert has_element?(view, "#palette-play", "Play")
+  end
+
+  # The three notes are in bar 0; bar 1 starts at 3840.
+  test "before playing, ⏩ moves the start point to the next measure", %{view: view} do
+    view |> element("#palette-skip-measure") |> render_click()
+    assert has_element?(view, "#score-editor[data-play-start='3840']")
+  end
+
+  test "Strip layout is one line, so ⏭ has no next line to go to", %{view: view} do
+    view |> element("#palette-skip-line") |> render_click()
+    assert has_element?(view, "#score-editor[data-play-start='0']")
+  end
+
+  test "playing or paused, the skips go to the browser, which knows where it is",
+       %{view: view} do
+    play(view)
+    view |> element("#palette-skip-measure") |> render_click()
+    assert_push_event(view, "skip", %{by: "measure"})
+
+    play(view)
+    view |> element("#palette-skip-line") |> render_click()
+    assert_push_event(view, "skip", %{by: "line"})
+  end
+
+  test "Rewind while paused goes back to the start point and offers Play", %{view: view} do
+    play(view)
+    play(view)
+    assert_push_event(view, "pause", %{})
+
+    view |> element("#palette-rewind") |> render_click()
+    assert_push_event(view, "rewind", %{})
+    assert has_element?(view, "#palette-play", "Play")
+    refute has_element?(view, "#palette-play", "Resume")
+
+    # The hook stays paused at the start; Play carries on from there.
+    render_hook(view, "playback_state", %{"state" => "paused"})
+    assert has_element?(view, "#palette-play", "Play")
 
     play(view)
     assert_push_event(view, "resume", %{})

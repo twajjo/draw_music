@@ -36,6 +36,7 @@ defmodule DrawMusic.Music.Editing do
     Placement,
     Rest,
     Score,
+    TempoChange,
     Timeline
   }
 
@@ -868,7 +869,8 @@ defmodule DrawMusic.Music.Editing do
   @spec rebar_to(Score.t(), Context.t(), Context.t()) :: result()
   def rebar_to(%Score{} = score, %Context{} = from_ctx, %Context{} = to_ctx) do
     bars = bars_spanning(to_ctx, Timeline.end_tick(score, from_ctx))
-    rebuild(Score.new(bars), to_ctx, merge_ties(Timeline.flatten(score, from_ctx)))
+    fresh = %{Score.new(bars) | tempos: score.tempos}
+    rebuild(fresh, to_ctx, merge_ties(Timeline.flatten(score, from_ctx)))
   end
 
   # How many bars of `ctx` it takes to reach tick `last` (at least one).
@@ -1031,11 +1033,14 @@ defmodule DrawMusic.Music.Editing do
 
   @doc """
   Inserts a measure of filler rests before `index`, dropping ties the new
-  bar separates.
+  bar separates. Tempo changes after it move with the music.
   """
   def insert_measure(%Score{} = score, %Context{} = ctx, index) do
+    at = Context.span(ctx, index)
+
     with {:ok, score} <- insert_measure(score, index) do
-      {:ok, score |> prune_ties(ctx) |> fill_rests(ctx)}
+      tempos = shift_tempos(score.tempos, at, Context.capacity(ctx, index))
+      {:ok, %{score | tempos: tempos} |> prune_ties(ctx) |> fill_rests(ctx)}
     end
   end
 
@@ -1052,8 +1057,9 @@ defmodule DrawMusic.Music.Editing do
   end
 
   @doc """
-  Deletes measure `index` and its contents. The last measure cannot be
-  deleted, nor the pickup bar (remove the pickup in the settings instead).
+  Deletes measure `index` and its contents, its tempo changes included;
+  later ones move back with the music. The last measure cannot be deleted,
+  nor the pickup bar (remove the pickup in the settings instead).
   """
   @spec delete_measure(Score.t(), Context.t(), non_neg_integer()) :: result()
   def delete_measure(%Score{measures: [_only]}, _ctx, 0), do: {:error, :last_measure}
@@ -1064,10 +1070,52 @@ defmodule DrawMusic.Music.Editing do
 
   def delete_measure(%Score{measures: measures} = score, ctx, index)
       when is_integer(index) and index >= 0 and index < length(measures) do
-    {:ok, prune_ties(%{score | measures: List.delete_at(measures, index)}, ctx)}
+    at = Context.span(ctx, index)
+    length = Context.capacity(ctx, index)
+
+    # A ramp ending inside the deleted bar now ends where the bar was.
+    tempos =
+      score.tempos
+      |> Enum.reject(&(&1.tick >= at and &1.tick < at + length))
+      |> Enum.map(fn
+        %{to_tick: to} = change when is_integer(to) and to > at and to < at + length ->
+          %{change | to_tick: at}
+
+        change ->
+          change
+      end)
+      |> shift_tempos(at + length, -length)
+
+    {:ok, prune_ties(%{score | measures: List.delete_at(measures, index), tempos: tempos}, ctx)}
   end
 
   def delete_measure(_score, _ctx, _index), do: {:error, :no_such_measure}
+
+  # Tempo changes from tick `at` on move by `delta`; a rit. or accel. that
+  # spans `at` keeps its start and moves its end. One left with no length
+  # becomes a mark at its end tempo.
+  defp shift_tempos(tempos, at, delta) do
+    Enum.map(tempos, fn change ->
+      change
+      |> shift_field(:tick, at, delta)
+      |> shift_field(:to_tick, at, delta)
+      |> keep_ramp_forward()
+    end)
+  end
+
+  defp shift_field(change, field, at, delta) do
+    case Map.fetch!(change, field) do
+      tick when is_integer(tick) and tick >= at -> Map.put(change, field, tick + delta)
+      _before -> change
+    end
+  end
+
+  defp keep_ramp_forward(%TempoChange{to_tick: to_tick, tick: tick} = change)
+       when is_integer(to_tick) and to_tick <= tick do
+    %{change | to_tick: nil, bpm: change.to_bpm, to_bpm: nil}
+  end
+
+  defp keep_ramp_forward(change), do: change
 
   ## Selection and clipboard
 

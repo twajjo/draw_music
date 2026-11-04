@@ -73,9 +73,10 @@ defmodule DrawMusicWeb.EditorSettings do
   end
 
   @doc """
-  Applies validated `fields` to the session: the notes keep their times and
-  re-flow into the new bars (undoably). Unchanged settings leave the
-  session as it is.
+  Applies validated `fields` to the session (undoably). A new time
+  signature or pickup moves the bar lines: the notes keep their times and
+  re-flow into the new bars. Anything else, like the tempo, leaves the
+  score as it is. Unchanged settings leave the session as it is.
   """
   @spec apply(Session.t(), map()) :: {:ok, Session.t()} | {:error, Editing.reason()}
   def apply(%Session{} = session, fields) do
@@ -84,11 +85,21 @@ defmodule DrawMusicWeb.EditorSettings do
 
   defp rebar(%Session{ctx: ctx} = session, ctx), do: {:ok, session}
 
-  defp rebar(session, ctx) do
+  defp rebar(%Session{ctx: old} = session, ctx) do
+    case bars(old) == bars(ctx) do
+      true -> {:ok, Session.change_context(session, ctx, session.score)}
+      false -> rebar_score(session, ctx)
+    end
+  end
+
+  defp rebar_score(session, ctx) do
     with {:ok, score} <- Editing.rebar_to(session.score, session.ctx, ctx) do
       {:ok, Session.change_context(session, ctx, score)}
     end
   end
+
+  # What decides where the bar lines fall.
+  defp bars(%Context{} = ctx), do: {ctx.time_num, ctx.time_den, ctx.pickup_ticks}
 
   @doc "What a save stores: the score, the settings it is read against, and its instrument."
   @spec version_attrs(Session.t(), String.t() | nil, 0..127) :: map()

@@ -120,12 +120,21 @@
   --score-ink: #000;
   --score-paper: #fff;
   --score-selection: #2563eb;
+  --score-playhead: #dc2626;
 }
 
 [data-theme=dark] .score-colors {
   --score-ink: var(--score-ink-dark, #fff);
   --score-paper: #000;
   --score-selection: #7cc4ff;
+  --score-playhead: #ff4d4d;
+}
+
+/* The score's glyphs are SVG text, but selecting them as text means nothing:
+   a drag over the paper is the editor's rubber band. */
+#score-paper {
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* Selected notes and rests in the editor; notes sounding during playback. */
@@ -140,6 +149,25 @@
 
 #score .playing {
   fill: var(--color-warning);
+}
+
+/* Tempo marks: a selected one (label, line and end) in the selection color;
+   in Edit mode the label and a rit.'s end can be dragged along the music. */
+#score .tempo-mark.selected {
+  color: var(--score-selection);
+  fill: var(--score-selection);
+}
+
+#score-editor:not(.play-mode) .tempo-label,
+#score-editor:not(.play-mode) .tempo-end {
+  cursor: ew-resize;
+}
+
+/* The playback point: a red line across the system being played. */
+#score-overlay .playhead {
+  stroke: var(--score-playhead);
+  stroke-width: 0.25;
+  stroke-linecap: round;
 }
 
 /* Play mode: a speaker pointer over the score; clicks only listen. */

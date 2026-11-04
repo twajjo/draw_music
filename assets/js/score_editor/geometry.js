@@ -65,6 +65,7 @@ export function offsetAt(measure, x) {
 
 // x of `offset` ticks into the measure.
 export function xAt(measure, offset) {
+  if (measure.columns.length === 0) return measure.content_x + offset * measure.scale
   const all = segments(measure)
   const [from, to] = all.find(([, end]) => offset < end.offset) || all[all.length - 1]
   return from.x + ((offset - from.offset) / (to.offset - from.offset)) * (to.x - from.x)

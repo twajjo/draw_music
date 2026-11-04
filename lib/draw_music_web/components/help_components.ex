@@ -198,6 +198,63 @@ defmodule DrawMusicWeb.HelpComponents do
     """
   end
 
+  defp picture(%{name: :tempo_mark} = assigns) do
+    assigns = assign(assigns, :metronome, Smufl.char(:metNoteQuarterUp))
+
+    ~H"""
+    <text x="2" y="2">{@note}</text>
+    <text x="7" y="1">{@note}</text>
+    <text x="11" y="3">{@note}</text>
+    <text x="6.6" y="-1.2" font-size="2.6">{@metronome}</text>
+    <text x="7.9" y="-1.2" font-family="serif" font-size="1.8" font-weight="bold">= 60</text>
+    """
+  end
+
+  defp picture(%{name: :tempo_ramp} = assigns) do
+    assigns = assign(assigns, :metronome, Smufl.char(:metNoteQuarterUp))
+
+    ~H"""
+    <text x="2" y="2">{@note}</text>
+    <text x="7" y="1">{@note}</text>
+    <text x="12" y="3">{@note}</text>
+    <text x="0.5" y="-1.2" font-family="serif" font-size="1.8" font-style="italic">rit.</text>
+    <line
+      x1="3.6"
+      y1="-1.7"
+      x2="10.5"
+      y2="-1.7"
+      stroke="currentColor"
+      stroke-width="0.12"
+      stroke-dasharray="0.6 0.5"
+    />
+    <text x="10.8" y="-1.2" font-size="2.6">{@metronome}</text>
+    <text x="12.1" y="-1.2" font-family="serif" font-size="1.8" font-weight="bold">= 45</text>
+    <path
+      d="M8 5.6 h4 M11.2 4.9 l0.8 0.7 -0.8 0.7"
+      stroke="var(--score-selection)"
+      stroke-width="0.2"
+      fill="none"
+    />
+    """
+  end
+
+  defp picture(%{name: :playhead} = assigns) do
+    ~H"""
+    <text x="2" y="2">{@note}</text>
+    <text x="6" y="1" fill="var(--color-warning)">{@note}</text>
+    <text x="11" y="3">{@note}</text>
+    <line
+      x1="7.6"
+      y1="-2"
+      x2="7.6"
+      y2="6"
+      stroke="var(--score-playhead)"
+      stroke-width="0.25"
+      stroke-linecap="round"
+    />
+    """
+  end
+
   defp picture(%{name: :range_playback} = assigns) do
     ~H"""
     <text x="1.5" y="3">{@note}</text>

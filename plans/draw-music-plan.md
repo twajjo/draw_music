@@ -34,7 +34,7 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
 - **Editor saves:** **Save** (overwrite current version) · **Save as new version** · **Save as new composition** (name prompt + collision check).
 - **Import:**
   - The name comes from the MIDI track name (FF 03), falling back to the filename, and the user can edit it.
-  - On a name collision the user chooses: **Cancel** · **Replace** (delete all versions, store as v1) · **New version** · **New composition with a different name** (re-checked).
+  - On a name collision the user chooses: **Cancel** · **Replace** (delete that key's versions, store it as v1; other keys stay) · **New version** · **New composition with a different name** (re-checked).
 - **Rendering:** server-rendered SVG function components with **Bravura** (SMuFL) glyphs, on a **grid**: x = ticks (proportional spacing, zoomable), y = diatonic staff positions.
 - **Score layout is a user preference** (decided 2026-10-22):
   - **Strip** (default): the whole song as one long, scrolling grand staff.
@@ -268,13 +268,14 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
      - the cheat-sheet at `/help` and behind **?**.
    - **Still to do:** the manual browser checks in the spec's Verification section (listening, Safari, theme colours), which haven't been run.
 6. Library upload/import dialog + `.mid` download.
-   - **`.mid` download done in the demo slice.** Still to do: upload/import and the collision dialog.
+   - **`.mid` download done in the demo slice.** Upload/import and the collision dialog built 2026-10-25 on `Phase-6` (the Import .mid dialog on `/compositions`). Still to do: the manual checks (re-upload a downloaded file and try all four collision choices; import a file from another program).
 7. **Deployment** (added 2026-10-22; not started):
    - `mix phx.gen.release` (with a Dockerfile);
    - runtime config for `DATABASE_URL`, `SECRET_KEY_BASE`, `PHX_HOST`, `PHX_SERVER`, and release migrations;
    - fetching the audio samples at build time (`mix samples.fetch`);
    - making `:samples_dir` a runtime setting. Phase 5 reads it at compile time for the `/samples` `Plug.Static`, so a release needs it set through `runtime.exs` and the plug initialised at runtime (e.g. a small plug wrapping `Plug.Static.call/2`);
    - a hosting target, chosen at the time, so testers can reach the app.
+   - **Large scores** (found 2026-10-27 with an imported *Rhapsody in Blue*: 460 bars, ~80,000 drawn items, an 8.5 MB SVG): draw only what's near the screen. Split the score into one `<svg>` per system in Page layout and chunks of bars in Strip, with CSS `content-visibility: auto`, so the browser skips off-screen pieces; the hook's coordinate mapping (`toScore`, the overlay) goes per piece. Also: produce the SVG as iodata rather than ~80,000 HEEx component calls (~1.5–2 s a render), and keep selection changes in the browser rather than re-sending the whole SVG. Already done in Phase 6: the score is sent as one raw SVG string after the join, dev debug annotations are off for it, and playback scheduling no longer depends on the page being idle.
 8. **Live MIDI keyboard input** (added 2026-10-22; not started):
    - Play notes from a connected MIDI keyboard into the score: a key press places the armed value at the cursor, chords included.
    - Browser Web MIDI API in the `ScoreEditor` hook (no server-side MIDI).

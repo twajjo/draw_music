@@ -1,7 +1,7 @@
 defmodule DrawMusicWeb.LibraryComponents do
   @moduledoc """
   Pieces of the composition library: a composition's row with its keys and
-  versions, and links to versions.
+  versions, links to versions, and the .mid import dialog.
   """
 
   use DrawMusicWeb, :verified_routes
@@ -61,7 +61,7 @@ defmodule DrawMusicWeb.LibraryComponents do
     <.input
       field={@form[:tempo_bpm]}
       type="number"
-      label="Tempo (BPM)"
+      label="Starting tempo (BPM)"
       min={@tempo_range.first}
       max={@tempo_range.last}
     />
@@ -113,12 +113,18 @@ defmodule DrawMusicWeb.LibraryComponents do
     ~p"/compositions/#{composition_id}/#{Key.slug(key)}/v/#{number}"
   end
 
-  @doc "A composition with its credits, keys and versions."
+  @doc """
+  A composition with its credits and versions: each version an Edit button
+  (its key and number) beside a Delete button that asks first. Deleting a
+  composition's only version deletes the composition.
+  """
   attr :id, :string, required: true
   attr :composition, :map, required: true
 
   @spec composition_row(map()) :: Phoenix.LiveView.Rendered.t()
   def composition_row(assigns) do
+    assigns = assign(assigns, :only?, version_count(assigns.composition) == 1)
+
     ~H"""
     <article
       id={@id}
@@ -128,22 +134,48 @@ defmodule DrawMusicWeb.LibraryComponents do
         <h2 class="text-lg font-semibold">{@composition.name}</h2>
         <p :if={credits(@composition) != ""} class="text-sm opacity-70">{credits(@composition)}</p>
       </header>
-      <ul class="mt-3 space-y-2">
-        <li :for={key <- @composition.keys} class="flex flex-wrap items-center gap-2">
-          <span class="badge badge-outline">{Key.name(key)}</span>
-          <.link
-            :for={version <- key.versions}
-            id={"version-#{version.id}"}
-            navigate={version_path(@composition.id, key, version.number)}
-            class="btn btn-xs btn-ghost"
-            title={version.label}
-          >
-            v{version.number}<span :if={version.label} class="opacity-60">· {version.label}</span>
-          </.link>
-        </li>
+      <ul class="mt-3 flex flex-wrap gap-2">
+        <%= for key <- @composition.keys, version <- key.versions do %>
+          <li class="join">
+            <.link
+              id={"version-#{version.id}"}
+              navigate={version_path(@composition.id, key, version.number)}
+              class="btn btn-sm join-item gap-1.5"
+              title={"Edit #{Key.name(key)}, version #{version.number}"}
+            >
+              <.icon name="hero-pencil-square" class="size-4" />
+              {Key.name(key)} · v{version.number}
+              <span :if={version.label} class="opacity-60">· {version.label}</span>
+            </.link>
+            <button
+              id={"delete-version-#{version.id}"}
+              type="button"
+              phx-click="delete_version"
+              phx-value-id={version.id}
+              data-confirm={delete_question(@composition, key, version, @only?)}
+              class="btn btn-sm btn-square join-item text-error transition-colors hover:bg-error hover:text-error-content"
+              title={"Delete #{Key.name(key)}, version #{version.number}"}
+              aria-label={"Delete #{Key.name(key)}, version #{version.number}"}
+            >
+              <.icon name="hero-trash" class="size-4" />
+            </button>
+          </li>
+        <% end %>
       </ul>
     </article>
     """
+  end
+
+  defp version_count(composition) do
+    Enum.reduce(composition.keys, 0, &(length(&1.versions) + &2))
+  end
+
+  defp delete_question(composition, _key, _version, true = _only?) do
+    "Delete #{composition.name}? This is its only version, so the composition goes too."
+  end
+
+  defp delete_question(composition, key, version, false) do
+    "Delete #{composition.name}, #{Key.name(key)} version #{version.number}? This can't be undone."
   end
 
   @doc "A menu of all versions of a composition, in every key, marking the current one."
@@ -179,6 +211,151 @@ defmodule DrawMusicWeb.LibraryComponents do
     </details>
     """
   end
+
+  @doc """
+  Importing a .mid file, one step at a time: `:upload` picks the file,
+  `:name` confirms the name read from it, and `:collision` asks what to do
+  when that name is already in the library.
+  """
+  attr :step, :atom, required: true, values: [:upload, :name, :collision]
+  attr :upload, Phoenix.LiveView.UploadConfig, required: true
+  attr :form, Phoenix.HTML.Form, default: nil, doc: "the name form (`:name` step)"
+  attr :error, :string, default: nil
+  attr :name, :string, default: nil, doc: "the name that collided"
+  attr :key_name, :string, default: nil, doc: "the imported piece's key, e.g. \"G major\""
+
+  @spec import_dialog(map()) :: Phoenix.LiveView.Rendered.t()
+  def import_dialog(assigns) do
+    ~H"""
+    <div id="import-dialog" class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
+      <div
+        role="dialog"
+        aria-label="Import a MIDI file"
+        class="w-full max-w-md rounded-box border border-base-300 bg-base-100 p-6 shadow-2xl"
+        phx-click-away="close_import"
+        phx-window-keydown="close_import"
+        phx-key="Escape"
+      >
+        <.import_step
+          step={@step}
+          upload={@upload}
+          form={@form}
+          error={@error}
+          name={@name}
+          key_name={@key_name}
+        />
+      </div>
+    </div>
+    """
+  end
+
+  defp import_step(%{step: :upload} = assigns) do
+    ~H"""
+    <h2 class="text-lg font-semibold">Import a MIDI file</h2>
+    <p class="mt-1 text-sm opacity-70">A .mid file, up to 1 MB.</p>
+    <.form
+      for={%{}}
+      id="import-form"
+      phx-change="validate_import"
+      phx-submit="read_import"
+      class="mt-4 space-y-3"
+    >
+      <.live_file_input upload={@upload} class="file-input w-full" />
+      <p :for={entry <- @upload.entries} class="text-sm">
+        {entry.client_name}
+        <span :for={err <- upload_errors(@upload, entry)} class="text-error">
+          · {upload_error(err)}
+        </span>
+      </p>
+      <p :for={err <- upload_errors(@upload)} class="text-sm text-error">{upload_error(err)}</p>
+      <p :if={@error} id="import-error" class="text-sm text-error">{@error}</p>
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" phx-click="close_import" class="btn btn-ghost">Cancel</button>
+        <button
+          type="submit"
+          class="btn btn-primary"
+          disabled={@upload.entries == []}
+          phx-disable-with="Reading..."
+        >
+          Next
+        </button>
+      </div>
+    </.form>
+    """
+  end
+
+  defp import_step(%{step: :name} = assigns) do
+    ~H"""
+    <h2 class="text-lg font-semibold">Name the piece</h2>
+    <.form for={@form} id="import-name-form" phx-submit="import_named" class="mt-4 space-y-2">
+      <.input field={@form[:name]} label="Name" required autofocus />
+      <p :if={@error} id="import-error" class="text-sm text-error">{@error}</p>
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" phx-click="close_import" class="btn btn-ghost">Cancel</button>
+        <button type="submit" class="btn btn-primary" phx-disable-with="Importing...">
+          Import
+        </button>
+      </div>
+    </.form>
+    """
+  end
+
+  defp import_step(%{step: :collision} = assigns) do
+    ~H"""
+    <div id="import-collision">
+      <h2 class="text-lg font-semibold">“{@name}” is already in your library</h2>
+      <p class="mt-1 text-sm opacity-70">The file is in {@key_name}.</p>
+      <ul class="mt-4 space-y-2">
+        <li>
+          <button
+            id="import-replace"
+            type="button"
+            phx-click="resolve_import"
+            phx-value-how="replace"
+            class="btn btn-block justify-start"
+          >
+            Replace
+            <span class="font-normal opacity-70">
+              the versions in {@key_name} with this one, as v1; other keys stay
+            </span>
+          </button>
+        </li>
+        <li>
+          <button
+            id="import-new-version"
+            type="button"
+            phx-click="resolve_import"
+            phx-value-how="new_version"
+            class="btn btn-block justify-start"
+          >
+            New version <span class="font-normal opacity-70">in {@key_name}</span>
+          </button>
+        </li>
+        <li>
+          <button
+            id="import-rename"
+            type="button"
+            phx-click="rename_import"
+            class="btn btn-block justify-start"
+          >
+            New composition <span class="font-normal opacity-70">with a different name</span>
+          </button>
+        </li>
+      </ul>
+      <p :if={@error} id="import-error" class="mt-2 text-sm text-error">{@error}</p>
+      <div class="flex justify-end pt-4">
+        <button id="import-cancel" type="button" phx-click="close_import" class="btn btn-ghost">
+          Cancel
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  defp upload_error(:too_large), do: "larger than 1 MB"
+  defp upload_error(:not_accepted), do: "not a .mid file"
+  defp upload_error(:too_many_files), do: "pick one file"
+  defp upload_error(_other), do: "can't be uploaded"
 
   @doc "The composition's credits on one line."
   @spec credits(DrawMusic.Library.Composition.t()) :: String.t()

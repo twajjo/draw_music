@@ -10,10 +10,24 @@ defmodule DrawMusicWeb.ScoreComponents do
 
   use Phoenix.Component
 
-  alias DrawMusic.Engraving.{Beam, Brace, Glyph, Line, Smufl, Tie}
+  # A score draws tens of thousands of items; dev's per-component comments
+  # and location attributes would multiply its size several times over,
+  # enough for a long piece to time out joining the LiveView.
+  @debug_heex_annotations false
+  @debug_attributes false
+
+  alias DrawMusic.Engraving.{Beam, Brace, Glyph, Line, Smufl, TempoMark, Tie}
 
   # SMuFL fonts are scaled so that one em is four staff spaces.
   @font_size 4
+  # Tempo marks (staff spaces): text size; the metronome note's size and the
+  # room it takes; the dashed line's height above the baseline; the gap
+  # before the end tempo.
+  @tempo_font_size 1.8
+  @tempo_note_size 2.6
+  @tempo_note_width 1.3
+  @tempo_line_rise 0.5
+  @tempo_end_gap 0.4
   @padding 1
   # Page layout width in staff spaces: about A4's printable width at a
   # 1.75 mm staff space.
@@ -142,6 +156,60 @@ defmodule DrawMusicWeb.ScoreComponents do
     </text>
     """
   end
+
+  # A tempo change: its label (selectable, draggable), and for a rit. or
+  # accel. the dashed line and the end tempo (its end, draggable). A piece
+  # continued from an earlier system has no label; it still selects.
+  defp item(%{item: %TempoMark{}} = assigns) do
+    assigns =
+      assign(assigns,
+        selected?: MapSet.member?(assigns.selection, assigns.item.id),
+        note: Smufl.char(:metNoteQuarterUp),
+        size: @tempo_font_size,
+        note_size: @tempo_note_size,
+        note_width: @tempo_note_width,
+        rise: @tempo_line_rise,
+        end_x: assigns.item.line_to && assigns.item.line_to + @tempo_end_gap,
+        line_from: tempo_line_from(assigns.item)
+      )
+
+    ~H"""
+    <g
+      class={["tempo-mark", @selected? && "selected"]}
+      data-tempo-id={@item.id}
+      font-family="serif"
+      font-size={@size}
+    >
+      <g :if={@item.start?} id={"tempo-#{@item.id}"} class="tempo-label">
+        <text x={n(@item.x)} y={n(@item.y)} font-family="Bravura" font-size={@note_size}>
+          {@note}
+        </text>
+        <text x={n(@item.x + @note_width)} y={n(@item.y)} font-weight="bold">
+          {TempoMark.label(@item)}
+        </text>
+      </g>
+      <line
+        :if={@item.line_to}
+        x1={n(@line_from)}
+        y1={n(@item.y - @rise)}
+        x2={n(@item.line_to)}
+        y2={n(@item.y - @rise)}
+        stroke="currentColor"
+        stroke-width="0.12"
+        stroke-dasharray="0.6 0.5"
+      />
+      <g :if={@item.end?} id={"tempo-end-#{@item.id}"} class="tempo-end">
+        <text x={n(@end_x)} y={n(@item.y)} font-family="Bravura" font-size={@note_size}>{@note}</text>
+        <text x={n(@end_x + @note_width)} y={n(@item.y)} font-weight="bold">
+          {TempoMark.end_label(@item)}
+        </text>
+      </g>
+    </g>
+    """
+  end
+
+  defp tempo_line_from(%TempoMark{start?: true} = mark), do: mark.x + mark.width
+  defp tempo_line_from(%TempoMark{} = mark), do: mark.x
 
   defp dom_id(%Glyph{role: :notehead, id: id}), do: "note-#{id}"
   defp dom_id(%Glyph{role: :rest, id: id}) when is_binary(id), do: "rest-#{id}"

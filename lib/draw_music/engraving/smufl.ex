@@ -22,6 +22,7 @@ defmodule DrawMusic.Engraving.Smufl do
     timeSig0 timeSig1 timeSig2 timeSig3 timeSig4 timeSig5 timeSig6 timeSig7 timeSig8 timeSig9
     timeSigCommon timeSigCutCommon
     noteWhole noteHalfUp noteQuarterUp note8thUp note16thUp note32ndUp note64thUp
+    metNoteQuarterUp
   )a
 
   glyphnames =

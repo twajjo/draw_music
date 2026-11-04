@@ -146,10 +146,11 @@ defmodule DrawMusic.Music.Session do
     end
   end
 
-  @doc "Ids of every note and rest in the score."
+  @doc "Ids of every note, rest and tempo change in the score."
   @spec event_ids(t()) :: MapSet.t(Ecto.UUID.t())
   def event_ids(%__MODULE__{score: score}) do
-    for m <- score.measures, event <- m.notes ++ m.rests, into: MapSet.new(), do: event.id
+    events = for m <- score.measures, event <- m.notes ++ m.rests, do: event.id
+    MapSet.new(events ++ Enum.map(score.tempos, & &1.id))
   end
 
   defp record(session, score, ctx) do

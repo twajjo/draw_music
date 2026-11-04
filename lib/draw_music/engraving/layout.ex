@@ -32,10 +32,11 @@ defmodule DrawMusic.Engraving.Layout do
     Smufl,
     Staff,
     System,
+    TempoMark,
     Tie
   }
 
-  alias DrawMusic.Music.{Context, Duration, Measure, Score, Timeline}
+  alias DrawMusic.Music.{Context, Duration, Measure, Score, TempoChange, Timeline}
 
   @spacing 8
   @min_stretch_fill 0.6
@@ -62,6 +63,14 @@ defmodule DrawMusic.Engraving.Layout do
   @system_gap 4.0
   @tie_offset 0.6
   @tie_extent 1
+  # Tempo marks: the bottom row's baseline sits this far above whatever is
+  # highest; rows are this far apart and this tall; marks on one row keep
+  # this gap; crowded marks go up to this row (from 0).
+  @tempo_clearance 1.5
+  @tempo_row 2.4
+  @tempo_height 2.0
+  @tempo_gap 0.8
+  @max_tempo_row 3
 
   # Time signature digits sit on the second and fourth staff lines.
   @numerator_line 1
@@ -109,6 +118,7 @@ defmodule DrawMusic.Engraving.Layout do
     {systems, height} =
       systems
       |> add_ties(score, anchors)
+      |> add_tempos(score)
       |> stack()
 
     %Engraved{
@@ -420,6 +430,120 @@ defmodule DrawMusic.Engraving.Layout do
   defp tie(x1, x2, note_y, :down), do: %Tie{x1: x1, x2: x2, y: note_y + @tie_offset, dir: :down}
   defp tie(x1, x2, note_y, :up), do: %Tie{x1: x1, x2: x2, y: note_y - @tie_offset, dir: :up}
 
+  ## Tempo marks
+
+  # Each tempo change goes above the system it falls in, clear of whatever
+  # rises above the treble staff; marks that would overlap go up a row.
+  defp add_tempos(systems, %Score{tempos: []}), do: systems
+
+  defp add_tempos(systems, %Score{tempos: tempos}) do
+    by_system =
+      tempos
+      |> Enum.sort_by(& &1.tick)
+      |> Enum.flat_map(&tempo_pieces(&1, systems))
+      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+
+    Enum.map(systems, fn system ->
+      case Map.get(by_system, system.index) do
+        nil -> system
+        marks -> %{system | items: system.items ++ rows(marks, tempo_baseline(system))}
+      end
+    end)
+  end
+
+  # {system index, mark} for each system a change is drawn in.
+  defp tempo_pieces(%TempoChange{to_tick: nil} = change, systems) do
+    {system, x} = tick_place(systems, change.tick)
+    [{system.index, tempo_mark(change, x, nil)}]
+  end
+
+  defp tempo_pieces(%TempoChange{} = change, systems) do
+    {first, x} = tick_place(systems, change.tick)
+    {last, to_x} = tick_place(systems, change.to_tick)
+    ramp = if change.to_bpm < change.bpm, do: :rit, else: :accel
+
+    for system <- Enum.slice(systems, first.index..last.index) do
+      start? = system.index == first.index
+      end? = system.index == last.index
+      from = if start?, do: x, else: hd(system.measures).content_x - @tie_lead_in
+      line_to = if end?, do: to_x, else: system.width
+
+      mark = %{tempo_mark(change, from, ramp) | line_to: line_to, start?: start?, end?: end?}
+      {system.index, mark}
+    end
+  end
+
+  defp tempo_mark(change, x, ramp) do
+    mark = %TempoMark{
+      id: change.id,
+      x: x,
+      y: 0.0,
+      bpm: change.bpm,
+      to_bpm: change.to_bpm,
+      ramp: ramp,
+      width: 0.0
+    }
+
+    %{mark | width: TempoMark.text_width(TempoMark.label(mark))}
+  end
+
+  # The system and x of an absolute tick (past the end: the end).
+  defp tick_place(systems, tick) do
+    Enum.find_value(systems, &place_in(&1, tick)) || end_place(List.last(systems))
+  end
+
+  defp place_in(system, tick) do
+    case Enum.find(
+           system.measures,
+           &(tick >= &1.start_tick and tick < &1.start_tick + &1.capacity)
+         ) do
+      nil -> nil
+      geom -> {system, x_of(geom, tick)}
+    end
+  end
+
+  defp end_place(system) do
+    geom = List.last(system.measures)
+    {system, MeasureGeometry.x_at(geom, geom.capacity)}
+  end
+
+  # The bottom row's baseline: above everything over the treble staff.
+  defp tempo_baseline(system) do
+    top =
+      system.items
+      |> Enum.flat_map(&y_range/1)
+      |> Enum.min(fn -> 0.0 end)
+
+    min(top, 0.0) - @tempo_clearance
+  end
+
+  # Left to right, each mark takes the lowest row it fits in.
+  defp rows(marks, baseline) do
+    {placed, _row_ends} =
+      marks
+      |> Enum.sort_by(& &1.x)
+      |> Enum.map_reduce(%{}, fn mark, row_ends ->
+        row =
+          Enum.find(
+            0..@max_tempo_row,
+            @max_tempo_row,
+            &(Map.get(row_ends, &1, :none) == :none or mark.x >= row_ends[&1])
+          )
+
+        reaches = mark_end(mark) + @tempo_gap
+        {%{mark | y: baseline - row * @tempo_row}, Map.put(row_ends, row, reaches)}
+      end)
+
+    placed
+  end
+
+  defp mark_end(%TempoMark{line_to: nil} = mark), do: mark.x + mark.width
+
+  defp mark_end(%TempoMark{} = mark) do
+    end_width = if mark.end?, do: TempoMark.text_width(TempoMark.end_label(mark)), else: 0.0
+    max(mark.x + mark.width, mark.line_to + end_width)
+  end
+
   ## Vertical stacking
 
   # Each system gets room above and below for whatever sticks out of the
@@ -451,6 +575,7 @@ defmodule DrawMusic.Engraving.Layout do
   defp y_range(%Beam{} = b), do: [b.y1, b.y2, b.y1 + b.thickness, b.y2 + b.thickness]
   defp y_range(%Tie{y: y}), do: [y - @tie_extent, y + @tie_extent]
   defp y_range(%Brace{y1: y1, y2: y2}), do: [y1, y2]
+  defp y_range(%TempoMark{y: y}), do: [y - @tempo_height, y]
 
   defp glyph(role, glyph, x, y), do: %Glyph{role: role, glyph: glyph, x: x, y: y}
 end

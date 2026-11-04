@@ -36,6 +36,37 @@ defmodule DrawMusicWeb.EditorSelectTest do
     assert count(view, "#score [id^='rest-'].selected") == 2
   end
 
+  describe "select all" do
+    defp all_selected?(view) do
+      has_element?(view, "#score [id^='note-'].selected") and
+        not has_element?(view, "#score [id^='note-']:not(.selected)") and
+        not has_element?(view, "#score [id^='rest-']:not(.selected)")
+    end
+
+    test "Ctrl+A selects every note and rest, on both staves", %{view: view} do
+      render_hook(view, "select_all", %{})
+      assert all_selected?(view)
+      assert count(view, "#score [id^='note-'].selected") == 2
+    end
+
+    test "the palette button does the same", %{view: view} do
+      view |> element("#palette-select-all") |> render_click()
+      assert all_selected?(view)
+    end
+
+    test "deleting after it leaves no notes", %{view: view} do
+      render_hook(view, "select_all", %{})
+      render_hook(view, "delete", %{})
+      assert notes_of(view) == []
+    end
+
+    test "Play mode ignores it", %{view: view} do
+      view |> element("#palette-mode-play") |> render_click()
+      render_hook(view, "select_all", %{})
+      refute has_element?(view, "#score .selected")
+    end
+  end
+
   test "a range takes in a filler rest only if the rest ends inside it", %{view: view} do
     render_hook(view, "select_range", %{"from" => 0, "to" => 1920})
     assert count(view, "#score [id^='note-'].selected") == 2

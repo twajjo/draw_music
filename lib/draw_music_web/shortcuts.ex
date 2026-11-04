@@ -182,6 +182,13 @@ defmodule DrawMusicWeb.Shortcuts do
       action:
         "Delete the selection. Overlay: nothing else moves, and the gap shows as rests. Insert: later music on that staff moves left to close it"
     },
+    %Shortcut{
+      group: "Editing",
+      keys: ["Ctrl+A"],
+      modes: @edit,
+      action:
+        "Select every note and rest, on both staves (also the palette's Select all button), so copy, cut, delete, transpose and moves apply to the whole piece"
+    },
     %Shortcut{group: "Editing", keys: ["Ctrl+C"], modes: @edit, action: "Copy the selection"},
     %Shortcut{
       group: "Editing",
@@ -209,7 +216,31 @@ defmodule DrawMusicWeb.Shortcuts do
       group: "Editing",
       mouse: "right-click",
       modes: @edit,
-      action: "A note's menu: split, length, rest or note, tie, transpose, delete"
+      action:
+        "A note's menu: split, length, rest or note, tie, transpose, a tempo change here, delete"
+    },
+    %Shortcut{
+      group: "Editing",
+      mouse: "right-click → Tempo change here…",
+      modes: @edit,
+      action:
+        "Change the tempo where that note or rest starts: a ♩ = N mark, or tick Gradually for a rit. or accel. that reaches another tempo over some beats. The tempo in the score settings is the one the piece starts at",
+      diagram: :tempo_mark
+    },
+    %Shortcut{
+      group: "Editing",
+      mouse: "click / double-click a tempo mark",
+      modes: @edit,
+      action:
+        "Click selects it (Delete removes it; Select all takes it in); double-click or right-click opens it to change or delete"
+    },
+    %Shortcut{
+      group: "Editing",
+      mouse: "drag a tempo mark",
+      modes: @edit,
+      action:
+        "Move it along the music (it snaps to notes and rests); drag a rit.'s or accel.'s end tempo to make it longer or shorter",
+      diagram: :tempo_ramp
     },
     # Saving
     %Shortcut{
@@ -217,6 +248,13 @@ defmodule DrawMusicWeb.Shortcuts do
       mouse: "Save menu",
       modes: @both,
       action: "Save, save as a new version, or save as a new composition"
+    },
+    %Shortcut{
+      group: "Saving",
+      mouse: "Import .mid",
+      modes: @both,
+      action:
+        "On the Compositions page, read a .mid file into the library under the name it carries (you can change it). If the name is taken: replace that key's versions with it, add it as a new version, or pick another name"
     },
     # Playback (the play controls replace the edit palette in Play mode)
     %Shortcut{
@@ -234,7 +272,34 @@ defmodule DrawMusicWeb.Shortcuts do
       action: "Repeat the selection, or the whole piece",
       diagram: :loop
     },
-    %Shortcut{group: "Playback", keys: ["Escape"], modes: @play, action: "Stop, while playing"},
+    %Shortcut{
+      group: "Playback",
+      keys: ["Escape"],
+      modes: @play,
+      action: "Stop, while playing: back to the start point (also the ⏹ button)"
+    },
+    %Shortcut{
+      group: "Playback",
+      mouse: "⏩ button",
+      modes: @play,
+      action:
+        "Skip to the start of the next measure: playing, it carries on from there; paused, it waits there; before playing, Play will start there"
+    },
+    %Shortcut{
+      group: "Playback",
+      mouse: "⏩⏩ (three arrows) button",
+      modes: @play,
+      action:
+        "Skip to the start of the next line of music (Page layout; Strip layout is a single line)"
+    },
+    %Shortcut{
+      group: "Playback",
+      mouse: "Play mode",
+      modes: @play,
+      action:
+        "A red line marks the point being played, and the score follows it: in Strip layout it turns sideways when the line nears the right edge, in Page layout it scrolls down to each new line of music. Before you play, it waits where Play will start (the start of the selection, or the beginning) and the score scrolls to it. Pausing leaves the line where it is; Rewind takes it back to the start",
+      diagram: :playhead
+    },
     %Shortcut{
       group: "Playback",
       mouse: "Hear as",
