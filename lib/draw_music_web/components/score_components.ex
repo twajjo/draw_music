@@ -1,11 +1,11 @@
 defmodule DrawMusicWeb.ScoreComponents do
   @moduledoc """
-  Draws an engraved score (see `DrawMusic.Engraving.Layout`) as SVG.
+  Draws an engraved score (see `DrawMusic.Engraving.Layout`) as SVG, from
+  the iodata `DrawMusicWeb.ScoreSvg` writes.
 
-  Glyphs are Bravura text, one em being four staff spaces. Everything is
-  painted in the current color: on screen the score's `color` is the
-  `--score-ink` CSS variable, which follows the light/dark theme; the SVG
-  export sets it to black.
+  Everything is painted in the current color: on screen the score's `color`
+  is the `--score-ink` CSS variable, which follows the light/dark theme;
+  the SVG export sets it to black.
   """
 
   use Phoenix.Component
@@ -16,32 +16,15 @@ defmodule DrawMusicWeb.ScoreComponents do
   @debug_heex_annotations false
   @debug_attributes false
 
-  alias DrawMusic.Engraving.{Beam, Brace, Glyph, Line, Smufl, TempoMark, Tie}
+  alias DrawMusicWeb.{ScorePiece, ScoreSvg}
 
-  # SMuFL fonts are scaled so that one em is four staff spaces.
-  @font_size 4
-  # Tempo marks (staff spaces): text size; the metronome note's size and the
-  # room it takes; the dashed line's height above the baseline; the gap
-  # before the end tempo.
-  @tempo_font_size 1.8
-  @tempo_note_size 2.6
-  @tempo_note_width 1.3
-  @tempo_line_rise 0.5
-  @tempo_end_gap 0.4
-  @padding 1
   # Page layout width in staff spaces: about A4's printable width at a
   # 1.75 mm staff space.
   @page_width 104
-  # A tie's arch rises with its length, within limits (staff spaces).
-  @tie_rise 0.2
-  @tie_min_height 0.6
-  @tie_max_height 1.8
-  # Decimal places kept in SVG numbers.
-  @precision 3
 
   @doc "Space left of the first system in the score's viewBox, in staff spaces."
   @spec padding() :: number()
-  def padding, do: @padding
+  def padding, do: ScoreSvg.padding()
 
   @doc "System width for page layout, in staff spaces."
   @spec page_width() :: number()
@@ -52,196 +35,69 @@ defmodule DrawMusicWeb.ScoreComponents do
   def layout_width(:page), do: @page_width
   def layout_width(:strip), do: :infinity
 
-  @doc "The score as an SVG element sized at `space` pixels per staff space."
+  @doc """
+  The score as the editor draws it: its pieces (`ScoreSvg.pieces/3`), each
+  its own `<svg>`, stacked down the page (Page) or along it (Strip). The
+  browser skips drawing the pieces out of view, and LiveView resends only
+  the pieces that change. `data-view-box` is the whole score's viewBox.
+  """
   attr :id, :string, required: true
-  attr :layout, :map, required: true
-  attr :space, :integer, default: 10, doc: "pixels per staff space"
-  attr :class, :any, default: nil
-  attr :selection, :any, default: MapSet.new(), doc: "ids of selected notes and rests"
+  attr :layout, :map, required: true, doc: "the engraved score"
+  attr :pieces, :list, required: true
+  attr :space, :integer, default: 10, doc: "pixels per staff space (Strip)"
+  attr :strip?, :boolean, default: false
 
   @spec score(map()) :: Phoenix.LiveView.Rendered.t()
   def score(assigns) do
-    assigns = assign(assigns, :padding, @padding)
+    padding = ScoreSvg.padding()
+
+    assigns =
+      assign(assigns,
+        view_box: "#{-padding} 0 #{assigns.layout.width + 2 * padding} #{assigns.layout.height}"
+      )
 
     ~H"""
-    <svg
+    <div
       id={@id}
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox={"#{-@padding} 0 #{n(@layout.width + 2 * @padding)} #{n(@layout.height)}"}
-      width={n((@layout.width + 2 * @padding) * @space)}
-      height={n(@layout.height * @space)}
+      class={if(@strip?, do: "flex w-fit", else: "flex flex-col")}
       style="color: var(--score-ink)"
-      class={@class}
+      data-view-box={@view_box}
       role="img"
       aria-label="Score"
     >
-      <.systems layout={@layout} selection={@selection} />
-    </svg>
+      <div
+        :for={piece <- @pieces}
+        id={piece.id}
+        class="score-piece"
+        style={piece_style(piece, @space)}
+      >
+        {Phoenix.HTML.raw(ScoreSvg.piece(piece, @space))}
+      </div>
+    </div>
     """
   end
 
   @doc """
-  The systems of a layout, in staff-space units, painted in `currentColor`.
-  Selected notes and rests get the `selected` class.
+  The systems of a layout, in staff-space units, painted in `currentColor`
+  (for the SVG export). Selected notes and rests get the `selected` class.
   """
   attr :layout, :map, required: true
   attr :selection, :any, default: MapSet.new()
 
   @spec systems(map()) :: Phoenix.LiveView.Rendered.t()
   def systems(assigns) do
-    assigns = assign(assigns, :font_size, @font_size)
-
     ~H"""
-    <g
-      :for={system <- @layout.systems}
-      id={"system-#{system.index}"}
-      transform={"translate(0 #{n(system.y)})"}
-      font-family="Bravura"
-      font-size={@font_size}
-      fill="currentColor"
-    >
-      <.item :for={item <- system.items} item={item} selection={@selection} />
-    </g>
+    {Phoenix.HTML.raw(ScoreSvg.systems(@layout.systems, @selection))}
     """
   end
 
-  attr :item, :map, required: true
-  attr :selection, :any, default: MapSet.new()
-
-  defp item(%{item: %Glyph{}} = assigns) do
-    ~H"""
-    <text
-      id={dom_id(@item)}
-      class={MapSet.member?(@selection, @item.id) && "selected"}
-      data-staff={@item.staff}
-      x={n(@item.x)}
-      y={n(@item.y)}
-    >
-      {Smufl.char(@item.glyph)}
-    </text>
-    """
+  # A piece keeps its size while the browser skips drawing it: Page pieces
+  # by their shape at the column's width, Strip pieces in pixels.
+  defp piece_style(%ScorePiece{whole?: true} = piece, _space) do
+    "aspect-ratio: #{piece.x1 - piece.x0} / #{piece.y1 - piece.y0}"
   end
 
-  defp item(%{item: %Line{}} = assigns) do
-    ~H"""
-    <line
-      x1={n(@item.x1)}
-      y1={n(@item.y1)}
-      x2={n(@item.x2)}
-      y2={n(@item.y2)}
-      stroke="currentColor"
-      stroke-width={n(@item.thickness)}
-    />
-    """
+  defp piece_style(%ScorePiece{} = piece, space) do
+    "width: #{(piece.x1 - piece.x0) * space}px; height: #{(piece.y1 - piece.y0) * space}px"
   end
-
-  defp item(%{item: %Beam{}} = assigns) do
-    ~H"""
-    <polygon points={beam_points(@item)} />
-    """
-  end
-
-  defp item(%{item: %Tie{}} = assigns) do
-    ~H"""
-    <path d={tie_path(@item)} />
-    """
-  end
-
-  # The brace glyph is one staff tall at the normal size; scale the font so
-  # it spans the grand staff.
-  defp item(%{item: %Brace{}} = assigns) do
-    ~H"""
-    <text x={n(@item.x)} y={n(@item.y2)} font-size={n(@item.y2 - @item.y1)}>
-      {Smufl.char(:brace)}
-    </text>
-    """
-  end
-
-  # A tempo change: its label (selectable, draggable), and for a rit. or
-  # accel. the dashed line and the end tempo (its end, draggable). A piece
-  # continued from an earlier system has no label; it still selects.
-  defp item(%{item: %TempoMark{}} = assigns) do
-    assigns =
-      assign(assigns,
-        selected?: MapSet.member?(assigns.selection, assigns.item.id),
-        note: Smufl.char(:metNoteQuarterUp),
-        size: @tempo_font_size,
-        note_size: @tempo_note_size,
-        note_width: @tempo_note_width,
-        rise: @tempo_line_rise,
-        end_x: assigns.item.line_to && assigns.item.line_to + @tempo_end_gap,
-        line_from: tempo_line_from(assigns.item)
-      )
-
-    ~H"""
-    <g
-      class={["tempo-mark", @selected? && "selected"]}
-      data-tempo-id={@item.id}
-      font-family="serif"
-      font-size={@size}
-    >
-      <g :if={@item.start?} id={"tempo-#{@item.id}"} class="tempo-label">
-        <text x={n(@item.x)} y={n(@item.y)} font-family="Bravura" font-size={@note_size}>
-          {@note}
-        </text>
-        <text x={n(@item.x + @note_width)} y={n(@item.y)} font-weight="bold">
-          {TempoMark.label(@item)}
-        </text>
-      </g>
-      <line
-        :if={@item.line_to}
-        x1={n(@line_from)}
-        y1={n(@item.y - @rise)}
-        x2={n(@item.line_to)}
-        y2={n(@item.y - @rise)}
-        stroke="currentColor"
-        stroke-width="0.12"
-        stroke-dasharray="0.6 0.5"
-      />
-      <g :if={@item.end?} id={"tempo-end-#{@item.id}"} class="tempo-end">
-        <text x={n(@end_x)} y={n(@item.y)} font-family="Bravura" font-size={@note_size}>{@note}</text>
-        <text x={n(@end_x + @note_width)} y={n(@item.y)} font-weight="bold">
-          {TempoMark.end_label(@item)}
-        </text>
-      </g>
-    </g>
-    """
-  end
-
-  defp tempo_line_from(%TempoMark{start?: true} = mark), do: mark.x + mark.width
-  defp tempo_line_from(%TempoMark{} = mark), do: mark.x
-
-  defp dom_id(%Glyph{role: :notehead, id: id}), do: "note-#{id}"
-  defp dom_id(%Glyph{role: :rest, id: id}) when is_binary(id), do: "rest-#{id}"
-  defp dom_id(_item), do: nil
-
-  defp beam_points(%Beam{x1: x1, y1: y1, x2: x2, y2: y2, thickness: t}) do
-    Enum.map_join([{x1, y1}, {x2, y2}, {x2, y2 + t}, {x1, y1 + t}], " ", fn {x, y} ->
-      "#{n(x)},#{n(y)}"
-    end)
-  end
-
-  # Two quadratic curves between the endpoints: the outer one bulges `dir`,
-  # the inner one a little less, leaving the tie its midpoint thickness.
-  defp tie_path(%Tie{x1: x1, x2: x2, y: y, dir: dir}) do
-    sign = tie_sign(dir)
-
-    height =
-      (x2 - x1)
-      |> Kernel.*(@tie_rise)
-      |> max(@tie_min_height)
-      |> min(@tie_max_height)
-
-    inner = height - 2 * Smufl.default("tieMidpointThickness")
-    mid = (x1 + x2) / 2
-
-    "M#{n(x1)} #{n(y)} Q#{n(mid)} #{n(y + sign * height)} #{n(x2)} #{n(y)} " <>
-      "Q#{n(mid)} #{n(y + sign * inner)} #{n(x1)} #{n(y)}Z"
-  end
-
-  defp tie_sign(:down), do: 1
-  defp tie_sign(_up), do: -1
-
-  defp n(x) when is_integer(x), do: x
-  defp n(x) when is_float(x), do: Float.round(x, @precision)
 end

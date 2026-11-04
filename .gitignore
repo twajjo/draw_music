@@ -38,6 +38,9 @@ npm-debug.log
 # Instrument samples, downloaded by `mix samples.fetch`.
 /priv/samples/
 
+# Deployment secrets for docker compose (see .env.example).
+/.env
+
 # Plan-execution scratch (ledgers, briefs) from the superpowers plugin.
 /.superpowers/
 

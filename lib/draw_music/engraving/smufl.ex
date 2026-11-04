@@ -17,11 +17,13 @@ defmodule DrawMusic.Engraving.Smufl do
     noteheadWhole noteheadHalf noteheadBlack augmentationDot
     flag8thUp flag8thDown flag16thUp flag16thDown
     flag32ndUp flag32ndDown flag64thUp flag64thDown
-    restWhole restHalf restQuarter rest8th rest16th rest32nd rest64th
+    flag128thUp flag128thDown flag256thUp flag256thDown
+    restWhole restHalf restQuarter rest8th rest16th rest32nd rest64th rest128th rest256th
     accidentalDoubleFlat accidentalFlat accidentalNatural accidentalSharp accidentalDoubleSharp
     timeSig0 timeSig1 timeSig2 timeSig3 timeSig4 timeSig5 timeSig6 timeSig7 timeSig8 timeSig9
     timeSigCommon timeSigCutCommon
     noteWhole noteHalfUp noteQuarterUp note8thUp note16thUp note32ndUp note64thUp
+    note128thUp note256thUp
     metNoteQuarterUp
   )a
 

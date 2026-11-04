@@ -510,11 +510,30 @@ defmodule DrawMusic.Music.EditingTest do
       assert rests(score) == [{0, 0, :eighth, 0}, {0, 480, :eighth, 0}]
     end
 
-    test "a 64th cannot be split" do
+    test "a 256th cannot be split" do
       {score, id} =
-        note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :sixty_fourth})
+        note!(Score.new(), @ctx, 0, "C4", %{
+          staff: :treble,
+          offset: 0,
+          value: :two_hundred_fifty_sixth
+        })
 
       assert Editing.split(score, @ctx, id) == {:error, :unrepresentable}
+    end
+
+    test "a 256th takes no dot, a 128th one" do
+      {score, id} =
+        note!(Score.new(), @ctx, 0, "C4", %{
+          staff: :treble,
+          offset: 0,
+          value: :two_hundred_fifty_sixth
+        })
+
+      assert Editing.set_dots(score, @ctx, [id], 1) == {:error, :unrepresentable}
+      assert {:ok, _score} = Editing.set_value(score, @ctx, id, :hundred_twenty_eighth, 1)
+
+      assert Editing.set_value(score, @ctx, id, :hundred_twenty_eighth, 2) ==
+               {:error, :unrepresentable}
     end
   end
 

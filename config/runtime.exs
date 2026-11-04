@@ -50,8 +50,14 @@ if config_env() == :prod do
 
   maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
 
+  # Some hosts' databases (Gigalixir's) only take SSL connections.
+  database_ssl =
+    if System.get_env("DATABASE_SSL") in ~w(true 1),
+      do: [verify: :verify_none],
+      else: false
+
   config :draw_music, DrawMusic.Repo,
-    # ssl: true,
+    ssl: database_ssl,
     url: database_url,
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
     # For machines with several cores, consider starting multiple pools of `pool_size`
@@ -71,6 +77,14 @@ if config_env() == :prod do
       """
 
   host = System.get_env("PHX_HOST") || "example.com"
+
+  # The instrument samples: fetched into the release's priv/samples when the
+  # image is built, or a writable directory (a mounted volume) that admins
+  # can fetch more instruments into.
+  config :draw_music,
+         :samples_dir,
+         System.get_env("SAMPLES_DIR") ||
+           Path.join(to_string(:code.priv_dir(:draw_music)), "samples")
 
   config :draw_music, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 

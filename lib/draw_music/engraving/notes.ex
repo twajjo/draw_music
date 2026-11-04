@@ -61,7 +61,9 @@ defmodule DrawMusic.Engraving.Notes do
     eighth: :rest8th,
     sixteenth: :rest16th,
     thirty_second: :rest32nd,
-    sixty_fourth: :rest64th
+    sixty_fourth: :rest64th,
+    hundred_twenty_eighth: :rest128th,
+    two_hundred_fifty_sixth: :rest256th
   }
 
   @flag_glyphs %{
@@ -72,7 +74,11 @@ defmodule DrawMusic.Engraving.Notes do
     {3, :up} => :flag32ndUp,
     {3, :down} => :flag32ndDown,
     {4, :up} => :flag64thUp,
-    {4, :down} => :flag64thDown
+    {4, :down} => :flag64thDown,
+    {5, :up} => :flag128thUp,
+    {5, :down} => :flag128thDown,
+    {6, :up} => :flag256thUp,
+    {6, :down} => :flag256thDown
   }
 
   @accidental_glyphs %{

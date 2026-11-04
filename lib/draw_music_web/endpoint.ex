@@ -27,11 +27,11 @@ defmodule DrawMusicWeb.Endpoint do
     only: DrawMusicWeb.static_paths(),
     raise_on_missing_only: code_reloading?
 
-  # Instrument samples live outside priv/static (they're downloaded, not built).
-  plug Plug.Static,
-    at: "/samples",
-    from: Application.compile_env!(:draw_music, :samples_dir),
-    cache_control_for_etags: "public, max-age=31536000"
+  # Instrument samples live outside priv/static (they're downloaded, not
+  # built), in a directory set at runtime.
+  plug DrawMusicWeb.SamplesStatic, cache_control_for_etags: "public, max-age=31536000"
+
+  plug DrawMusicWeb.HealthCheck
 
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.

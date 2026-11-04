@@ -7,7 +7,8 @@ defmodule DrawMusicWeb.NewCompositionLive do
 
   use DrawMusicWeb, :live_view
 
-  import DrawMusicWeb.LibraryComponents, only: [version_path: 3, score_settings_fields: 1]
+  import DrawMusicWeb.LibraryComponents,
+    only: [version_path: 3, score_settings_fields: 1, composition_fields: 1]
 
   alias DrawMusic.Library
   alias DrawMusic.Library.{Composition, Key, Version}
@@ -15,7 +16,7 @@ defmodule DrawMusicWeb.NewCompositionLive do
   alias DrawMusicWeb.EditorSettings
 
   @measures 4
-  @credit_fields ~w(subtitle composer arranger lyricist copyright)
+  @credit_fields ~w(subtitle composer arranger lyricist copyright notes)
 
   @impl true
   def render(assigns) do
@@ -34,14 +35,7 @@ defmodule DrawMusicWeb.NewCompositionLive do
         class="space-y-6"
       >
         <fieldset class="space-y-2">
-          <.input field={@form[:name]} label="Name" required phx-debounce="300" />
-          <.input field={@form[:subtitle]} label="Subtitle" />
-          <div class="grid gap-x-4 sm:grid-cols-2">
-            <.input field={@form[:composer]} label="Composer" />
-            <.input field={@form[:arranger]} label="Arranger" />
-            <.input field={@form[:lyricist]} label="Lyricist" />
-            <.input field={@form[:copyright]} label="Copyright" />
-          </div>
+          <.composition_fields form={@form} />
         </fieldset>
 
         <fieldset class="grid gap-x-4 sm:grid-cols-3">

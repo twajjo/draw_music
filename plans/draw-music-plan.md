@@ -269,13 +269,26 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
    - **Still to do:** the manual browser checks in the spec's Verification section (listening, Safari, theme colours), which haven't been run.
 6. Library upload/import dialog + `.mid` download.
    - **`.mid` download done in the demo slice.** Upload/import and the collision dialog built 2026-10-25 on `Phase-6` (the Import .mid dialog on `/compositions`). Still to do: the manual checks (re-upload a downloaded file and try all four collision choices; import a file from another program).
-7. **Deployment** (added 2026-10-22; not started):
-   - `mix phx.gen.release` (with a Dockerfile);
-   - runtime config for `DATABASE_URL`, `SECRET_KEY_BASE`, `PHX_HOST`, `PHX_SERVER`, and release migrations;
-   - fetching the audio samples at build time (`mix samples.fetch`);
-   - making `:samples_dir` a runtime setting. Phase 5 reads it at compile time for the `/samples` `Plug.Static`, so a release needs it set through `runtime.exs` and the plug initialised at runtime (e.g. a small plug wrapping `Plug.Static.call/2`);
-   - a hosting target, chosen at the time, so testers can reach the app.
-   - **Large scores** (found 2026-10-27 with an imported *Rhapsody in Blue*: 460 bars, ~80,000 drawn items, an 8.5 MB SVG): draw only what's near the screen. Split the score into one `<svg>` per system in Page layout and chunks of bars in Strip, with CSS `content-visibility: auto`, so the browser skips off-screen pieces; the hook's coordinate mapping (`toScore`, the overlay) goes per piece. Also: produce the SVG as iodata rather than ~80,000 HEEx component calls (~1.5–2 s a render), and keep selection changes in the browser rather than re-sending the whole SVG. Already done in Phase 6: the score is sent as one raw SVG string after the join, dev debug annotations are off for it, and playback scheduling no longer depends on the page being idle.
+7. **Composition details, large scores, deployment** (branch `Phase-7`):
+   - **Composition details** (added 2026-10-27; built): a Details dialog for the name, subtitle, credits and notes, from each composition on the Compositions page and beside the title in the editor. Saved at once for a saved composition (not part of the score's undo); a draft keeps them for its first save. Save as new composition shows all the fields, starting from the current credits.
+   - **Also built in this phase (2026-10-29):**
+     - rewind by measure and by line, both off in Strip layout;
+     - a play cursor with an arrow;
+     - a "Redrawing the music…" notice when the layout changes;
+     - 128th and 256th notes (`plans/short-note-values.md`);
+     - the rest/note toggle shows what it switches to.
+   - **Deployment** (added 2026-10-22; built 2026-10-29, see `DEPLOY.md`): one release and one Dockerfile for four targets.
+     - **Own server:** `docker-compose.yml`.
+     - **Fly.io:** `fly.toml`.
+     - **Render:** `render.yaml`.
+     - **Gigalixir:** buildpack configs and `compile`.
+     - **Shared:** runtime config, `bin/migrate`, `GET /health`, samples fetched at build time into the release, and `:samples_dir` set at runtime (`SAMPLES_DIR`) through `DrawMusicWeb.SamplesStatic`.
+     - **Still to do:** deploy to a target so testers can reach it. The Gigalixir path hasn't been tried.
+   - **Large scores** (found 2026-10-27 with an imported *Rhapsody in Blue*: 460 bars, ~80,000 drawn items, an 8.5 MB SVG; built 2026-10-29, see `plans/large-scores.md`):
+     - The score is written as iodata (`DrawMusicWeb.ScoreSvg`) and drawn in pieces: one `<svg>` per system in Page layout, runs of 16 bars in Strip.
+     - The pieces use `content-visibility: auto`, so the browser skips the ones out of view.
+     - LiveView resends only the pieces an edit or a selection change touches. Each piece carries its own share of the selection.
+     - **Still to do:** a browser check on the large score. Engraving (`Layout.layout/3`, 0.5–1 s on that score) is now the slow step on each edit.
 8. **Live MIDI keyboard input** (added 2026-10-22; not started):
    - Play notes from a connected MIDI keyboard into the score: a key press places the armed value at the cursor, chords included.
    - Browser Web MIDI API in the `ScoreEditor` hook (no server-side MIDI).

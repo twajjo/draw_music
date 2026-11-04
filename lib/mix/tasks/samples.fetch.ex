@@ -69,8 +69,11 @@ defmodule Mix.Tasks.Samples.Fetch do
     end
   end
 
+  # Compile-time config is all it needs (`:samples_dir`, `:samples_req`):
+  # not runtime.exs, which in prod asks for a database and secrets that an
+  # image build doesn't have.
   defp start do
-    Mix.Task.run("app.config")
+    Mix.Task.run("compile")
     {:ok, _apps} = Application.ensure_all_started(:req)
   end
 

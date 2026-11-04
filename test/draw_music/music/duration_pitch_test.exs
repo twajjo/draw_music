@@ -9,6 +9,15 @@ defmodule DrawMusic.Music.DurationPitchTest do
       assert Duration.ticks(:quarter, 1) == 1440
       assert Duration.ticks(:quarter, 2) == 1680
       assert Duration.ticks(:sixty_fourth, 2) == 105
+      assert Duration.ticks(:hundred_twenty_eighth, 1) == 45
+      assert Duration.ticks(:two_hundred_fifty_sixth) == 15
+    end
+
+    test "a 128th takes one dot at most and a 256th none: no fractions of a tick" do
+      assert Duration.dots_allowed?(:sixty_fourth, 2)
+      assert Duration.dots_allowed?(:hundred_twenty_eighth, 1)
+      refute Duration.dots_allowed?(:hundred_twenty_eighth, 2)
+      refute Duration.dots_allowed?(:two_hundred_fifty_sixth, 1)
     end
 
     test "decompose/1 splits lengths into note values, longest first" do
@@ -17,8 +26,14 @@ defmodule DrawMusic.Music.DurationPitchTest do
       assert Duration.decompose(150) == {:ok, [{:sixty_fourth, 1}, {:sixty_fourth, 0}]}
     end
 
+    test "decompose/1 reaches for 128ths and 256ths only when nothing longer adds up" do
+      assert Duration.decompose(15) == {:ok, [two_hundred_fifty_sixth: 0]}
+      assert Duration.decompose(45) == {:ok, [hundred_twenty_eighth: 1]}
+      assert Duration.decompose(135) == {:ok, [thirty_second: 0, two_hundred_fifty_sixth: 0]}
+    end
+
     test "decompose/1 rejects lengths no values add up to" do
-      for ticks <- [15, 45, 75, 135, 7] do
+      for ticks <- [7, 20, 100] do
         assert Duration.decompose(ticks) == {:error, :unrepresentable}
       end
     end

@@ -1,0 +1,9 @@
+#!/bin/sh
+# Gigalixir (phoenix-static buildpack): builds the assets and downloads the
+# instrument samples into priv/samples, which go into the release.
+set -eu
+
+cd "$phoenix_dir"
+mix assets.setup
+mix assets.deploy
+mix samples.fetch

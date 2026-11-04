@@ -208,7 +208,15 @@ defmodule DrawMusicWeb.EditorCommands do
   defp new_dots(_entry, :toggle), do: 0
   defp new_dots(_entry, dots), do: dots
 
+  # A 256th takes no dot, a 128th one more at most.
   defp set_length(score, ctx, entry, value, dots, insert?) do
+    case Duration.dots_allowed?(value, dots) do
+      true -> fit_length(score, ctx, entry, value, dots, insert?)
+      false -> {:error, :unrepresentable}
+    end
+  end
+
+  defp fit_length(score, ctx, entry, value, dots, insert?) do
     extra = Duration.ticks(value, dots) - entry.ticks
 
     with {:ok, score} <- make_room(score, ctx, entry, extra, insert?) do

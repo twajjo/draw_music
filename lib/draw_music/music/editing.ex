@@ -260,19 +260,28 @@ defmodule DrawMusic.Music.Editing do
 
   @doc """
   Sets the dots of the given events. The result must still fit in each
-  event's measure (`:measure_full`); dot a whole chord together.
+  event's measure (`:measure_full`), and each value must take that many
+  dots (`:unrepresentable`: a 256th none, a 128th one); dot a whole chord
+  together.
   """
   @spec set_dots(Score.t(), Context.t(), [id()], 0..2) :: result()
   def set_dots(%Score{} = score, %Context{} = ctx, ids, dots) when dots in 0..2 do
     bars = Timeline.bars(score, ctx)
 
     map_selected(score, ctx, ids, fn entry ->
-      ticks = Duration.ticks(entry.event.value, dots)
-
-      with :ok <- fits_bar(bars, entry.start, ticks) do
+      with :ok <- dots_allowed(entry.event.value, dots),
+           ticks = Duration.ticks(entry.event.value, dots),
+           :ok <- fits_bar(bars, entry.start, ticks) do
         {:ok, %{entry | ticks: ticks, event: claim(%{entry.event | dots: dots})}}
       end
     end)
+  end
+
+  defp dots_allowed(value, dots) do
+    case Duration.dots_allowed?(value, dots) do
+      true -> :ok
+      false -> {:error, :unrepresentable}
+    end
   end
 
   @doc "Sets the absolute alteration (-2..2) of the given notes."
@@ -715,9 +724,10 @@ defmodule DrawMusic.Music.Editing do
 
   def set_value(%Score{} = score, %Context{} = ctx, ids, value, dots) when dots in 0..2 do
     entries = Timeline.flatten(score, ctx)
-    ticks = Duration.ticks(value, dots)
 
-    with {:ok, [first | _] = chosen} <- find_entries(entries, ids),
+    with :ok <- dots_allowed(value, dots),
+         ticks = Duration.ticks(value, dots),
+         {:ok, [first | _] = chosen} <- find_entries(entries, ids),
          :ok <- fits_bar(Timeline.bars(score, ctx), first.start, ticks) do
       changed =
         Map.new(chosen, fn entry ->
