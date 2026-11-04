@@ -294,6 +294,33 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
    - Browser Web MIDI API in the `ScoreEditor` hook (no server-side MIDI).
    - It sends the existing `place` event, so it uses the same editing rules.
    - Browser support varies (Chromium-based browsers; Firefox asks permission; Safari has none), so it's an optional extra.
+   - **Decided 2026-10-29:**
+     - **A visible insertion cursor** marks where keyboard entry goes. It steps forward after each note or chord.
+     - **A fixed staff split** at middle C.
+     - **Length** comes from a preference toggle: either the palette's picked value, or how long the key is held (quantized).
+     - **Rests and dots** are entered from the computer keyboard (**R**, **.**) while playing.
+     - **In Play mode** the keys only sound, through the playback instrument; nothing is written.
+   - **Style sweep** (from the Phase 5 code review, added 2026-11-04): every anonymous function bound to a variable is written multiline, however short: `name = fn args ->`, the body indented below, `end` on its own line aligned with `name`. Inline `fn ... end` stays only as a literal argument. There are 13 one-liners to convert in `lib` and `test`, plus any multiline ones whose `end` isn't aligned with the variable.
+   - **Public first, private last** (added 2026-11-04, a rule for every Elixir project): in each module, the public functions come first and all `defp`s are grouped at the bottom. Today 26 non-generated modules in `lib` mix the two; the generated auth code and `core_components.ex` are left alone.
+   - **Split `Editing`** (from the Phase 5 code review; made Phase 8 work 2026-11-04): `editing.ex` was 1,346 lines at Phase 5 and is 1,404 now. It has 32 public functions (42 clauses) and 73 private ones (100 clauses). The plan is in `plans/editing-module-review.md`:
+     - remove the redundancies;
+     - split it into about 10 modules, each one topic, each well under 500 lines;
+     - keep a short `Editing` facade that states the score's rules once and delegates;
+     - make no behaviour changes; each step is its own reviewable jj change.
+   - **Break up the palette** (from the Phase 5 code review, added 2026-11-04): `palette/1` is one 389-line block of HEEx in a 713-line module. The plan is in `plans/palette-component-review.md`:
+     - compose it from named sub-components: mode switch, edit tools (length row, chords, tie, placing, history), transport (one generic transport button, instrument picker) and help, on a shared `tool_button`;
+     - split the file into `PaletteComponents`, `Palette.EditTools`, `Palette.Transport` and `Palette.Glyphs`;
+     - keep the ids and the markup the same.
+   - **Break up `EditorLive`** (from the Phase 5 code review, added 2026-11-04; strategies only, waiting for approval): it's 1,424 lines, with 85 `handle_event` clauses, 91 `defp`s, about 25 flat assigns and a 153-line `render/1`. The strategies are in `plans/editor-live-review.md`:
+     - **recommended:** feature event modules attached with `attach_hook/4`, LiveComponents for the four form dialogs, one `:dialog` assign in place of six close handlers, assigns grouped into structs, and a `render/1` composed from components;
+     - **not recommended:** nested LiveViews, because everything shares one `Session`.
+   - **Reviewable PRs** (from the Phase 5 review, added 2026-11-04): Phase 5's PR had 104 files, and Phases 6 and 7 had 53 and 57. All of these are too many. From Phase 8 on, each PR is one piece of functionality of about 10 files at most, merged before the next is opened. Phase 8 is 24 such PRs; the list is in `plans/phase-8-midi-input.md`.
+   - **Fix: dropdowns that won't close** (reported 2026-11-05): the Save menu stays open when you click away, so you can't leave it without saving. The Chords menu and the library dropdown have the same problem, because all three are bare `<details>` elements. A shared `<.dropdown>` component will close them on a click outside, on Escape and on choosing an item. It's the first Phase 8 PR (8.1).
+   - **Settings in the top bar, Account in the menu** (requested 2026-11-06): a prominent **Settings** button next to New and Compositions opens a new `/settings` page for the score display preferences. The account menu's "Settings" becomes **Account** (email and password only). The interface theme toggle stays in the account menu. It's PR 8.2.
+   - **Score paper separate from the interface theme** (requested 2026-11-06): the score paper (black on white, or colour on black) and the interface theme are two unrelated settings, with no "Follow theme" option. The user sets a default (`users.score_paper`, Light by default) on the Settings page, and a composition can override it in Details (`compositions.score_paper`, nil = the user's default). The selection and playhead colours go with the paper; exports stay black on white. These are PRs 8.3 (the default) and 8.4 (the override); the details are in `plans/phase-8-midi-input.md`.
+   - **Save in the top bar** (requested 2026-11-06): Save and its dropdown move from the palette to the header's menu bar, through a `:menu_bar` slot in `Layouts.app`. It's PR 8.5, after the dropdown fix.
+   - **Import from the top bar** (requested 2026-11-06): Import .mid is reachable from everywhere through an **Import** link in the header, which opens the existing dialog at `/compositions/import`. It's PR 8.6.
+   - **The wordmark opens About** (requested 2026-11-06): clicking DrawMusic in the header currently navigates to `/`, and the user reports that it logs them out; that needs reproducing first. It will instead open an About dialog in place: the name and version, the author (Jeff Osborn), the application's licence (MIT, decided 2026-11-06; a `LICENSE` file is added). The author line reads "© 2026 Jeff Osborn, with the assistance of Anthropic Claude (Claude Opus 5.5)" and a link to Credits. It closes on Esc or a click away, and leaves unsaved work alone. It's PR 8.7. `editor_live.ex` (1,424 lines) is over the same 500-line limit and needs its own review.
 9. **Parts and arrangements** (added 2026-10-23; not started; design under Decisions). It comes before chord symbols because it changes the database schema, and the guitar diagrams attach to guitar parts:
    - Library: the `composition_arrangements` table plus a data migration; versions numbered per arrangement; `save_in_arrangement`; delete rules; the composition list grouped as key, then arrangement, then versions.
    - Domain: `Part`, `Note.part_id`, and `Editing` that works per part, including range limits per part.
@@ -331,6 +358,8 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
         - chordify turns selected notes into the picked chord.
       - Insert and Overlay as in a text editor: Insert puts the new item in front of the one you click before and moves later music right; Overlay types over the time the new item covers.
       - The playback instrument vs the version's instrument, and "Set selection to version Instrument".
+      - Score paper: your default in Settings, and a composition's own in Details. It is separate from the interface theme.
+      - Where things live: Settings and Import in the top bar, Account (email, password) and the interface theme in the account menu.
 
 ## Verification
 - **`mix test`:**
