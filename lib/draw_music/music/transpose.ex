@@ -6,7 +6,11 @@ defmodule DrawMusic.Music.Transpose do
   notes keep their relationship to it.
   """
 
-  alias DrawMusic.Music.{Note, Pitch, Score}
+  alias DrawMusic.Music.{Pitch, Score}
+
+  @steps_per_octave Pitch.steps_per_octave()
+  @semitones_per_octave Pitch.semitones_per_octave()
+  @tritone div(@semitones_per_octave, 2)
 
   @typedoc "A key as its key signature (-7..7) and mode."
   @type key :: {-7..7, :major | :minor}
@@ -25,8 +29,8 @@ defmodule DrawMusic.Music.Transpose do
 
     {steps, semis} =
       interval(
-        Integer.mod(to_letter - from_letter, 7),
-        Integer.mod(to_pc - from_pc, 12),
+        Integer.mod(to_letter - from_letter, @steps_per_octave),
+        Integer.mod(to_pc - from_pc, @semitones_per_octave),
         direction
       )
 
@@ -35,30 +39,29 @@ defmodule DrawMusic.Music.Transpose do
         %{m | notes: Enum.map(m.notes, &move(&1, steps, semis, to_sf))}
       end)
 
-    if Enum.all?(measures, fn m -> Enum.all?(m.notes, &Pitch.in_range?(Note.midi(&1))) end),
-      do: {:ok, %{score | measures: measures}},
-      else: {:error, :out_of_range}
+    unplayable = for m <- measures, n <- m.notes, not Pitch.playable?(n.step, n.alter), do: n
+
+    case unplayable do
+      [] -> {:ok, %{score | measures: measures}}
+      _out_of_range -> {:error, :out_of_range}
+    end
   end
 
   defp interval(steps_up, semis_up, :up), do: {steps_up, semis_up}
   defp interval(0, 0, :down), do: {0, 0}
-  defp interval(steps_up, semis_up, :down), do: {steps_up - 7, semis_up - 12}
 
-  defp interval(steps_up, semis_up, :nearest) when semis_up <= 6,
-    do: interval(steps_up, semis_up, :up)
+  defp interval(steps_up, semis_up, :down) do
+    {steps_up - @steps_per_octave, semis_up - @semitones_per_octave}
+  end
+
+  defp interval(steps_up, semis_up, :nearest) when semis_up <= @tritone do
+    interval(steps_up, semis_up, :up)
+  end
 
   defp interval(steps_up, semis_up, :nearest), do: interval(steps_up, semis_up, :down)
 
-  defp move(%Note{} = note, steps, semis, to_sf) do
-    midi = Note.midi(note) + semis
-    step = note.step + steps
-    alter = midi - Pitch.natural_midi(step)
-
-    if alter in -2..2 do
-      %{note | step: step, alter: alter}
-    else
-      {step, alter} = Pitch.spell(midi, to_sf)
-      %{note | step: step, alter: alter}
-    end
+  defp move(note, steps, semis, to_sf) do
+    {step, alter} = Pitch.transpose(note.step, note.alter, steps, semis, to_sf)
+    %{note | step: step, alter: alter}
   end
 end

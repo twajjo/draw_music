@@ -26,6 +26,7 @@ defmodule DrawMusic.Music.Score do
   @doc "A score of `count` empty measures."
   @spec new() :: t()
   @spec new(pos_integer()) :: t()
-  def new(count \\ 1) when count >= 1,
-    do: %__MODULE__{measures: for(_ <- 1..count, do: Measure.new())}
+  def new(count \\ 1) when count >= 1 do
+    %__MODULE__{measures: for(_ <- 1..count, do: Measure.new())}
+  end
 end

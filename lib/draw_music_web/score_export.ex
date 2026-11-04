@@ -28,6 +28,14 @@ defmodule DrawMusicWeb.ScoreExport do
   @title_size 3.2
   @subtitle_size 2
   @credit_size 1.6
+  # Vertical gaps, in staff spaces.
+  @subtitle_gap 1
+  @subtitle_drop 0.5
+  @credit_leading 0.6
+  @credit_raise 2
+  @music_gap 3
+  # Decimal places kept in SVG numbers.
+  @precision 3
 
   @doc "The SVG document for a version with its key and composition loaded."
   @spec svg(Version.t()) :: String.t()
@@ -36,8 +44,8 @@ defmodule DrawMusicWeb.ScoreExport do
     lines = credit_lines(composition)
 
     top =
-      @margin + @title_size + if(composition.subtitle, do: @subtitle_size + 1, else: 0) +
-        length(lines) * (@credit_size + 0.6) + 3
+      @margin + @title_size + subtitle_height(composition) + length(lines) * credit_line_height() +
+        @music_gap
 
     width = page_width() + 2 * @margin
 
@@ -73,7 +81,7 @@ defmodule DrawMusicWeb.ScoreExport do
           <text
             :if={@composition.subtitle}
             x={n(@width / 2)}
-            y={n(margin() + title_size() + subtitle_size() + 0.5)}
+            y={n(margin() + title_size() + subtitle_size() + subtitle_drop())}
             font-size={subtitle_size()}
           >
             {@composition.subtitle}
@@ -81,7 +89,7 @@ defmodule DrawMusicWeb.ScoreExport do
           <text
             :for={{line, i} <- Enum.with_index(@lines)}
             x={n(@width - margin())}
-            y={n(@top - 2 - (length(@lines) - 1 - i) * (credit_size() + 0.6))}
+            y={n(@top - credit_raise() - (length(@lines) - 1 - i) * credit_line_height())}
             font-size={credit_size()}
             text-anchor="end"
           >
@@ -109,8 +117,9 @@ defmodule DrawMusicWeb.ScoreExport do
   def filename(
         %Version{key: %Key{composition: composition} = key, number: number},
         extension \\ "svg"
-      ),
-      do: "#{composition.name} - #{Key.name(key)} - v#{number}.#{extension}"
+      ) do
+    "#{composition.name} - #{Key.name(key)} - v#{number}.#{extension}"
+  end
 
   defp credit_lines(composition) do
     [
@@ -127,7 +136,13 @@ defmodule DrawMusicWeb.ScoreExport do
   defp title_size, do: @title_size
   defp subtitle_size, do: @subtitle_size
   defp credit_size, do: @credit_size
+  defp subtitle_drop, do: @subtitle_drop
+  defp credit_raise, do: @credit_raise
+  defp credit_line_height, do: @credit_size + @credit_leading
+
+  defp subtitle_height(%Composition{subtitle: nil}), do: 0
+  defp subtitle_height(_composition), do: @subtitle_size + @subtitle_gap
 
   defp n(x) when is_integer(x), do: x
-  defp n(x), do: Float.round(x, 3)
+  defp n(x), do: Float.round(x, @precision)
 end

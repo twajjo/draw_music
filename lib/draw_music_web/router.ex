@@ -17,11 +17,6 @@ defmodule DrawMusicWeb.Router do
     plug :accepts, ["json"]
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", DrawMusicWeb do
-  #   pipe_through :api
-  # end
-
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:draw_music, :dev_routes) do
     # If you want to use the LiveDashboard in production, you should put
@@ -70,6 +65,8 @@ defmodule DrawMusicWeb.Router do
       live "/users/register", UserLive.Registration, :new
       live "/users/log-in", UserLive.Login, :new
       live "/users/log-in/:token", UserLive.Confirmation, :new
+      live "/credits", CreditsLive
+      live "/help", HelpLive
     end
 
     post "/users/log-in", UserSessionController, :create

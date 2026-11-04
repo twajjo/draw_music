@@ -20,7 +20,16 @@ defmodule DrawMusicWeb.EditorHelpers do
     view |> render() |> LazyHTML.from_fragment() |> LazyHTML.query(selector) |> Enum.count()
   end
 
-  @doc "Places with the `place` hook event; `spn` like \"C4\"."
+  @doc "Puts the editor in `:insert` (the default) or `:overlay` placing mode."
+  def placing_mode(view, mode) when mode in [:insert, :overlay] do
+    insert? = has_element?(view, "#palette-insert[aria-pressed=true]")
+    if insert? != (mode == :insert), do: view |> element("#palette-insert") |> render_click()
+    view
+  end
+
+  @doc """
+  Places with the `place` hook event; `spn` like \"C4\".
+  """
   def place(view, measure, offset, spn, opts \\ []) do
     {step, alter} = MusicHelpers.pitch!(spn)
 

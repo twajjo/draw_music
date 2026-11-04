@@ -22,17 +22,22 @@ defmodule DrawMusic.Music.Accidentals do
     {shown, _in_effect} =
       notes
       |> Enum.sort_by(&{&1.offset, &1.step})
-      |> Enum.reduce({%{}, %{}}, fn note, {shown, in_effect} ->
-        position = {note.staff, note.step}
-        current = Map.get(in_effect, position, Pitch.key_alter(sf, Pitch.letter(note.step)))
-
-        cond do
-          note.id in tied_in -> {shown, Map.put(in_effect, position, note.alter)}
-          note.alter == current -> {shown, in_effect}
-          true -> {Map.put(shown, note.id, note.alter), Map.put(in_effect, position, note.alter)}
-        end
-      end)
+      |> Enum.reduce({%{}, %{}}, &mark(&1, &1.id in tied_in, sf, &2))
 
     shown
+  end
+
+  # `in_effect` is `%{{staff, step} => alter}` for positions altered so far.
+  defp mark(note, true = _tied_in?, _sf, {shown, in_effect}) do
+    {shown, Map.put(in_effect, {note.staff, note.step}, note.alter)}
+  end
+
+  defp mark(%{alter: alter} = note, false, sf, {shown, in_effect}) do
+    position = {note.staff, note.step}
+
+    case Map.get(in_effect, position, Pitch.key_alter(sf, Pitch.letter(note.step))) do
+      ^alter -> {shown, in_effect}
+      _other -> {Map.put(shown, note.id, alter), Map.put(in_effect, position, alter)}
+    end
   end
 end

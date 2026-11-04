@@ -25,11 +25,28 @@ defmodule DrawMusic.MidiCodec do
   import Bitwise, only: [<<<: 2]
 
   alias DrawMusic.Library.{Composition, Import, Key, Version}
-  alias DrawMusic.Music.{Context, Editing, Entry, Note, Pitch, Playback, Score, Timeline}
+
+  alias DrawMusic.Music.{
+    Context,
+    Duration,
+    Editing,
+    Entry,
+    Note,
+    Pitch,
+    Playback,
+    Score,
+    Timeline
+  }
+
   alias ExMidi.MidiFile
 
-  @ppq 960
-  @grid 60
+  @ppq Duration.ppq()
+  @grid Duration.ticks(:sixty_fourth)
+  @multitrack_format 1
+  # A division with the top bit set counts SMPTE frames, not ticks per quarter.
+  @smpte_division 0x8000
+  @major_mode_byte 0
+  @minor_mode_byte 1
   @signature <<0x7D, "DRAWMUSIC", 1>>
   @credit_fields [:subtitle, :composer, :arranger, :lyricist, :copyright, :notes]
   @version_fields [
@@ -43,10 +60,24 @@ defmodule DrawMusic.MidiCodec do
     :instrument,
     :score
   ]
-  @time_denominators [1, 2, 4, 8, 16, 32, 64]
+  @time_denominators Context.time_denominators()
+  @tempo_range Context.tempo_range()
+  @defaults %Context{}
+  @default_program %Version{}.instrument
+  # MIDI's own default when a file sets no tempo.
+  @midi_default_bpm 120
+  @microseconds_per_minute 60_000_000
+  @midi_clocks_per_quarter 24
+  @thirty_seconds_per_quarter 8
+  @note_on_velocity 80
+  @note_off_velocity 64
+  # Order of events at the same tick: meta events, then note-offs, then note-ons.
+  @meta_rank 0
+  @off_rank 1
+  @on_rank 2
   @percussion_channel 9
   # Overlaps shorter than a sixteenth are legato, not a second voice.
-  @legato 240
+  @legato Duration.ticks(:sixteenth)
 
   ## Export
 
@@ -63,7 +94,7 @@ defmodule DrawMusic.MidiCodec do
       staff_track("Bass", 1, version.instrument, Enum.filter(sounds, &(&1.staff == :bass)))
     ]
 
-    write({:midi_file, 1, @ppq, tracks})
+    write({:midi_file, @multitrack_format, @ppq, tracks})
   end
 
   defp conductor_track(composition, version) do
@@ -75,23 +106,28 @@ defmodule DrawMusic.MidiCodec do
             lyricist: "Lyricist"
           ],
           value = Map.fetch!(composition, field),
-          value not in [nil, ""],
-          do: {0, 0, {:text, "#{label}: #{value}"}}
+          value not in [nil, ""] do
+        {0, @meta_rank, {:text, "#{label}: #{value}"}}
+      end
 
     copyright =
-      if composition.copyright in [nil, ""],
-        do: [],
-        else: [{0, 0, {:copyright, composition.copyright}}]
+      if composition.copyright in [nil, ""] do
+        []
+      else
+        [{0, @meta_rank, {:copyright, composition.copyright}}]
+      end
 
     track(
-      [{0, 0, {:seq_name, composition.name}}] ++
+      [{0, @meta_rank, {:seq_name, composition.name}}] ++
         copyright ++
         credits ++
         [
-          {0, 0, {:tempo, [round(60_000_000 / version.tempo_bpm)]}},
-          {0, 0, {:time_signature, [time_signature(version.time_num, version.time_den)]}},
-          {0, 0, {:key_signature, [<<version.key.sf::signed-8, mode_byte(version.key.mode)>>]}},
-          {0, 0,
+          {0, @meta_rank, {:tempo, [round(@microseconds_per_minute / version.tempo_bpm)]}},
+          {0, @meta_rank,
+           {:time_signature, [time_signature(version.time_num, version.time_den)]}},
+          {0, @meta_rank,
+           {:key_signature, [<<version.key.sf::signed-8, mode_byte(version.key.mode)>>]}},
+          {0, @meta_rank,
            {:sequencer_specific, [@signature <> JSON.encode!(payload(composition, version))]}}
         ]
     )
@@ -113,16 +149,19 @@ defmodule DrawMusic.MidiCodec do
     notes =
       Enum.flat_map(sounds, fn sound ->
         [
-          {sound.start, 2, {:on, [channel, sound.midi, 80]}},
-          {sound.start + sound.ticks, 1, {:off, [channel, sound.midi, 64]}}
+          {sound.start, @on_rank, {:on, [channel, sound.midi, @note_on_velocity]}},
+          {sound.start + sound.ticks, @off_rank,
+           {:off, [channel, sound.midi, @note_off_velocity]}}
         ]
       end)
 
-    track([{0, 0, {:seq_name, name}}, {0, 0, {:program, [channel, instrument]}} | notes])
+    track([
+      {0, @meta_rank, {:seq_name, name}},
+      {0, @meta_rank, {:program, [channel, instrument]}} | notes
+    ])
   end
 
   # Absolute `{tick, rank, {name, values}}` events into a delta-time track.
-  # At equal ticks, rank orders meta events, then note-offs, then note-ons.
   defp track(events) do
     {deltas, _last_tick} =
       events
@@ -134,16 +173,18 @@ defmodule DrawMusic.MidiCodec do
     {:track, deltas ++ [{:track_end, 0, []}]}
   end
 
+  # The metronome clicks once per felt beat.
   defp time_signature(num, den) do
-    clocks_per_click = div(if(num > 3 and rem(num, 3) == 0, do: 3, else: 1) * 96, den)
-    <<num, log2(den), max(clocks_per_click, 1), 8>>
+    beat = Context.beam_group_ticks(%Context{time_num: num, time_den: den})
+    clocks_per_click = max(div(beat * @midi_clocks_per_quarter, @ppq), 1)
+    <<num, log2(den), clocks_per_click, @thirty_seconds_per_quarter>>
   end
 
   defp log2(1), do: 0
   defp log2(n), do: 1 + log2(div(n, 2))
 
-  defp mode_byte(:minor), do: 1
-  defp mode_byte(_major), do: 0
+  defp mode_byte(:minor), do: @minor_mode_byte
+  defp mode_byte(:major), do: @major_mode_byte
 
   defp write(file) do
     path = Path.join(System.tmp_dir!(), "draw_music_#{Ecto.UUID.generate()}.mid")
@@ -167,7 +208,7 @@ defmodule DrawMusic.MidiCodec do
           | {:error, :invalid_midi | :smpte_unsupported | :unrepresentable | :before_start}
   def import(path, filename) do
     case MidiFile.read(path) do
-      {:midi_file, _format, division, tracks} when division < 0x8000 ->
+      {:midi_file, _format, division, tracks} when division < @smpte_division ->
         tracks = Enum.map(tracks, &absolute/1)
         name = track_name(tracks) || Path.rootname(Path.basename(filename))
 
@@ -203,7 +244,15 @@ defmodule DrawMusic.MidiCodec do
   end
 
   defp text(bytes) do
-    bytes |> IO.iodata_to_binary() |> String.trim() |> then(&if(&1 == "", do: nil, else: &1))
+    trimmed =
+      bytes
+      |> IO.iodata_to_binary()
+      |> String.trim()
+
+    case trimmed do
+      "" -> nil
+      text -> text
+    end
   end
 
   defp embedded_payload(tracks) do
@@ -277,9 +326,9 @@ defmodule DrawMusic.MidiCodec do
   end
 
   defp key_signature(events) do
-    Enum.find_value(events, {0, :major}, fn
+    Enum.find_value(events, {@defaults.sf, @defaults.mode}, fn
       {_tick, :key_signature, [<<sf::signed-8, mi>>]} when sf in -7..7 ->
-        {sf, if(mi == 1, do: :minor, else: :major)}
+        {sf, if(mi == @minor_mode_byte, do: :minor, else: :major)}
 
       _event ->
         nil
@@ -287,10 +336,10 @@ defmodule DrawMusic.MidiCodec do
   end
 
   defp time_signature_of(events) do
-    Enum.find_value(events, {4, 4}, fn
+    Enum.find_value(events, {@defaults.time_num, @defaults.time_den}, fn
       {_tick, :time_signature, [<<num, dd, _rest::binary>>]} ->
         den = 1 <<< dd
-        if num in 1..32 and den in @time_denominators, do: {num, den}
+        if num in 1..Context.max_time_num() and den in @time_denominators, do: {num, den}
 
       _event ->
         nil
@@ -298,22 +347,31 @@ defmodule DrawMusic.MidiCodec do
   end
 
   defp tempo(events) do
-    Enum.find_value(events, 120, fn
-      {_tick, :tempo, [mpq]} when mpq > 0 -> round(60_000_000 / mpq) |> max(20) |> min(400)
-      _event -> nil
+    Enum.find_value(events, @midi_default_bpm, fn
+      {_tick, :tempo, [mpq]} when mpq > 0 ->
+        (@microseconds_per_minute / mpq)
+        |> round()
+        |> max(@tempo_range.first)
+        |> min(@tempo_range.last)
+
+      _event ->
+        nil
     end)
   end
 
   defp program(events) do
-    Enum.find_value(events, 0, fn
+    Enum.find_value(events, @default_program, fn
       {_tick, :program, [channel, program]} when channel != @percussion_channel -> program
       _event -> nil
     end)
   end
 
-  # [{midi, start, ticks}] on our 960-tick grid, from note on/off pairs.
+  # [{midi, start, ticks}] in our ticks, from note on/off pairs.
   defp played_notes(events, division) do
-    last_tick = events |> Enum.map(&elem(&1, 0)) |> Enum.max(fn -> 0 end)
+    last_tick =
+      events
+      |> Enum.map(&elem(&1, 0))
+      |> Enum.max(fn -> 0 end)
 
     {notes, open} =
       Enum.reduce(events, {[], %{}}, fn
@@ -357,7 +415,9 @@ defmodule DrawMusic.MidiCodec do
   end
 
   defp split_at_middle_c(notes) do
-    {treble, bass} = Enum.split_with(notes, fn {key, _start, _ticks} -> key >= 60 end)
+    {treble, bass} =
+      Enum.split_with(notes, fn {key, _start, _ticks} -> key >= Pitch.middle_c() end)
+
     [{:treble, treble}, {:bass, bass}]
   end
 
@@ -365,7 +425,12 @@ defmodule DrawMusic.MidiCodec do
   # the lowest voice free when they start, higher chords first at a shared
   # onset; one that finds all four voices busy is dropped.
   defp voiced_entries(notes, staff, sf) do
-    onsets = notes |> Enum.map(&elem(&1, 1)) |> Enum.uniq() |> Enum.sort()
+    onsets =
+      notes
+      |> Enum.map(&elem(&1, 1))
+      |> Enum.uniq()
+      |> Enum.sort()
+
     next_onset = Map.new(Enum.zip(onsets, tl(onsets ++ [nil])))
 
     notes
@@ -374,8 +439,8 @@ defmodule DrawMusic.MidiCodec do
     end)
     |> Enum.group_by(fn {_key, start, ticks} -> {start, ticks} end, &elem(&1, 0))
     |> Enum.sort_by(fn {{start, _ticks}, keys} -> {start, -Enum.max(keys)} end)
-    |> Enum.flat_map_reduce(Map.new(1..4, &{&1, 0}), fn {{start, ticks}, keys}, free ->
-      case Enum.find(1..4, &(free[&1] <= start)) do
+    |> Enum.flat_map_reduce(Map.new(Note.voices(), &{&1, 0}), fn {{start, ticks}, keys}, free ->
+      case Enum.find(Note.voices(), &(free[&1] <= start)) do
         nil ->
           {[], free}
 
@@ -387,14 +452,20 @@ defmodule DrawMusic.MidiCodec do
   end
 
   defp trim_legato(start, ticks, next)
-       when is_integer(next) and start + ticks > next and start + ticks - next < @legato,
-       do: next - start
+       when is_integer(next) and start + ticks > next and start + ticks - next < @legato do
+    next - start
+  end
 
   defp trim_legato(_start, ticks, _next), do: ticks
 
   # Repeated letters in a chord keep the first.
   defp chord(keys, staff, voice, start, ticks, sf) do
-    for {step, alter} <- keys |> Enum.map(&Pitch.spell(&1, sf)) |> Enum.uniq_by(&elem(&1, 0)) do
+    spellings =
+      keys
+      |> Enum.map(&Pitch.spell(&1, sf))
+      |> Enum.uniq_by(&elem(&1, 0))
+
+    for {step, alter} <- spellings do
       note = %Note{
         id: Ecto.UUID.generate(),
         staff: staff,

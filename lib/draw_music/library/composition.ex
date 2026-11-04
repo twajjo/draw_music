@@ -15,6 +15,10 @@ defmodule DrawMusic.Library.Composition do
   alias DrawMusic.Library.Key
 
   @credit_fields [:subtitle, :composer, :arranger, :lyricist, :copyright]
+  @max_name_length 120
+  # Credits are varchar(255) columns.
+  @max_credit_length 255
+  @max_notes_length 10_000
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -56,13 +60,17 @@ defmodule DrawMusic.Library.Composition do
     |> cast(attrs, [:name, :notes | @credit_fields])
     |> update_change(:name, &String.trim/1)
     |> validate_required([:name])
-    |> validate_length(:name, max: 120)
-    |> then(&Enum.reduce(@credit_fields, &1, fn f, cs -> validate_length(cs, f, max: 255) end))
-    |> validate_length(:notes, max: 10_000)
+    |> validate_length(:name, max: @max_name_length)
+    |> validate_credits()
+    |> validate_length(:notes, max: @max_notes_length)
     |> put_change(:user_id, scope.user.id)
     |> unique_constraint(:name,
       name: :compositions_user_id_name_index,
       message: "you already have a composition with this name"
     )
+  end
+
+  defp validate_credits(changeset) do
+    Enum.reduce(@credit_fields, changeset, &validate_length(&2, &1, max: @max_credit_length))
   end
 end

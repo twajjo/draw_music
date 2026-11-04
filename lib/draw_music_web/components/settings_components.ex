@@ -23,16 +23,18 @@ defmodule DrawMusicWeb.SettingsComponents do
   @doc "Switches between one long staff and page-style systems."
   attr :id, :string, required: true
   attr :layout, :atom, required: true, values: [:strip, :page]
+  attr :class, :string, default: nil, doc: "extra classes for the group (e.g. `contents`)"
+  attr :button_class, :string, default: nil, doc: "extra classes for each button"
 
   @spec layout_toggle(map()) :: Phoenix.LiveView.Rendered.t()
   def layout_toggle(assigns) do
     ~H"""
-    <div id={@id} class="join" role="group" aria-label="Score layout">
+    <div id={@id} class={["join", @class]} role="group" aria-label="Score layout">
       <button
         :for={
           {layout, label, hint} <- [
-            {:strip, "Strip", "One long staff"},
-            {:page, "Page", "Rows, like sheet music"}
+            {:page, "Page", "Rows, like sheet music"},
+            {:strip, "Strip", "One long staff"}
           ]
         }
         id={"#{@id}-#{layout}"}
@@ -43,6 +45,7 @@ defmodule DrawMusicWeb.SettingsComponents do
         phx-value-layout={layout}
         class={[
           "join-item btn btn-sm transition-colors",
+          @button_class,
           if(@layout == layout, do: "btn-primary", else: "btn-ghost")
         ]}
       >

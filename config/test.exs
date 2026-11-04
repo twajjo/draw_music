@@ -23,6 +23,9 @@ config :draw_music, DrawMusicWeb.Endpoint,
   secret_key_base: "N8FC/g9ko1geE1KBzcv+yusZ9I6qQEXb5T7XI/wH0DXAyd5L/5Q3BiwwAWPVr1em",
   server: false
 
+# Sample downloads go to a Req.Test stub, never the network.
+config :draw_music, :samples_req, plug: {Req.Test, DrawMusic.Samples}, retry: false
+
 # In test we don't send emails
 config :draw_music, DrawMusic.Mailer, adapter: Swoosh.Adapters.Test
 

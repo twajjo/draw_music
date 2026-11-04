@@ -3,7 +3,7 @@ defmodule DrawMusic.Music.EditingTest do
 
   import DrawMusic.MusicHelpers
 
-  alias DrawMusic.Music.{Context, Editing, Score, Transpose}
+  alias DrawMusic.Music.{Chords, Context, Editing, Score, Transpose}
 
   @ctx %Context{}
 
@@ -42,6 +42,14 @@ defmodule DrawMusic.Music.EditingTest do
                [{0, :eighth, 4}, {0, :half, 2}, {0, :quarter, 3}, {0, :whole, 1}]
 
       assert place(score, 0, "C4", %{offset: 0, value: :sixteenth}) == {:error, :overlap}
+    end
+
+    test "the same pitch, start and length isn't doubled in another voice" do
+      {score, _id} =
+        note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :half})
+
+      assert place(score, 0, "C4", %{offset: 0, value: :half}) == {:error, :duplicate}
+      assert {:ok, _score, _id} = place(score, 0, "C4", %{offset: 0, value: :quarter})
     end
 
     test "in one voice, same start and length make a chord, but not on the same step" do
@@ -142,7 +150,7 @@ defmodule DrawMusic.Music.EditingTest do
       assert MapSet.disjoint?(MapSet.new(ids), MapSet.new([a, b]))
     end
 
-    test "fill_rests fills voice 1 of each staff and any other voice in use" do
+    test "fill_rests fills voice 1 of each staff and any other voice in use, on the beats" do
       {score, _id} =
         note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
 
@@ -155,9 +163,53 @@ defmodule DrawMusic.Music.EditingTest do
 
       assert Enum.sort(rests) == [
                {:bass, 1, 0, :whole, 0},
-               {:treble, 1, 960, :half, 1},
+               {:treble, 1, 960, :quarter, 0},
+               {:treble, 1, 1920, :half, 0},
                {:treble, 2, 1920, :half, 0}
              ]
+    end
+
+    test "move_to_staff moves a note to the other staff, leaving a gap on the first" do
+      {score, id} =
+        note!(Score.new(), @ctx, 0, "G3", %{staff: :treble, offset: 960, value: :half})
+
+      {:ok, score, new_id} = Editing.move_to_staff(score, @ctx, id, :bass, 25)
+      [note] = hd(score.measures).notes
+
+      assert {note.id, note.staff, note.step, note.offset, note.value} ==
+               {new_id, :bass, 25, 960, :half}
+    end
+
+    test "move_to_staff on the note's own staff just moves it, keeping its id" do
+      {score, id} =
+        note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
+
+      {:ok, score, ^id} = Editing.move_to_staff(score, @ctx, id, :treble, 30)
+      assert [%{id: ^id, staff: :treble, step: 30}] = hd(score.measures).notes
+    end
+
+    test "chordify replaces a selected note's whole chord, built on its lowest note" do
+      {score, low} = note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :half})
+      {score, _high} = note!(score, @ctx, 0, "G4", %{staff: :treble, offset: 0, value: :half})
+      minor = fn step, alter -> Chords.build(step, alter, :minor) end
+
+      {:ok, score, ids} = Editing.chordify(score, @ctx, [low], minor)
+
+      assert hd(ids) == low
+      assert length(ids) == 3
+      assert Enum.map(notes(score), &elem(&1, 2)) == ["C4", "E♭4", "G4"]
+    end
+
+    test "move_to_staff joins a note already on the other staff as a second voice or chord" do
+      {score, bass} =
+        note!(Score.new(), @ctx, 0, "C3", %{staff: :bass, offset: 0, value: :quarter})
+
+      {score, id} = note!(score, @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
+
+      {:ok, score, new_id} = Editing.move_to_staff(score, @ctx, id, :bass, 23)
+      ids = for n <- hd(score.measures).notes, n.staff == :bass, do: n.id
+
+      assert Enum.sort(ids) == Enum.sort([bass, new_id])
     end
   end
 
@@ -228,11 +280,175 @@ defmodule DrawMusic.Music.EditingTest do
       assert notes(score) == [{0, 960, "G4", :half, 1}, {1, 0, "G4", :quarter, 0}]
       assert length(tie_chain(score, id)) == 2
     end
+
+    test "trailing filler rests shrink instead of moving" do
+      {score, _id} = note!(Score.new(), @ctx, 0, "G4", %{staff: :treble, offset: 0, value: :half})
+
+      {:ok, score} = Editing.insert_time(score, @ctx, 0, 960, :treble)
+
+      assert length(score.measures) == 1
+      assert notes(score) == [{0, 960, "G4", :half, 0}]
+      assert fillers(score, :treble) == [{0, 0, :quarter, 0}, {0, 2880, :quarter, 0}]
+    end
+
+    test "a placed rest between notes moves with them" do
+      {score, _id} =
+        note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
+
+      {:ok, score, _rest} =
+        Editing.place_rest(
+          score,
+          @ctx,
+          0,
+          placement(%{staff: :treble, offset: 960, value: :quarter})
+        )
+
+      {score, _id} = note!(score, @ctx, 0, "E4", %{staff: :treble, offset: 1920, value: :quarter})
+
+      {:ok, score} = Editing.insert_time(score, @ctx, 0, 960, :treble)
+
+      assert notes(score) == [{0, 960, "C4", :quarter, 0}, {0, 2880, "E4", :quarter, 0}]
+      assert rests(score) == [{0, 1920, :quarter, 0}]
+    end
+
+    test "a note pushed across the bar line and back is one note again" do
+      {score, c} =
+        note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
+
+      {score, d} = note!(score, @ctx, 0, "D4", %{staff: :treble, offset: 1920, value: :half})
+
+      {:ok, score} = Editing.insert_time(score, @ctx, 0, 960, :treble)
+
+      assert notes(score) |> Enum.drop(1) == [
+               {0, 2880, "D4", :quarter, 0},
+               {1, 0, "D4", :quarter, 0}
+             ]
+
+      {:ok, score} = Editing.delete(score, @ctx, [c])
+
+      assert notes(score) == [{0, 1920, "D4", :half, 0}]
+      assert tie_chain(score, d) == [d]
+    end
   end
 
+  describe "insert_point/4" do
+    test "an insert never leaves a gap" do
+      {score, _id} =
+        note!(Score.new(2), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
+
+      # Inside the note: where clicked. Past the music: right after it.
+      assert Editing.insert_point(score, @ctx, :treble, 0) == 0
+      assert Editing.insert_point(score, @ctx, :treble, 2880) == 960
+      assert Editing.insert_point(score, @ctx, :treble, 3840 + 1920) == 960
+      # The bass staff is empty: its music starts at the beginning.
+      assert Editing.insert_point(score, @ctx, :bass, 1920) == 0
+    end
+
+    test "like a text cursor: in front of a rest between notes, never inside an item" do
+      {score, _id} = note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :half})
+      {score, _id} = note!(score, @ctx, 0, "E4", %{staff: :treble, offset: 2880, value: :quarter})
+
+      # The rest between them (beat 3) is an item like any other.
+      assert Editing.insert_point(score, @ctx, :treble, 1920) == 1920
+      # Inside the half note: after it.
+      assert Editing.insert_point(score, @ctx, :treble, 960) == 1920
+    end
+  end
+
+  describe "filler rests" do
+    test "fill every gap on the beats and keep their ids through unrelated edits" do
+      {score, _id} =
+        note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
+
+      assert fillers(score, :treble) == [{0, 960, :quarter, 0}, {0, 1920, :half, 0}]
+      assert fillers(score, :bass) == [{0, 0, :whole, 0}]
+
+      ids = for m <- score.measures, r <- m.rests, r.staff == :bass, do: r.id
+      {score, _id} = note!(score, @ctx, 0, "E4", %{staff: :treble, offset: 960, value: :quarter})
+      assert ids == for(m <- score.measures, r <- m.rests, r.staff == :bass, do: r.id)
+    end
+
+    test "an empty 3/4 bar is one whole-bar rest" do
+      ctx = %{@ctx | time_num: 3}
+      score = Editing.fill_rests(Score.new(), ctx)
+      assert fillers(score, :treble) == [{0, 0, :half, 1}]
+    end
+
+    test "a note placed over a placed rest takes its place" do
+      {:ok, score, _rest} =
+        Editing.place_rest(
+          Score.new(),
+          @ctx,
+          0,
+          placement(%{staff: :treble, offset: 0, value: :half})
+        )
+
+      {score, _id} = note!(score, @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
+
+      assert voices(score) == [{0, :quarter, 1}]
+      assert rests(score) == []
+      assert fillers(score, :treble) == [{0, 960, :quarter, 0}, {0, 1920, :half, 0}]
+    end
+
+    test "deleting a filler rest closes its gap" do
+      {score, _id} =
+        note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
+
+      {score, _id} = note!(score, @ctx, 0, "E4", %{staff: :treble, offset: 1920, value: :quarter})
+
+      [gap] =
+        for m <- score.measures, r <- m.rests, r.staff == :treble, r.offset == 960, do: r.id
+
+      {:ok, score} = Editing.delete(score, @ctx, [gap])
+      assert notes(score) == [{0, 0, "C4", :quarter, 0}, {0, 960, "E4", :quarter, 0}]
+    end
+
+    test "a filler rest given a new length becomes the user's" do
+      score = Editing.fill_rests(Score.new(), @ctx)
+      [whole] = for m <- score.measures, r <- m.rests, r.staff == :treble, do: r.id
+
+      {:ok, score} = Editing.set_value(score, @ctx, whole, :half, 0)
+
+      assert rests(score) == [{0, 0, :half, 0}]
+      assert fillers(score, :treble) == [{0, 1920, :half, 0}]
+    end
+  end
+
+  describe "add_to_chord/4" do
+    test "adds a third above the top note or below the bottom one, in the key" do
+      ctx = %{@ctx | sf: 1}
+      {score, id} = note!(Score.new(), ctx, 0, "D4", %{staff: :treble, offset: 0, value: :half})
+
+      {:ok, score, _up} = Editing.add_to_chord(score, ctx, id, 2)
+      {:ok, score, _down} = Editing.add_to_chord(score, ctx, id, -2)
+
+      assert Enum.map(notes(score), &elem(&1, 2)) |> Enum.sort() == ["B3", "D4", "F♯4"]
+      assert voices(score) |> Enum.uniq() == [{0, :half, 1}]
+    end
+  end
+
+  describe "placing across a bar line" do
+    test "with cross_bar a note running past the bar is tied over it" do
+      attrs = %{staff: :treble, offset: 2880, value: :half, cross_bar: true}
+      {score, id} = note!(Score.new(), @ctx, 0, "C4", attrs)
+
+      assert notes(score) == [{0, 2880, "C4", :quarter, 0}, {1, 0, "C4", :quarter, 0}]
+      assert length(tie_chain(score, id)) == 2
+    end
+  end
+
+  # The rests the user placed (filler is checked with fillers/2).
   defp rests(score) do
     for {m, i} <- Enum.with_index(score.measures),
         r <- m.rests,
+        not r.filler,
+        do: {i, r.offset, r.value, r.dots}
+  end
+
+  defp fillers(score, staff) do
+    for {m, i} <- Enum.with_index(score.measures),
+        r <- m.rests,
+        r.filler and r.staff == staff,
         do: {i, r.offset, r.value, r.dots}
   end
 
@@ -299,6 +515,14 @@ defmodule DrawMusic.Music.EditingTest do
       {score, _id} = note!(score, @ctx, 0, "E4", %{staff: :treble, offset: 960, value: :quarter})
 
       assert Editing.set_value(score, @ctx, id, :half, 0) == {:error, :overlap}
+    end
+
+    @tag timeout: 1_000
+    test "rejects more than two dots rather than retrying forever" do
+      {score, id} =
+        note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
+
+      assert_raise FunctionClauseError, fn -> Editing.set_value(score, @ctx, [id], :half, 3) end
     end
   end
 

@@ -37,31 +37,76 @@ export function locate(geometry, x, y) {
   const system = systemAt(geometry, y)
   if (!system) return null
 
-  const ry = y - system.y
-  const {staff_top: top, top_step: topStep} = geometry
-  const gapMiddle = (top.treble + 4 + top.bass) / 2
-  const staff = ry < gapMiddle ? "treble" : "bass"
-  const rawStep = topStep[staff] - Math.round((ry - top[staff]) * 2)
-  const step = Math.min(MAX_STEP, Math.max(MIN_STEP, rawStep))
-
+  const {staff, step} = staffStepAt(geometry, system, y)
   const measure = measureAt(system, x)
-  const tick = (x - measure.content_x) / measure.scale
-  const offset = Math.min(measure.capacity - 1, Math.max(0, tick))
+  const offset = Math.min(measure.capacity - 1, Math.max(0, offsetAt(measure, x)))
 
   return {system, measure, offset, staff, step}
 }
 
+// A measure's linear stretches (as MeasureGeometry): each column to the
+// start of the next column's insertion gap, the last to the content's end.
+function segments(measure) {
+  const {columns} = measure
+  return columns.map((column, i) => {
+    const next = columns[i + 1]
+    const to = next ? {offset: next.offset, x: next.x - measure.gap} : {offset: measure.capacity, x: measure.content_end}
+    return [column, to]
+  })
+}
+
+// Ticks into the measure at x; in an insertion gap, the next column's offset.
+export function offsetAt(measure, x) {
+  const all = segments(measure)
+  const [from, to] = all.find(([, end]) => x < end.x) || all[all.length - 1]
+  if (x <= from.x) return from.offset
+  return from.offset + ((x - from.x) / (to.x - from.x)) * (to.offset - from.offset)
+}
+
+// x of `offset` ticks into the measure.
+export function xAt(measure, offset) {
+  const all = segments(measure)
+  const [from, to] = all.find(([, end]) => offset < end.offset) || all[all.length - 1]
+  return from.x + ((offset - from.offset) / (to.offset - from.offset)) * (to.x - from.x)
+}
+
+// Overlay: the column on `staff` whose insertion gap or notehead (`head`
+// wide) is at x, or null.
+export function columnAt(measure, staff, x, head) {
+  return measure.columns.find((c) => c.staves.includes(staff) && x >= c.x - measure.gap && x < c.x + head) || null
+}
+
+// Insert: the column on `staff` a click at x goes in front of (the first
+// whose notehead ends right of x), or null past the last one.
+export function insertColumn(measure, staff, x, head) {
+  return measure.columns.find((c) => c.staves.includes(staff) && x < c.x + head) || null
+}
+
+// The staff and step at y in a given system; between the staves, the
+// closer staff.
+export function staffStepAt(geometry, system, y) {
+  const top = geometry.staff_top
+  const gapMiddle = (top.treble + 4 + top.bass) / 2
+  const staff = y - system.y < gapMiddle ? "treble" : "bass"
+  return {staff, step: stepOnStaff(geometry, system, staff, y)}
+}
+
 // The step at y on a given staff of a system (no switching staves), for
-// dragging a note up and down.
+// dragging several notes up and down together.
 export function stepOnStaff(geometry, system, staff, y) {
   const raw = geometry.top_step[staff] - Math.round((y - system.y - geometry.staff_top[staff]) * 2)
   return Math.min(MAX_STEP, Math.max(MIN_STEP, raw))
 }
 
-// The grid position at or before `offset`, leaving room for the value.
+// The step a notehead drawn at y (relative to its system) sits on.
+export function stepAtY(geometry, staff, y) {
+  return geometry.top_step[staff] - Math.round((y - geometry.staff_top[staff]) * 2)
+}
+
+// The grid position nearest `offset`, leaving room for the value.
 export function snap(offset, grid, capacity) {
   const latest = Math.max(0, Math.floor((capacity - grid) / grid) * grid)
-  return Math.min(latest, Math.floor(offset / grid) * grid)
+  return Math.min(latest, Math.round(offset / grid) * grid)
 }
 
 // The alteration the key gives a step's letter.

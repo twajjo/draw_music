@@ -18,6 +18,12 @@ defmodule DrawMusicWeb.ScoreComponents do
   # Page layout width in staff spaces: about A4's printable width at a
   # 1.75 mm staff space.
   @page_width 104
+  # A tie's arch rises with its length, within limits (staff spaces).
+  @tie_rise 0.2
+  @tie_min_height 0.6
+  @tie_max_height 1.8
+  # Decimal places kept in SVG numbers.
+  @precision 3
 
   @doc "Space left of the first system in the score's viewBox, in staff spaces."
   @spec padding() :: number()
@@ -93,6 +99,7 @@ defmodule DrawMusicWeb.ScoreComponents do
     <text
       id={dom_id(@item)}
       class={MapSet.member?(@selection, @item.id) && "selected"}
+      data-staff={@item.staff}
       x={n(@item.x)}
       y={n(@item.y)}
     >
@@ -149,8 +156,14 @@ defmodule DrawMusicWeb.ScoreComponents do
   # Two quadratic curves between the endpoints: the outer one bulges `dir`,
   # the inner one a little less, leaving the tie its midpoint thickness.
   defp tie_path(%Tie{x1: x1, x2: x2, y: y, dir: dir}) do
-    sign = if dir == :down, do: 1, else: -1
-    height = (x2 - x1) |> Kernel.*(0.2) |> max(0.6) |> min(1.8)
+    sign = tie_sign(dir)
+
+    height =
+      (x2 - x1)
+      |> Kernel.*(@tie_rise)
+      |> max(@tie_min_height)
+      |> min(@tie_max_height)
+
     inner = height - 2 * Smufl.default("tieMidpointThickness")
     mid = (x1 + x2) / 2
 
@@ -158,6 +171,9 @@ defmodule DrawMusicWeb.ScoreComponents do
       "Q#{n(mid)} #{n(y + sign * inner)} #{n(x1)} #{n(y)}Z"
   end
 
+  defp tie_sign(:down), do: 1
+  defp tie_sign(_up), do: -1
+
   defp n(x) when is_integer(x), do: x
-  defp n(x) when is_float(x), do: Float.round(x, 3)
+  defp n(x) when is_float(x), do: Float.round(x, @precision)
 end

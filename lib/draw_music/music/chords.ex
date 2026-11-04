@@ -22,6 +22,12 @@ defmodule DrawMusic.Music.Chords do
     add9: [{0, 0}, {2, 4}, {4, 7}, {8, 14}]
   }
 
+  @steps_per_third 2
+  @triad 3
+  @seventh_chord 4
+  @dominant 5
+  @leading_tone 7
+
   @typedoc "A chord quality from the catalog."
   @type quality ::
           :major
@@ -40,9 +46,71 @@ defmodule DrawMusic.Music.Chords do
   @typedoc "A pitch as a staff step and an alteration."
   @type pitch :: {integer(), -2..2}
 
+  # Lead-sheet chord-name endings: a major chord is the root alone.
+  @suffixes %{
+    major: "",
+    minor: "m",
+    diminished: "dim",
+    augmented: "aug",
+    dominant7: "7",
+    major7: "maj7",
+    minor7: "m7",
+    half_diminished7: "m7♭5",
+    diminished7: "dim7",
+    sus2: "sus2",
+    sus4: "sus4",
+    add9: "add9"
+  }
+
+  # The editor's names (palette, placing preview): major and minor spelled
+  # out, so a chord reads "Dmaj" or "F♯min"; the rest as the suffixes.
+  @names Map.merge(@suffixes, %{major: "maj", minor: "min"})
+
+  @numerals %{
+    major: ~w(I ii iii IV V vi vii°),
+    minor: ~w(i ii° III iv V VI vii°)
+  }
+
   @doc "The chord qualities in the catalog."
   @spec qualities() :: [quality()]
   def qualities, do: Map.keys(@qualities)
+
+  @doc "A quality's chord-name ending, e.g. `\"m\"` in Cm (none for major)."
+  @spec suffix(quality()) :: String.t()
+  def suffix(quality), do: Map.fetch!(@suffixes, quality)
+
+  @doc "A quality's name in the editor, e.g. `\"min\"` in F♯min."
+  @spec name(quality()) :: String.t()
+  def name(quality), do: Map.fetch!(@names, quality)
+
+  @doc "The roman numeral of scale degree `degree` (1..7) in a major or minor key."
+  @spec numeral(:major | :minor, 1..7) :: String.t()
+  def numeral(mode, degree), do: Enum.at(Map.fetch!(@numerals, mode), degree - 1)
+
+  @doc "The numerals of a mode's seven degrees, in order."
+  @spec numerals(:major | :minor) :: [String.t()]
+  def numerals(mode), do: Map.fetch!(@numerals, mode)
+
+  @doc """
+  The catalog quality of a chord given root first, by the letter steps and
+  semitones of each note above the root; nil when it isn't in the catalog.
+  """
+  @spec quality_of([pitch()]) :: quality() | nil
+  def quality_of([{root_step, root_alter} | _] = pitches) do
+    root = Pitch.midi(root_step, root_alter)
+
+    shape =
+      Enum.map(pitches, fn {step, alter} -> {step - root_step, Pitch.midi(step, alter) - root} end)
+
+    Enum.find_value(@qualities, fn
+      {quality, ^shape} -> quality
+      _other -> nil
+    end)
+  end
+
+  @doc "A quality's notes as {letter steps, semitones} above the root."
+  @spec intervals(quality()) :: [{non_neg_integer(), non_neg_integer()}]
+  def intervals(quality), do: Map.fetch!(@qualities, quality)
 
   @doc "Builds a chord of `quality` on the root `{root_step, root_alter}`."
   @spec build(integer(), -2..2, quality()) :: {:ok, [pitch()]} | {:error, :out_of_range}
@@ -68,27 +136,31 @@ defmodule DrawMusic.Music.Chords do
           {:ok, [pitch()]} | {:error, :out_of_range}
   def diatonic(sf, mode, root_step, opts \\ []) do
     {tonic, _pc} = Pitch.tonic(sf, mode)
-    degree = Integer.mod(Pitch.letter(root_step) - tonic, 7) + 1
-    size = if Keyword.get(opts, :seventh, false), do: 4, else: 3
+    degree_of = &(Integer.mod(Pitch.letter(&1) - tonic, Pitch.steps_per_octave()) + 1)
+    root_degree = degree_of.(root_step)
 
-    for k <- 0..(size - 1) do
-      step = root_step + 2 * k
-      letter = Pitch.letter(step)
-      {step, Pitch.key_alter(sf, letter) + leading_tone(mode, degree, letter, tonic)}
+    for third <- 0..(chord_size(Keyword.get(opts, :seventh, false)) - 1) do
+      step = root_step + @steps_per_third * third
+      key_alter = Pitch.key_alter(sf, Pitch.letter(step))
+      {step, key_alter + harmonic_minor_raise(mode, root_degree, degree_of.(step))}
     end
     |> checked()
   end
 
-  defp leading_tone(:minor, degree, letter, tonic) when degree in [5, 7],
-    do: if(Integer.mod(letter - tonic, 7) == 6, do: 1, else: 0)
+  defp chord_size(true = _seventh?), do: @seventh_chord
+  defp chord_size(false), do: @triad
 
-  defp leading_tone(_mode, _degree, _letter, _tonic), do: 0
+  defp harmonic_minor_raise(:minor, root_degree, @leading_tone)
+       when root_degree in [@dominant, @leading_tone] do
+    1
+  end
+
+  defp harmonic_minor_raise(_mode, _root_degree, _degree), do: 0
 
   defp checked(pitches) do
-    if Enum.all?(pitches, fn {step, alter} ->
-         alter in -2..2 and Pitch.in_range?(Pitch.midi(step, alter))
-       end),
-       do: {:ok, pitches},
-       else: {:error, :out_of_range}
+    case Enum.reject(pitches, fn {step, alter} -> Pitch.playable?(step, alter) end) do
+      [] -> {:ok, pitches}
+      _out_of_range -> {:error, :out_of_range}
+    end
   end
 end

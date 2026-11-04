@@ -22,14 +22,28 @@ defmodule DrawMusic.Engraving.Notes do
     Staff
   }
 
-  alias DrawMusic.Music.{Accidentals, BeamGroup, Beaming, Context, Duration, Measure, Stems}
+  alias DrawMusic.Music.{
+    Accidentals,
+    BeamGroup,
+    Beaming,
+    Context,
+    Duration,
+    Gaps,
+    Measure,
+    Stems
+  }
 
+  @half_space 0.5
   @stem_length 3.5
+  # Stems of values with more flags than this grow a beam step per flag.
+  @flags_on_plain_stem 2
   @min_beamed_stem 2.5
   @max_beam_rise 1.0
   # Distance between beam levels: beam thickness plus beam spacing.
   @beam_step 0.75
   @beam_stub 1.0
+  # Guards the slope of a beam whose first and last stems coincide.
+  @min_beam_run 1.0e-6
   @dot_gap 0.3
   @dot_step 0.5
   @accidental_gap 0.25
@@ -37,6 +51,8 @@ defmodule DrawMusic.Engraving.Notes do
   # Accidentals closer than this many steps go in different columns.
   @accidental_clearance 6
   @voice_rest_shift 2
+  # A whole rest hangs from the staff's second line.
+  @whole_rest_line 1
 
   @rest_glyphs %{
     whole: :restWhole,
@@ -68,8 +84,8 @@ defmodule DrawMusic.Engraving.Notes do
   }
 
   @doc """
-  Items for `measure` (number `index`) laid out in `geom` (`x`, `width`,
-  `capacity`, `content_x` and `scale` in staff spaces per tick). `tied_in`
+  Items for `measure` (number `index`) laid out in `geom` (see
+  `DrawMusic.Engraving.MeasureGeometry.x_at/2` for where offsets go). `tied_in`
   holds the ids of notes continuing a tie from the previous measure.
 
   Returns `{items, anchors}`; `anchors` maps each note id to its
@@ -83,7 +99,9 @@ defmodule DrawMusic.Engraving.Notes do
     groups = Beaming.groups(measure, ctx, index)
 
     group_of =
-      for g <- groups, offset <- g.offsets, into: %{}, do: {{g.staff, g.voice, offset}, g}
+      for g <- groups, offset <- g.offsets, into: %{} do
+        {{g.staff, g.voice, offset}, g}
+      end
 
     accidentals = Accidentals.displayed(measure, ctx.sf, tied_in)
 
@@ -95,10 +113,9 @@ defmodule DrawMusic.Engraving.Notes do
       end)
 
     stems =
-      for {key, chord} <- laid,
-          not Map.has_key?(group_of, key),
-          item <- free_stem(chord),
-          do: item
+      for {key, chord} <- laid, not Map.has_key?(group_of, key), item <- free_stem(chord) do
+        item
+      end
 
     items =
       Enum.flat_map(laid, fn {_key, chord} -> chord.items end) ++
@@ -111,13 +128,14 @@ defmodule DrawMusic.Engraving.Notes do
   # A beamed chord's stem direction is decided by its whole beam group.
   defp stem_steps(notes, nil, _chords), do: Enum.map(notes, & &1.step)
 
-  defp stem_steps(_notes, group, chords),
-    do: for(o <- group.offsets, n <- chords[{group.staff, group.voice, o}], do: n.step)
+  defp stem_steps(_notes, group, chords) do
+    for o <- group.offsets, n <- chords[{group.staff, group.voice, o}], do: n.step
+  end
 
   defp voice_counts(measure) do
     (measure.notes ++ measure.rests)
     |> Enum.group_by(& &1.staff, & &1.voice)
-    |> Map.new(fn {staff, voices} -> {staff, voices |> Enum.uniq() |> length()} end)
+    |> Map.new(fn {staff, voices} -> {staff, length(Enum.uniq(voices))} end)
   end
 
   ## Chords
@@ -125,11 +143,16 @@ defmodule DrawMusic.Engraving.Notes do
   defp chord([first | _] = notes, {staff, _voice, offset}, dir, geom, accidentals) do
     glyph = notehead(first.value)
     width = Smufl.width(glyph)
-    x = geom.content_x + offset * geom.scale
+    x = MeasureGeometry.x_at(geom, offset)
     heads = heads(notes, staff, dir, x, width)
-    left = heads |> Enum.map(& &1.x) |> Enum.min()
-    right = (heads |> Enum.map(& &1.x) |> Enum.max()) + width
-    ys = Enum.map(heads, & &1.y)
+
+    {left, rightmost} =
+      heads
+      |> Enum.map(& &1.x)
+      |> Enum.min_max()
+
+    right = rightmost + width
+    {top_y, bottom_y} = Enum.min_max(Enum.map(heads, & &1.y))
 
     %ChordLayout{
       staff: staff,
@@ -137,10 +160,10 @@ defmodule DrawMusic.Engraving.Notes do
       value: first.value,
       glyph: glyph,
       x: x,
-      top_y: Enum.min(ys),
-      bottom_y: Enum.max(ys),
+      top_y: top_y,
+      bottom_y: bottom_y,
       items:
-        Enum.map(heads, &glyph(:notehead, glyph, &1.x, &1.y, &1.note.id)) ++
+        Enum.map(heads, &%{glyph(:notehead, glyph, &1.x, &1.y, &1.note.id) | staff: staff}) ++
           ledgers(heads, staff, left, right) ++
           dots(heads, right) ++ accidentals(heads, left, accidentals),
       anchors:
@@ -155,13 +178,10 @@ defmodule DrawMusic.Engraving.Notes do
   # Walking from the stem's base, a note a second above (stem up) or below
   # (stem down) an unmoved note moves across the stem.
   defp heads(notes, staff, dir, x, width) do
-    order = if dir == :up, do: :asc, else: :desc
-
     notes
-    |> Enum.sort_by(& &1.step, order)
+    |> Enum.sort_by(& &1.step, from_stem_base(dir))
     |> Enum.map_reduce(nil, fn note, previous ->
-      moved =
-        previous != nil and abs(note.step - previous.note.step) == 1 and not previous.moved
+      moved = second_from_unmoved?(note, previous)
 
       head = %Head{
         note: note,
@@ -174,6 +194,13 @@ defmodule DrawMusic.Engraving.Notes do
     end)
     |> elem(0)
   end
+
+  defp from_stem_base(:up), do: :asc
+  defp from_stem_base(:down), do: :desc
+
+  defp second_from_unmoved?(_note, nil), do: false
+  defp second_from_unmoved?(_note, %Head{moved: true}), do: false
+  defp second_from_unmoved?(note, %Head{note: previous}), do: abs(note.step - previous.step) == 1
 
   defp shift(false, _dir, _width), do: 0
   defp shift(true, :up, width), do: width
@@ -195,10 +222,13 @@ defmodule DrawMusic.Engraving.Notes do
   # Dots sit in a space: a note on a line puts its dot in the space above.
   defp dots(heads, right) do
     for head <- heads, i <- 0..(head.note.dots - 1)//1 do
-      y = if Staff.line?(head.note.step), do: head.y - 0.5, else: head.y
+      y = dot_y(head.y, Staff.line?(head.note.step))
       glyph(:dot, :augmentationDot, right + @dot_gap + i * @dot_step, y)
     end
   end
+
+  defp dot_y(y, true = _on_line?), do: y - @half_space
+  defp dot_y(y, false), do: y
 
   # Top to bottom, each accidental goes in the first column whose last sign
   # is far enough above it.
@@ -208,17 +238,19 @@ defmodule DrawMusic.Engraving.Notes do
     |> Enum.sort_by(& &1.note.step, :desc)
     |> Enum.map_reduce([], fn head, columns ->
       glyph = Map.fetch!(@accidental_glyphs, shown[head.note.id])
-      column = Enum.find_index(columns, &(&1 - head.note.step >= @accidental_clearance))
-
-      {column, columns} =
-        if column,
-          do: {column, List.replace_at(columns, column, head.note.step)},
-          else: {length(columns), columns ++ [head.note.step]}
-
+      {column, columns} = accidental_column(columns, head.note.step)
       right = left - @accidental_gap - column * @accidental_column
       {glyph(:accidental, glyph, right - Smufl.width(glyph), head.y), columns}
     end)
     |> elem(0)
+  end
+
+  # `columns` holds the lowest step written in each column so far.
+  defp accidental_column(columns, step) do
+    case Enum.find_index(columns, &(&1 - step >= @accidental_clearance)) do
+      nil -> {length(columns), columns ++ [step]}
+      column -> {column, List.replace_at(columns, column, step)}
+    end
   end
 
   ## Stems, flags and beams
@@ -227,7 +259,7 @@ defmodule DrawMusic.Engraving.Notes do
 
   defp free_stem(chord) do
     flags = Duration.flags(chord.value)
-    length = @stem_length + max(flags - 2, 0) * @beam_step
+    length = @stem_length + max(flags - @flags_on_plain_stem, 0) * @beam_step
     {x, base} = stem_attachment(chord)
 
     tip =
@@ -255,20 +287,16 @@ defmodule DrawMusic.Engraving.Notes do
     end
   end
 
-  defp stem(x, base, tip, dir),
-    do: %{line(:stem, x, base, x, tip, Smufl.default("stemThickness")) | dir: dir}
+  defp stem(x, base, tip, dir) do
+    %{line(:stem, x, base, x, tip, Smufl.default("stemThickness")) | dir: dir}
+  end
 
   defp flag(0, _dir, _x, _tip), do: []
 
-  defp flag(flags, dir, x, tip),
-    do: [
-      glyph(
-        :flag,
-        Map.fetch!(@flag_glyphs, {flags, dir}),
-        x - Smufl.default("stemThickness") / 2,
-        tip
-      )
-    ]
+  defp flag(flags, dir, x, tip) do
+    glyph = Map.fetch!(@flag_glyphs, {flags, dir})
+    [glyph(:flag, glyph, x - Smufl.default("stemThickness") / 2, tip)]
+  end
 
   # The beam runs between the ideal stem tips of the first and last chords,
   # its slope clamped, then moves away from the notes until every stem is
@@ -276,9 +304,9 @@ defmodule DrawMusic.Engraving.Notes do
   defp beam(%BeamGroup{staff: staff, voice: voice, offsets: offsets}, laid) do
     chords = Enum.map(offsets, &Map.fetch!(laid, {staff, voice, &1}))
     dir = hd(chords).dir
-    sign = if dir == :up, do: -1, else: 1
+    sign = away(dir)
     attachments = Enum.map(chords, &stem_attachment/1)
-    extremes = Enum.map(chords, &if(dir == :up, do: &1.top_y, else: &1.bottom_y))
+    extremes = Enum.map(chords, &tip_side(&1, dir))
     levels = Enum.map(chords, &Duration.flags(&1.value))
 
     {x1, _} = hd(attachments)
@@ -290,7 +318,7 @@ defmodule DrawMusic.Engraving.Notes do
       |> max(-@max_beam_rise)
       |> min(@max_beam_rise)
 
-    sloped = fn x -> y1 + rise * (x - x1) / max(xn - x1, 1.0e-6) end
+    sloped = fn x -> y1 + rise * (x - x1) / max(xn - x1, @min_beam_run) end
 
     min_length = @min_beamed_stem + (Enum.max(levels) - 1) * @beam_step
 
@@ -310,12 +338,19 @@ defmodule DrawMusic.Engraving.Notes do
     stems = for {x, base} <- attachments, do: stem(x, base, beam_y.(x), dir)
 
     beams =
-      for level <- 1..Enum.max(levels),
-          {xa, xb} <- level_spans(xs, levels, level, half),
-          do: beam_item(xa, xb, beam_y, level, sign)
+      for level <- 1..Enum.max(levels), {xa, xb} <- level_spans(xs, levels, level, half) do
+        beam_item(xa, xb, beam_y, level, sign)
+      end
 
     stems ++ beams
   end
+
+  # y grows downward: stems up point toward negative y.
+  defp away(:up), do: -1
+  defp away(:down), do: 1
+
+  defp tip_side(chord, :up), do: chord.top_y
+  defp tip_side(chord, :down), do: chord.bottom_y
 
   # Spans of beam `level`: over each run of chords with at least that many
   # flags, or a short stub for a lone chord, pointing into the group.
@@ -328,16 +363,28 @@ defmodule DrawMusic.Engraving.Notes do
     |> Enum.filter(fn [{flags, _i} | _] -> flags >= level end)
     |> Enum.map(fn
       [{_flags, i}] ->
-        x = Enum.at(xs, i)
-        neighbour = if i == last, do: Enum.at(xs, i - 1), else: Enum.at(xs, i + 1)
-        stub = min(@beam_stub, abs(neighbour - x) / 2)
-        if i == last, do: {x + half - stub, x + half}, else: {x - half, x - half + stub}
+        stub(xs, i, last, half)
 
       [{_flags, i} | _] = run ->
         {_flags, j} = List.last(run)
         {Enum.at(xs, i) - half, Enum.at(xs, j) + half}
     end)
   end
+
+  # A lone chord's stub points back from the last stem, forward otherwise.
+  defp stub(xs, last, last, half) do
+    x = Enum.at(xs, last)
+    length = stub_length(x, Enum.at(xs, last - 1))
+    {x + half - length, x + half}
+  end
+
+  defp stub(xs, i, _last, half) do
+    x = Enum.at(xs, i)
+    length = stub_length(x, Enum.at(xs, i + 1))
+    {x - half, x - half + length}
+  end
+
+  defp stub_length(x, neighbour), do: min(@beam_stub, abs(neighbour - x) / 2)
 
   defp beam_item(xa, xb, beam_y, level, sign) do
     offset = -sign * (level - 1) * @beam_step
@@ -353,64 +400,68 @@ defmodule DrawMusic.Engraving.Notes do
 
   ## Rests
 
+  # Stored rests, then implied ones: a whole-bar rest on an empty staff, and
+  # rests in the gaps of each voice on a staff with notes.
   defp rests(measure, geom, voice_counts) do
     stored = Enum.flat_map(measure.rests, &rest(&1, geom, voice_counts[&1.staff]))
 
-    implied =
-      for staff <- [:treble, :bass],
-          not Map.has_key?(voice_counts, staff),
-          do: bar_rest(staff, geom, nil)
+    empty_staves =
+      for staff <- [:treble, :bass], not Map.has_key?(voice_counts, staff) do
+        bar_rest(staff, geom, nil)
+      end
 
-    stored ++ implied
+    gaps =
+      for rest <- Gaps.rests(measure, geom.capacity),
+          Map.has_key?(voice_counts, rest.staff),
+          item <- rest(rest, geom, voice_counts[rest.staff]),
+          do: item
+
+    stored ++ empty_staves ++ gaps
   end
 
   # A rest filling the bar alone on its staff is drawn as a centered whole
-  # rest, whatever the meter. With several voices, odd voices' rests move up
-  # and even voices' down.
-  defp rest(rest, geom, voices) do
-    if rest.offset == 0 and Duration.ticks(rest.value, rest.dots) == geom.capacity and voices == 1 do
-      [bar_rest(rest.staff, geom, rest.id)]
-    else
-      shift =
-        cond do
-          voices == 1 -> 0
-          rem(rest.voice, 2) == 1 -> -@voice_rest_shift
-          true -> @voice_rest_shift
-        end
-
-      glyph = Map.fetch!(@rest_glyphs, rest.value)
-
-      y =
-        if(rest.value == :whole, do: Staff.top(rest.staff) + 1, else: Staff.middle(rest.staff)) +
-          shift
-
-      x = geom.content_x + rest.offset * geom.scale
-      right = x + Smufl.width(glyph)
-
-      dots =
-        for i <- 0..(rest.dots - 1)//1,
-            do:
-              glyph(
-                :dot,
-                :augmentationDot,
-                right + @dot_gap + i * @dot_step,
-                Staff.middle(rest.staff) - 0.5 + shift
-              )
-
-      [glyph(:rest, glyph, x, y, rest.id) | dots]
+  # rest, whatever the meter.
+  defp rest(rest, %MeasureGeometry{capacity: capacity} = geom, voices) do
+    case {rest.offset, Duration.ticks(rest.value, rest.dots), voices} do
+      {0, ^capacity, 1} -> [bar_rest(rest.staff, geom, rest.id)]
+      _partial -> placed_rest(rest, geom, voice_shift(rest.voice, voices))
     end
   end
 
+  defp placed_rest(rest, geom, shift) do
+    glyph = Map.fetch!(@rest_glyphs, rest.value)
+    x = MeasureGeometry.x_at(geom, rest.offset)
+    right = x + Smufl.width(glyph)
+    dot_y = Staff.middle(rest.staff) - @half_space + shift
+
+    dots =
+      for i <- 0..(rest.dots - 1)//1 do
+        glyph(:dot, :augmentationDot, right + @dot_gap + i * @dot_step, dot_y)
+      end
+
+    [glyph(:rest, glyph, x, rest_y(rest.value, rest.staff) + shift, rest.id) | dots]
+  end
+
+  # With several voices, odd voices' rests move up and even voices' down.
+  defp voice_shift(_voice, 1 = _voices), do: 0
+  defp voice_shift(voice, _voices) when rem(voice, 2) == 1, do: -@voice_rest_shift
+  defp voice_shift(_voice, _voices), do: @voice_rest_shift
+
+  defp rest_y(:whole, staff), do: Staff.top(staff) + @whole_rest_line
+  defp rest_y(_value, staff), do: Staff.middle(staff)
+
   defp bar_rest(staff, geom, id) do
     x = geom.x + (geom.width - Smufl.width(:restWhole)) / 2
-    glyph(:rest, :restWhole, x, Staff.top(staff) + 1, id)
+    glyph(:rest, :restWhole, x, rest_y(:whole, staff), id)
   end
 
   ## Items
 
-  defp glyph(role, glyph, x, y, id \\ nil),
-    do: %Glyph{role: role, glyph: glyph, x: x, y: y, id: id}
+  defp glyph(role, glyph, x, y, id \\ nil) do
+    %Glyph{role: role, glyph: glyph, x: x, y: y, id: id}
+  end
 
-  defp line(role, x1, y1, x2, y2, thickness),
-    do: %Line{role: role, x1: x1, y1: y1, x2: x2, y2: y2, thickness: thickness}
+  defp line(role, x1, y1, x2, y2, thickness) do
+    %Line{role: role, x1: x1, y1: y1, x2: x2, y2: y2, thickness: thickness}
+  end
 end
