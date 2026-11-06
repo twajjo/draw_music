@@ -58,7 +58,7 @@ defmodule DrawMusic.Library.Composition do
   def changeset(composition, attrs, %Scope{} = scope) do
     composition
     |> cast(attrs, [:name, :notes | @credit_fields])
-    |> update_change(:name, &String.trim/1)
+    |> update_change(:name, &trim/1)
     |> validate_required([:name])
     |> validate_length(:name, max: @max_name_length)
     |> validate_credits()
@@ -69,6 +69,10 @@ defmodule DrawMusic.Library.Composition do
       message: "you already have a composition with this name"
     )
   end
+
+  # A cleared name arrives as nil; validate_required reports it.
+  defp trim(nil), do: nil
+  defp trim(name), do: String.trim(name)
 
   defp validate_credits(changeset) do
     Enum.reduce(@credit_fields, changeset, &validate_length(&2, &1, max: @max_credit_length))

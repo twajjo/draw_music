@@ -395,14 +395,13 @@ defmodule DrawMusicWeb.EditorComponents do
   @doc """
   The one dialog (or right-click menu) open over the score, if any. `dialog`
   says which: `:help`, `{:menu, menu}`, `{:tempo, dialog}`, `{:save_as, form}`,
-  `{:details, form}`, `{:settings, form}` or `{:transpose, {sf, mode}}`.
+  `{:settings, form}` or `{:transpose, {sf, mode}}`. Anything else (such as
+  `:details`, a LiveComponent the editor renders itself) draws nothing here.
   """
   attr :dialog, :any, required: true
   attr :editor_mode, :atom, required: true, doc: "whose shortcuts help shows"
 
   @spec editor_dialog(map()) :: Phoenix.LiveView.Rendered.t()
-  def editor_dialog(%{dialog: nil} = assigns), do: ~H""
-
   def editor_dialog(%{dialog: :help} = assigns) do
     ~H"""
     <.help_dialog shortcuts={Shortcuts.for_mode(@editor_mode)} />
@@ -433,14 +432,6 @@ defmodule DrawMusicWeb.EditorComponents do
     """
   end
 
-  def editor_dialog(%{dialog: {:details, form}} = assigns) do
-    assigns = assign(assigns, :form, form)
-
-    ~H"""
-    <LibraryComponents.details_dialog form={@form} />
-    """
-  end
-
   def editor_dialog(%{dialog: {:settings, form}} = assigns) do
     assigns = assign(assigns, :form, form)
 
@@ -456,6 +447,8 @@ defmodule DrawMusicWeb.EditorComponents do
     <.transpose_dialog key_name={@key_name} />
     """
   end
+
+  def editor_dialog(assigns), do: ~H""
 
   @doc """
   Small ⊕/⊖ buttons at each bar's top-left (insert a bar before it, delete

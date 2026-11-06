@@ -11,6 +11,7 @@ defmodule DrawMusicWeb.LibraryLive do
 
   alias DrawMusic.{Library, MidiCodec}
   alias DrawMusic.Library.{Import, Key}
+  alias DrawMusicWeb.DetailsDialog
 
   @max_midi_bytes 1_000_000
   @resolutions %{"replace" => :replace, "new_version" => :new_version}
@@ -52,7 +53,13 @@ defmodule DrawMusicWeb.LibraryLive do
         key_name={@import_key_name}
       />
 
-      <.details_dialog :if={@details_form} form={@details_form} />
+      <.live_component
+        :if={@details_composition}
+        module={DetailsDialog}
+        id="details"
+        scope={@current_scope}
+        composition={@details_composition}
+      />
     </Layouts.app>
     """
   end
@@ -64,7 +71,7 @@ defmodule DrawMusicWeb.LibraryLive do
     {:ok,
      socket
      |> assign(:page_title, "Compositions")
-     |> assign(details_composition: nil, details_form: nil)
+     |> assign(:details_composition, nil)
      |> reset_import()
      |> allow_upload(:midi,
        accept: ~w(.mid .midi),
@@ -137,40 +144,8 @@ defmodule DrawMusicWeb.LibraryLive do
   ## Details
 
   def handle_event("edit_details", %{"id" => id}, socket) when is_binary(id) do
-    scope = socket.assigns.current_scope
-    composition = Library.get_composition!(scope, id)
-
-    {:noreply,
-     assign(socket,
-       details_composition: composition,
-       details_form: to_form(Library.change_composition(scope, composition))
-     )}
-  end
-
-  def handle_event("validate_details", %{"composition" => params}, socket) do
-    %{current_scope: scope, details_composition: composition} = socket.assigns
-    changeset = Library.change_composition(scope, composition, params)
-    {:noreply, assign(socket, :details_form, to_form(changeset, action: :validate))}
-  end
-
-  def handle_event("save_details", %{"composition" => params}, socket) do
-    %{current_scope: scope, details_composition: composition} = socket.assigns
-
-    case Library.update_composition(scope, composition, params) do
-      {:ok, updated} ->
-        {:noreply,
-         socket
-         |> assign(details_composition: nil, details_form: nil)
-         |> stream_insert(:compositions, Library.get_composition!(scope, updated.id))
-         |> put_flash(:info, "Details saved.")}
-
-      {:error, changeset} ->
-        {:noreply, assign(socket, :details_form, to_form(changeset, action: :update))}
-    end
-  end
-
-  def handle_event("close_details", _params, socket) do
-    {:noreply, assign(socket, details_composition: nil, details_form: nil)}
+    composition = Library.get_composition!(socket.assigns.current_scope, id)
+    {:noreply, assign(socket, :details_composition, composition)}
   end
 
   ## Versions
@@ -209,6 +184,22 @@ defmodule DrawMusicWeb.LibraryLive do
       end)
 
     {:noreply, reset_import(socket)}
+  end
+
+  # The details dialog's results: the row shows the new details at once.
+  @impl true
+  def handle_info({DetailsDialog, {:saved, composition}}, socket) do
+    scope = socket.assigns.current_scope
+
+    {:noreply,
+     socket
+     |> assign(:details_composition, nil)
+     |> stream_insert(:compositions, Library.get_composition!(scope, composition.id))
+     |> put_flash(:info, "Details saved.")}
+  end
+
+  def handle_info({DetailsDialog, :closed}, socket) do
+    {:noreply, assign(socket, :details_composition, nil)}
   end
 
   defp import_as(socket, name, resolution) do
