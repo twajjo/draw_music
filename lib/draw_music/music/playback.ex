@@ -7,6 +7,19 @@ defmodule DrawMusic.Music.Playback do
   alias DrawMusic.Music.{Context, Note, Pitch, PlaybackEvent, Score, Sound, TempoMap, Timeline}
 
   @doc """
+  Where a skip lands: the first of `points` (ticks, in order) after `from`,
+  or, going back, the last before it. Nil when there is none.
+  """
+  @spec skip_target([non_neg_integer()], non_neg_integer(), boolean()) :: non_neg_integer() | nil
+  def skip_target(points, from, false = _back?), do: Enum.find(points, &(&1 > from))
+
+  def skip_target(points, from, true = _back?) do
+    points
+    |> Enum.filter(&(&1 < from))
+    |> List.last()
+  end
+
+  @doc """
   The score's sounds, ordered by start: a tied chain sounds once, for its
   total length.
   """
@@ -97,6 +110,41 @@ defmodule DrawMusic.Music.Playback do
     end
   end
 
+  @doc "The id of the first note or rest starting at or after `tick`, or nil."
+  @spec first_event_from(Score.t(), Context.t(), non_neg_integer()) :: Ecto.UUID.t() | nil
+  def first_event_from(%Score{} = score, %Context{} = ctx, tick) do
+    first =
+      score
+      |> Timeline.flatten(ctx)
+      |> Enum.filter(&(&1.start >= tick))
+      |> Enum.min_by(& &1.start, fn -> nil end)
+
+    case first do
+      nil -> nil
+      entry -> entry.event.id
+    end
+  end
+
+  @doc """
+  The span Play plays, as `{from, to}` ticks: several selected events play
+  from the first to the end of the last; one plays from there to the end
+  of the score; none, the whole score.
+  """
+  @spec span(Score.t(), Context.t(), MapSet.t(Ecto.UUID.t())) ::
+          {non_neg_integer(), non_neg_integer()}
+  def span(%Score{} = score, %Context{} = ctx, selection) do
+    selected =
+      score
+      |> Timeline.flatten(ctx)
+      |> Enum.filter(&(&1.event.id in selection))
+
+    case selected do
+      [] -> {0, Timeline.end_tick(score, ctx)}
+      [entry] -> {entry.start, Timeline.end_tick(score, ctx)}
+      entries -> {Enum.min(Enum.map(entries, & &1.start)), span_end(entries)}
+    end
+  end
+
   defp event(ids, midi, tick, from, ticks, map) do
     %PlaybackEvent{
       ids: ids,
@@ -106,5 +154,11 @@ defmodule DrawMusic.Music.Playback do
       start: TempoMap.seconds(map, from, tick),
       duration: TempoMap.seconds(map, tick, tick + ticks)
     }
+  end
+
+  defp span_end(entries) do
+    entries
+    |> Enum.map(&(&1.start + &1.ticks))
+    |> Enum.max()
   end
 end

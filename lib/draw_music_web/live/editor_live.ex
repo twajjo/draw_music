@@ -22,7 +22,7 @@ defmodule DrawMusicWeb.EditorLive do
     SettingsComponents
   }
 
-  alias DrawMusic.Engraving.Layout
+  alias DrawMusic.Engraving.{Engraved, Layout}
   alias DrawMusic.Library
   alias DrawMusic.Library.{Composition, Key, Version}
 
@@ -45,6 +45,7 @@ defmodule DrawMusicWeb.EditorLive do
     EditorGeometry,
     EditorPalette,
     EditorPlacement,
+    EditorSaving,
     EditorSettings,
     InstrumentSource,
     PlaybackPayload,
@@ -57,7 +58,6 @@ defmodule DrawMusicWeb.EditorLive do
   }
 
   @draft_measures 4
-  @draft_name "Untitled"
   @menu_events ~w(split set_value toggle_menu_dot to_rest to_note tie_next untie add_third_above
                   add_third_below menu_delete transpose reverse)
   # Everything that changes the score or arms the palette; Play mode ignores them.
@@ -264,9 +264,9 @@ defmodule DrawMusicWeb.EditorLive do
   def handle_info(:lay_out, socket), do: {:noreply, assign_layout(socket)}
 
   defp load(:new, _scope, _params) do
-    composition = %Composition{name: @draft_name, keys: []}
+    composition = %Composition{name: EditorSaving.untitled(), keys: []}
     key = %Key{sf: 0, mode: :major, composition: composition}
-    {composition, %Version{key: key, score: Score.new(@draft_measures)}, @draft_name}
+    {composition, %Version{key: key, score: Score.new(@draft_measures)}, composition.name}
   end
 
   defp load(:show, scope, params) do
@@ -399,7 +399,7 @@ defmodule DrawMusicWeb.EditorLive do
 
   # With nothing armed, the dot and accidental buttons change the selection.
   def handle_event("toggle_dot", _params, %{assigns: %{armed: nil}} = socket) do
-    events = selected_events(socket.assigns.session)
+    events = Session.selected_events(socket.assigns.session)
     dots = if Enum.all?(events, &(&1.dots > 0)), do: 0, else: 1
     ids = Enum.map(events, & &1.id)
     {:noreply, edit(socket, &Editing.set_dots(&1, &2, ids, dots))}
@@ -415,7 +415,7 @@ defmodule DrawMusicWeb.EditorLive do
         {:noreply, socket}
 
       {alter, nil} ->
-        ids = for %Note{id: id} <- selected_events(socket.assigns.session), do: id
+        ids = for %Note{id: id} <- Session.selected_events(socket.assigns.session), do: id
         {:noreply, edit(socket, &Editing.set_alter(&1, &2, ids, alter))}
 
       {alter, armed} ->
@@ -523,7 +523,9 @@ defmodule DrawMusicWeb.EditorLive do
         params,
         %{assigns: %{session: %{clipboard: %{} = clipboard}}} = socket
       ) do
-    {:noreply, edit(socket, EditorCommands.paste(clipboard, paste_at(socket, params["at"])))}
+    %{session: session, last_click: last_click} = socket.assigns
+    at = Session.paste_at(session, params["at"], last_click)
+    {:noreply, edit(socket, EditorCommands.paste(clipboard, at))}
   end
 
   def handle_event("paste", _params, socket), do: {:noreply, socket}
@@ -560,9 +562,14 @@ defmodule DrawMusicWeb.EditorLive do
 
   def handle_event("open_menu", %{"id" => id, "x" => x, "y" => y} = params, socket)
       when is_binary(id) and is_number(x) and is_number(y) do
-    case find_event(socket.assigns.session, id) do
-      nil -> {:noreply, socket}
-      event -> {:noreply, assign(socket, :menu, menu_for(socket, event, params))}
+    %{session: session} = socket.assigns
+
+    case Session.find_event(session, id) do
+      nil ->
+        {:noreply, socket}
+
+      event ->
+        {:noreply, assign(socket, :menu, ContextMenu.new(session.selection, event, params))}
     end
   end
 
@@ -713,7 +720,7 @@ defmodule DrawMusicWeb.EditorLive do
          |> put_flash(:info, "Saved")}
 
       {:error, changeset} ->
-        {:noreply, put_flash(socket, :error, changeset_message(changeset))}
+        {:noreply, put_flash(socket, :error, EditorSaving.error_message(changeset))}
     end
   end
 
@@ -726,7 +733,7 @@ defmodule DrawMusicWeb.EditorLive do
         {:noreply, saved_and_open(socket, saved, "Saved as version #{saved.number}")}
 
       {:error, changeset} ->
-        {:noreply, put_flash(socket, :error, changeset_message(changeset))}
+        {:noreply, put_flash(socket, :error, EditorSaving.error_message(changeset))}
     end
   end
 
@@ -756,7 +763,7 @@ defmodule DrawMusicWeb.EditorLive do
         {:noreply, assign(socket, :save_as_form, to_form(changeset, action: :insert))}
 
       {:error, changeset} ->
-        {:noreply, put_flash(socket, :error, changeset_message(changeset))}
+        {:noreply, put_flash(socket, :error, EditorSaving.error_message(changeset))}
     end
   end
 
@@ -1057,13 +1064,13 @@ defmodule DrawMusicWeb.EditorLive do
     end
   end
 
-  defp selected_ids(socket), do: MapSet.to_list(socket.assigns.session.selection)
+  defp selected_ids(socket), do: Session.selection_ids(socket.assigns.session)
 
   ## Playback helpers
 
   defp start_playback(socket) do
     %{session: session, loop?: loop?} = socket.assigns
-    {from, to} = play_span(session)
+    {from, to} = Playback.span(session.score, session.ctx, session.selection)
     opts = [from: from, to: to]
 
     case Playback.events(session.score, session.ctx, opts) do
@@ -1087,62 +1094,25 @@ defmodule DrawMusicWeb.EditorLive do
   end
 
   # Where Play would start: the hook shows the playhead there in Play mode.
-  defp play_start(session), do: elem(play_span(session), 0)
+  defp play_start(session) do
+    {from, _to} = Playback.span(session.score, session.ctx, session.selection)
+    from
+  end
 
   defp skip_start(socket, by, back?) do
     %{session: session, engraved: engraved} = socket.assigns
-    from = play_start(session)
+    points = skip_points(engraved, by)
 
-    with tick when is_integer(tick) <- skip_target(skip_points(engraved, by), from, back?),
-         %{event: %{id: id}} <-
-           session.score
-           |> Timeline.flatten(session.ctx)
-           |> Enum.filter(&(&1.start >= tick))
-           |> Enum.min_by(& &1.start, fn -> nil end) do
+    with tick when is_integer(tick) <- Playback.skip_target(points, play_start(session), back?),
+         id when is_binary(id) <- Playback.first_event_from(session.score, session.ctx, tick) do
       update(socket, :session, &Session.select(&1, [id], false))
     else
       _none -> socket
     end
   end
 
-  # The first of `points` after `from`, or going back, the last before it.
-  defp skip_target(points, from, false), do: Enum.find(points, &(&1 > from))
-
-  defp skip_target(points, from, true) do
-    points
-    |> Enum.filter(&(&1 < from))
-    |> List.last()
-  end
-
-  # Where measures, or lines of music, start (ticks, in order).
-  defp skip_points(engraved, "measure") do
-    for system <- engraved.systems, measure <- system.measures, do: measure.start_tick
-  end
-
-  defp skip_points(engraved, "line") do
-    for system <- engraved.systems, do: hd(system.measures).start_tick
-  end
-
-  # Several selected events play from the first to the end of the last;
-  # one plays from there to the end; none, the whole score.
-  defp play_span(%Session{score: score, ctx: ctx} = session) do
-    selected =
-      score
-      |> Timeline.flatten(ctx)
-      |> Enum.filter(&(&1.event.id in session.selection))
-
-    case selected do
-      [] -> {0, Timeline.end_tick(score, ctx)}
-      [entry] -> {entry.start, Timeline.end_tick(score, ctx)}
-      entries -> {Enum.min(Enum.map(entries, & &1.start)), span_end(entries)}
-    end
-  end
-
-  defp span_end(entries) do
-    entries
-    |> Enum.map(&(&1.start + &1.ticks))
-    |> Enum.max()
-  end
+  defp skip_points(engraved, "measure"), do: Engraved.measure_starts(engraved)
+  defp skip_points(engraved, "line"), do: Engraved.line_starts(engraved)
 
   # What the hook reports; names are only matched, never made atoms.
   defp playback_state(socket, "loading"), do: assign(socket, :playback, :loading)
@@ -1198,72 +1168,11 @@ defmodule DrawMusicWeb.EditorLive do
   defp stop_unless_playing_mode(%{assigns: %{editor_mode: :play}} = socket), do: socket
   defp stop_unless_playing_mode(socket), do: stop_playback(socket)
 
-  defp selected_events(%Session{score: score, selection: selection}) do
-    for m <- score.measures, event <- m.notes ++ m.rests, event.id in selection, do: event
-  end
-
-  defp find_event(%Session{score: score}, id) do
-    Enum.find_value(score.measures, fn m -> Enum.find(m.notes ++ m.rests, &(&1.id == id)) end)
-  end
-
   defp select_menu_events(socket, %ContextMenu{ids: ids}) do
     update(socket, :session, &Session.select(&1, ids, false))
   end
 
-  defp menu_for(socket, event, params) do
-    {kind, ids} = menu_target(socket.assigns.session.selection, event)
-
-    step =
-      case EditorPlacement.parse(Map.merge(%{"measure" => 0, "offset" => 0}, params)) do
-        {:ok, target} -> target.step
-        :error -> nil
-      end
-
-    %ContextMenu{id: event.id, ids: ids, kind: kind, x: params["x"], y: params["y"], step: step}
-  end
-
-  # Right-clicking a selected event opens the menu for the whole selection.
-  defp menu_target(selection, event) do
-    case MapSet.member?(selection, event.id) do
-      true -> {:selection, MapSet.to_list(selection)}
-      false -> {event_kind(event), [event.id]}
-    end
-  end
-
-  defp event_kind(%Note{}), do: :note
-  defp event_kind(_rest), do: :rest
-
-  defp copy(socket) do
-    %{session: session} = socket.assigns
-
-    if MapSet.size(session.selection) == 0 do
-      socket
-    else
-      clipboard = Editing.copy(session.score, session.ctx, selected_ids(socket))
-      assign(socket, :session, %{session | clipboard: clipboard})
-    end
-  end
-
-  # Where to paste: the given tick, else the last click, else straight
-  # after the selection, else the start; never past the end of the score
-  # (the browser's numbers are untrusted).
-  defp paste_at(socket, at) do
-    %{session: session} = socket.assigns
-    min(wanted_paste_at(socket, at), Timeline.end_tick(session.score, session.ctx))
-  end
-
-  defp wanted_paste_at(_socket, at) when is_integer(at) and at >= 0, do: at
-  defp wanted_paste_at(%{assigns: %{last_click: at}}, _at) when is_integer(at), do: at
-
-  defp wanted_paste_at(socket, _at) do
-    %{session: session} = socket.assigns
-
-    session.score
-    |> Timeline.flatten(session.ctx)
-    |> Enum.filter(&(&1.event.id in session.selection))
-    |> Enum.map(&(&1.start + &1.ticks))
-    |> Enum.max(fn -> 0 end)
-  end
+  defp copy(socket), do: update(socket, :session, &Session.copy/1)
 
   ## Settings helpers
 
@@ -1343,23 +1252,14 @@ defmodule DrawMusicWeb.EditorLive do
     Library.update_composition(scope, composition, params)
   end
 
-  # A new composition starts from the current one's credits and notes. It
-  # needs its own name, unless this is a draft that was given one.
   defp open_save_as(socket) do
     %{current_scope: scope, composition: composition, version: version} = socket.assigns
 
-    starting =
-      composition
-      |> Map.take([:subtitle, :composer, :arranger, :lyricist, :copyright, :notes])
-      |> Map.put(:name, draft_name(composition, version))
+    changeset =
+      Library.change_composition(scope, EditorSaving.save_as_start(composition, version))
 
-    changeset = Library.change_composition(scope, struct(Composition, starting))
     assign(socket, :save_as_form, to_form(changeset))
   end
-
-  defp draft_name(%Composition{name: @draft_name}, _version), do: nil
-  defp draft_name(%Composition{name: name}, %Version{id: nil}), do: name
-  defp draft_name(_composition, _saved), do: nil
 
   # A key change on a saved version is stored as a new version in that key;
   # on the draft it just applies.
@@ -1372,7 +1272,7 @@ defmodule DrawMusicWeb.EditorLive do
 
     case Library.save_in_key(scope, composition, %{sf: sf, mode: mode}, version_attrs(socket)) do
       {:ok, saved} -> saved_and_open(socket, saved, "Saved in #{Key.name(sf, mode)}")
-      {:error, changeset} -> put_flash(socket, :error, changeset_message(changeset))
+      {:error, changeset} -> put_flash(socket, :error, EditorSaving.error_message(changeset))
     end
   end
 
@@ -1382,12 +1282,6 @@ defmodule DrawMusicWeb.EditorLive do
     |> put_flash(:info, message)
     |> push_navigate(to: version_path(saved.key.composition.id, saved.key, saved.number))
   end
-
-  defp changeset_message(%Ecto.Changeset{errors: [{field, {message, _opts}} | _]}) do
-    "Couldn't save: #{Phoenix.Naming.humanize(field)} #{message}"
-  end
-
-  defp changeset_message(_changeset), do: "Couldn't save"
 
   # `:engraved`, not `:layout`: LiveView reserves the `layout` assign.
   defp assign_layout(socket) do
