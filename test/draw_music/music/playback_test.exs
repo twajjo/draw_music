@@ -3,7 +3,7 @@ defmodule DrawMusic.Music.PlaybackTest do
 
   import DrawMusic.MusicHelpers
 
-  alias DrawMusic.Music.{Context, Editing, Playback, Score}
+  alias DrawMusic.Music.{Context, Editing, Playback, Score, Timeline}
 
   describe "chord_at/3" do
     setup do
@@ -36,6 +36,45 @@ defmodule DrawMusic.Music.PlaybackTest do
     test "a rest or an unknown id sounds nothing", %{ctx: ctx, score: score, rest: rest} do
       assert Playback.chord_at(score, ctx, rest) == []
       assert Playback.chord_at(score, ctx, Ecto.UUID.generate()) == []
+    end
+  end
+
+  describe "span/3, first_event_from/3 and skip_target/3" do
+    setup do
+      ctx = %Context{}
+      quarter = fn offset -> %{staff: :treble, offset: offset, value: :quarter} end
+
+      {score, c} = note!(Score.new(2), ctx, 0, "C4", quarter.(0))
+      {score, e} = note!(score, ctx, 0, "E4", quarter.(1920))
+
+      %{ctx: ctx, score: score, c: c, e: e, end_tick: Timeline.end_tick(score, ctx)}
+    end
+
+    test "with nothing selected, Play plays the whole score", %{ctx: ctx, score: score} = s do
+      assert Playback.span(score, ctx, MapSet.new()) == {0, s.end_tick}
+    end
+
+    test "one selected event plays from there to the end", %{ctx: ctx, score: score, e: e} = s do
+      assert Playback.span(score, ctx, MapSet.new([e])) == {1920, s.end_tick}
+    end
+
+    test "several play from the first to the end of the last", %{ctx: ctx, score: score} = s do
+      assert Playback.span(score, ctx, MapSet.new([s.c, s.e])) == {0, 2880}
+    end
+
+    test "the first event at or after a tick", %{ctx: ctx, score: score, e: e} do
+      assert Playback.first_event_from(score, ctx, 1920) == e
+      assert Playback.first_event_from(score, ctx, 1000) == e
+      assert Playback.first_event_from(score, ctx, 99_999) == nil
+    end
+
+    test "a skip lands on the next point, or going back on the previous one" do
+      points = [0, 3840, 7680]
+
+      assert Playback.skip_target(points, 100, false) == 3840
+      assert Playback.skip_target(points, 3840, true) == 0
+      assert Playback.skip_target(points, 7680, false) == nil
+      assert Playback.skip_target(points, 0, true) == nil
     end
   end
 end

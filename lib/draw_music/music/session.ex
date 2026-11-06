@@ -10,7 +10,7 @@ defmodule DrawMusic.Music.Session do
   in the current score.
   """
 
-  alias DrawMusic.Music.{Context, Editing, Score, Timeline}
+  alias DrawMusic.Music.{Context, Editing, Note, Rest, Score, Timeline}
 
   defstruct score: nil,
             ctx: %Context{},
@@ -146,12 +146,50 @@ defmodule DrawMusic.Music.Session do
     end
   end
 
+  @doc "Copies the selection to the clipboard; with nothing selected, nothing changes."
+  @spec copy(t()) :: t()
+  def copy(%__MODULE__{selection: selection} = session) do
+    case MapSet.size(selection) do
+      0 ->
+        session
+
+      _some ->
+        %{session | clipboard: Editing.copy(session.score, session.ctx, selection_ids(session))}
+    end
+  end
+
   @doc "Ids of every note, rest and tempo change in the score."
   @spec event_ids(t()) :: MapSet.t(Ecto.UUID.t())
   def event_ids(%__MODULE__{score: score}) do
     events = for m <- score.measures, event <- m.notes ++ m.rests, do: event.id
     MapSet.new(events ++ Enum.map(score.tempos, & &1.id))
   end
+
+  @doc "The note or rest with `id`, or nil."
+  @spec find_event(t(), Ecto.UUID.t()) :: Note.t() | Rest.t() | nil
+  def find_event(%__MODULE__{score: score}, id) do
+    Enum.find_value(score.measures, fn m -> Enum.find(m.notes ++ m.rests, &(&1.id == id)) end)
+  end
+
+  @doc """
+  Where to paste: tick `at` if one is given, else `last_click`, else
+  straight after the selection, else the start. Never past the end of the
+  score: the browser's numbers are untrusted.
+  """
+  @spec paste_at(t(), term(), non_neg_integer() | nil) :: non_neg_integer()
+  def paste_at(%__MODULE__{score: score, ctx: ctx} = session, at, last_click) do
+    min(wanted_paste_at(session, at, last_click), Timeline.end_tick(score, ctx))
+  end
+
+  @doc "The selected notes and rests (not tempo changes)."
+  @spec selected_events(t()) :: [Note.t() | Rest.t()]
+  def selected_events(%__MODULE__{score: score, selection: selection}) do
+    for m <- score.measures, event <- m.notes ++ m.rests, event.id in selection, do: event
+  end
+
+  @doc "The selected ids, as a list."
+  @spec selection_ids(t()) :: [Ecto.UUID.t()]
+  def selection_ids(%__MODULE__{selection: selection}), do: MapSet.to_list(selection)
 
   defp record(session, score, ctx) do
     %{
@@ -167,5 +205,16 @@ defmodule DrawMusic.Music.Session do
 
   defp prune_selection(session) do
     %{session | selection: MapSet.intersection(session.selection, event_ids(session))}
+  end
+
+  defp wanted_paste_at(_session, at, _last_click) when is_integer(at) and at >= 0, do: at
+  defp wanted_paste_at(_session, _at, last_click) when is_integer(last_click), do: last_click
+
+  defp wanted_paste_at(%__MODULE__{score: score, ctx: ctx, selection: selection}, _at, _last) do
+    score
+    |> Timeline.flatten(ctx)
+    |> Enum.filter(&(&1.event.id in selection))
+    |> Enum.map(&(&1.start + &1.ticks))
+    |> Enum.max(fn -> 0 end)
   end
 end

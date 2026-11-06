@@ -3,7 +3,7 @@ defmodule DrawMusic.Music.SessionTest do
 
   import DrawMusic.MusicHelpers
 
-  alias DrawMusic.Music.{Context, Editing, Score, Session}
+  alias DrawMusic.Music.{Context, Editing, Score, Session, Timeline}
 
   @ctx %Context{}
 
@@ -114,5 +114,37 @@ defmodule DrawMusic.Music.SessionTest do
     assert changed.dirty?
 
     assert Session.undo(changed).ctx == @ctx
+  end
+
+  test "copy fills the clipboard from the selection; with none, nothing changes",
+       %{session: session} do
+    {:ok, s, id} = place(session, "C4", 0)
+
+    assert Session.copy(s).clipboard == nil
+    assert %{entries: [_one]} = Session.copy(Session.select(s, [id], false)).clipboard
+  end
+
+  test "find_event and selected_events see notes and rests", %{session: session} do
+    {:ok, s, id} = place(session, "C4", 0)
+
+    assert Session.find_event(s, id).id == id
+    assert Session.find_event(s, Ecto.UUID.generate()) == nil
+    assert [%{id: ^id}] = Session.selected_events(Session.select(s, [id], false))
+  end
+
+  test "paste goes at the given tick, else the last click, else after the selection",
+       %{session: session} do
+    {:ok, s, id} = place(session, "C4", 960)
+    s = Session.select(s, [id], false)
+
+    assert Session.paste_at(s, 480, 1920) == 480
+    assert Session.paste_at(s, nil, 1920) == 1920
+    assert Session.paste_at(s, "junk", nil) == 1920
+    assert Session.paste_at(Session.clear_selection(s), nil, nil) == 0
+  end
+
+  test "paste never goes past the end of the score", %{session: session} do
+    end_tick = Timeline.end_tick(session.score, session.ctx)
+    assert Session.paste_at(session, 999_999, nil) == end_tick
   end
 end

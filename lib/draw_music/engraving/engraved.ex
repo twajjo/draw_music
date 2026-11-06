@@ -11,4 +11,16 @@ defmodule DrawMusic.Engraving.Engraved do
   defstruct [:width, :height, :systems]
 
   @type t :: %__MODULE__{width: float(), height: float(), systems: [System.t()]}
+
+  @doc "Where each line of music (system) starts, in ticks, in order."
+  @spec line_starts(t()) :: [non_neg_integer()]
+  def line_starts(%__MODULE__{systems: systems}) do
+    for system <- systems, do: hd(system.measures).start_tick
+  end
+
+  @doc "Where each measure starts, in ticks, in order."
+  @spec measure_starts(t()) :: [non_neg_integer()]
+  def measure_starts(%__MODULE__{systems: systems}) do
+    for system <- systems, measure <- system.measures, do: measure.start_tick
+  end
 end
