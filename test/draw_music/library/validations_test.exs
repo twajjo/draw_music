@@ -18,6 +18,11 @@ defmodule DrawMusic.Library.ValidationsTest do
       assert Ecto.Changeset.get_change(composition(%{name: "  Waltz "}), :name) == "Waltz"
     end
 
+    test "clearing an existing name is refused, not a crash" do
+      changeset = Composition.changeset(%Composition{name: "Waltz"}, %{name: ""}, @scope)
+      assert %{name: ["can't be blank"]} = errors_on(changeset)
+    end
+
     test "limits credits to 255 characters and notes to 10,000" do
       long = String.duplicate("x", 256)
 

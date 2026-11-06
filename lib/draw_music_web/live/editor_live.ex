@@ -41,6 +41,7 @@ defmodule DrawMusicWeb.EditorLive do
 
   alias DrawMusicWeb.{
     ContextMenu,
+    DetailsDialog,
     EditorCommands,
     EditorGeometry,
     EditorPalette,
@@ -69,8 +70,7 @@ defmodule DrawMusicWeb.EditorLive do
   @play_events ~w(play rewind skip toggle_loop audition set_playback_instrument
                   use_playback_instrument)
   # Each dialog's Cancel, Esc and click-away; any of them closes the open one.
-  @close_events ~w(close_help close_menu close_tempo close_save_as close_details close_settings
-                   cancel_transpose)
+  @close_events ~w(close_help close_menu close_tempo close_save_as close_settings cancel_transpose)
 
   @impl true
   def render(assigns) do
@@ -216,6 +216,17 @@ defmodule DrawMusicWeb.EditorLive do
           />
         </div>
         <.editor_dialog dialog={@dialog} editor_mode={@editor_mode} />
+        <%!-- A saved composition's details are stored at once (they aren't
+             part of the score, so not of its undo or its unsaved changes); a
+             draft's are kept until its first save. --%>
+        <.live_component
+          :if={@dialog == :details}
+          module={DetailsDialog}
+          id="details"
+          scope={@current_scope}
+          composition={@composition}
+          persist?={@version.id != nil}
+        />
       </div>
     </Layouts.app>
     """
@@ -255,6 +266,16 @@ defmodule DrawMusicWeb.EditorLive do
 
   @impl true
   def handle_info(:lay_out, socket), do: {:noreply, assign_layout(socket)}
+
+  # The details dialog's results (see `DrawMusicWeb.DetailsDialog`).
+  def handle_info({DetailsDialog, {:saved, composition}}, socket) do
+    {:noreply,
+     socket
+     |> assign(composition: composition, page_title: composition.name, dialog: nil)
+     |> put_flash(:info, "Details saved.")}
+  end
+
+  def handle_info({DetailsDialog, :closed}, socket), do: {:noreply, assign(socket, :dialog, nil)}
 
   defp load(:new, _scope, _params) do
     composition = %Composition{name: EditorSaving.untitled(), keys: []}
@@ -761,32 +782,7 @@ defmodule DrawMusicWeb.EditorLive do
   ## Composition details
 
   def handle_event("edit_details", _params, socket) do
-    %{current_scope: scope, composition: composition} = socket.assigns
-
-    form = to_form(Library.change_composition(scope, composition))
-    {:noreply, assign(socket, :dialog, {:details, form})}
-  end
-
-  def handle_event("validate_details", %{"composition" => params}, socket) do
-    %{current_scope: scope, composition: composition} = socket.assigns
-    changeset = Library.change_composition(scope, composition, params)
-    {:noreply, assign(socket, :dialog, {:details, to_form(changeset, action: :validate)})}
-  end
-
-  # A saved composition's details are stored at once (they aren't part of
-  # the score, so not of its undo or its unsaved changes); a draft's are
-  # kept until its first save.
-  def handle_event("save_details", %{"composition" => params}, socket) do
-    case store_details(socket, params) do
-      {:ok, composition} ->
-        {:noreply,
-         socket
-         |> assign(composition: composition, page_title: composition.name, dialog: nil)
-         |> put_flash(:info, "Details saved.")}
-
-      {:error, changeset} ->
-        {:noreply, assign(socket, :dialog, {:details, to_form(changeset, action: :update)})}
-    end
+    {:noreply, assign(socket, :dialog, :details)}
   end
 
   ## Score settings
@@ -1219,19 +1215,6 @@ defmodule DrawMusicWeb.EditorLive do
   defp version_attrs(socket) do
     %{session: session, tempo_text: tempo_text, instrument: instrument} = socket.assigns
     EditorSettings.version_attrs(session, tempo_text, instrument)
-  end
-
-  defp store_details(%{assigns: %{version: %Version{id: nil}}} = socket, params) do
-    %{current_scope: scope, composition: composition} = socket.assigns
-
-    scope
-    |> Library.change_composition(composition, params)
-    |> Ecto.Changeset.apply_action(:update)
-  end
-
-  defp store_details(socket, params) do
-    %{current_scope: scope, composition: composition} = socket.assigns
-    Library.update_composition(scope, composition, params)
   end
 
   defp open_save_as(socket) do
