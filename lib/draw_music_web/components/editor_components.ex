@@ -10,7 +10,15 @@ defmodule DrawMusicWeb.EditorComponents do
   import DrawMusicWeb.CoreComponents, only: [icon: 1, input: 1]
 
   alias DrawMusic.Engraving.Smufl
-  alias DrawMusicWeb.{BarControl, HelpComponents, LibraryComponents, ScoreComponents}
+  alias DrawMusic.Library.Key
+
+  alias DrawMusicWeb.{
+    BarControl,
+    HelpComponents,
+    LibraryComponents,
+    ScoreComponents,
+    Shortcuts
+  }
 
   # Bar controls sit this far above a system's top line (staff spaces).
   @controls_raise 2.2
@@ -381,6 +389,71 @@ defmodule DrawMusicWeb.EditorComponents do
     >
       {render_slot(@inner_block)}
     </button>
+    """
+  end
+
+  @doc """
+  The one dialog (or right-click menu) open over the score, if any. `dialog`
+  says which: `:help`, `{:menu, menu}`, `{:tempo, dialog}`, `{:save_as, form}`,
+  `{:details, form}`, `{:settings, form}` or `{:transpose, {sf, mode}}`.
+  """
+  attr :dialog, :any, required: true
+  attr :editor_mode, :atom, required: true, doc: "whose shortcuts help shows"
+
+  @spec editor_dialog(map()) :: Phoenix.LiveView.Rendered.t()
+  def editor_dialog(%{dialog: nil} = assigns), do: ~H""
+
+  def editor_dialog(%{dialog: :help} = assigns) do
+    ~H"""
+    <.help_dialog shortcuts={Shortcuts.for_mode(@editor_mode)} />
+    """
+  end
+
+  def editor_dialog(%{dialog: {:menu, menu}} = assigns) do
+    assigns = assign(assigns, :menu, menu)
+
+    ~H"""
+    <.context_menu menu={@menu} />
+    """
+  end
+
+  def editor_dialog(%{dialog: {:tempo, tempo}} = assigns) do
+    assigns = assign(assigns, :tempo, tempo)
+
+    ~H"""
+    <.tempo_dialog dialog={@tempo} />
+    """
+  end
+
+  def editor_dialog(%{dialog: {:save_as, form}} = assigns) do
+    assigns = assign(assigns, :form, form)
+
+    ~H"""
+    <.save_as_dialog form={@form} />
+    """
+  end
+
+  def editor_dialog(%{dialog: {:details, form}} = assigns) do
+    assigns = assign(assigns, :form, form)
+
+    ~H"""
+    <LibraryComponents.details_dialog form={@form} />
+    """
+  end
+
+  def editor_dialog(%{dialog: {:settings, form}} = assigns) do
+    assigns = assign(assigns, :form, form)
+
+    ~H"""
+    <.settings_panel form={@form} />
+    """
+  end
+
+  def editor_dialog(%{dialog: {:transpose, {sf, mode}}} = assigns) do
+    assigns = assign(assigns, :key_name, Key.name(sf, mode))
+
+    ~H"""
+    <.transpose_dialog key_name={@key_name} />
     """
   end
 
