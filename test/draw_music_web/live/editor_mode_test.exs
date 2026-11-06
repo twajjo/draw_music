@@ -91,7 +91,7 @@ defmodule DrawMusicWeb.EditorModeTest do
     assert {notes_of(view), session_of(view).undo, assigns(view).armed, assigns(view).insert?} ==
              before
 
-    assert assigns(view).menu == nil
+    assert assigns(view).dialog == nil
   end
 
   test "Play, Rewind, Loop and Stop still work in play mode", %{view: view} do

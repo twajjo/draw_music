@@ -51,7 +51,6 @@ defmodule DrawMusicWeb.EditorLive do
     PlaybackPayload,
     ScorePreferences,
     ScoreSvg,
-    Shortcuts,
     TempoDialog,
     TempoForm,
     VersionLookup
@@ -69,6 +68,9 @@ defmodule DrawMusicWeb.EditorLive do
   # The play controls; Edit mode ignores them.
   @play_events ~w(play rewind skip toggle_loop audition set_playback_instrument
                   use_playback_instrument)
+  # Each dialog's Cancel, Esc and click-away; any of them closes the open one.
+  @close_events ~w(close_help close_menu close_tempo close_save_as close_details close_settings
+                   cancel_transpose)
 
   @impl true
   def render(assigns) do
@@ -213,16 +215,7 @@ defmodule DrawMusicWeb.EditorLive do
             score={@session.score}
           />
         </div>
-        <.context_menu :if={@menu} menu={@menu} />
-        <.tempo_dialog :if={@tempo} dialog={@tempo} />
-        <.save_as_dialog :if={@save_as_form} form={@save_as_form} />
-        <.details_dialog :if={@details_form} form={@details_form} />
-        <.settings_panel :if={@settings_form} form={@settings_form} />
-        <.help_dialog :if={@help?} shortcuts={Shortcuts.for_mode(@editor_mode)} />
-        <.transpose_dialog
-          :if={@pending_key}
-          key_name={Key.name(elem(@pending_key, 0), elem(@pending_key, 1))}
-        />
+        <.editor_dialog dialog={@dialog} editor_mode={@editor_mode} />
       </div>
     </Layouts.app>
     """
@@ -239,10 +232,10 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign(:composition, composition)
      |> assign(:version, version)
      |> assign(:session, Session.new(version.score, Context.from_version(version)))
-     |> assign(armed: nil, row_kind: :note, insert?: true, last_click: nil, menu: nil)
-     |> assign(save_as_form: nil, settings_form: nil, pending_key: nil, tempo: nil)
-     |> assign(:details_form, nil)
-     |> assign(playback: :idle, loop?: false, editor_mode: :edit, help?: false)
+     |> assign(armed: nil, row_kind: :note, insert?: true, last_click: nil)
+     # At most one dialog is open at a time; see `EditorComponents.editor_dialog/1`.
+     |> assign(:dialog, nil)
+     |> assign(playback: :idle, loop?: false, editor_mode: :edit)
      |> assign(:instrument_options, instrument_options())
      # The tempo marking and instrument aren't part of the score's Context;
      # they're saved beside it.
@@ -296,7 +289,8 @@ defmodule DrawMusicWeb.EditorLive do
 
     {:noreply,
      socket
-     |> assign(editor_mode: mode, armed: nil, menu: nil)
+     |> assign(editor_mode: mode, armed: nil)
+     |> close_menu()
      |> narrow_selection_for(mode)
      |> stop_unless_playing_mode()}
   end
@@ -325,8 +319,11 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign(:instrument, program)}
   end
 
-  def handle_event("open_help", _params, socket), do: {:noreply, assign(socket, :help?, true)}
-  def handle_event("close_help", _params, socket), do: {:noreply, assign(socket, :help?, false)}
+  def handle_event("open_help", _params, socket), do: {:noreply, assign(socket, :dialog, :help)}
+
+  def handle_event(event, _params, socket) when event in @close_events do
+    {:noreply, assign(socket, :dialog, nil)}
+  end
 
   # Play mode: a click on a note sounds its chord and makes it the start point.
   def handle_event("audition", %{"id" => id}, %{assigns: %{editor_mode: :play}} = socket)
@@ -569,55 +566,53 @@ defmodule DrawMusicWeb.EditorLive do
         {:noreply, socket}
 
       event ->
-        {:noreply, assign(socket, :menu, ContextMenu.new(session.selection, event, params))}
+        menu = ContextMenu.new(session.selection, event, params)
+        {:noreply, assign(socket, :dialog, {:menu, menu})}
     end
   end
 
-  def handle_event("close_menu", _params, socket), do: {:noreply, assign(socket, :menu, nil)}
-
-  def handle_event("menu_copy", _params, %{assigns: %{menu: %{} = menu}} = socket) do
+  def handle_event("menu_copy", _params, %{assigns: %{dialog: {:menu, menu}}} = socket) do
     {:noreply,
      socket
      |> select_menu_events(menu)
      |> copy()
-     |> assign(:menu, nil)}
+     |> assign(:dialog, nil)}
   end
 
-  def handle_event("menu_cut", _params, %{assigns: %{menu: %{} = menu}} = socket) do
+  def handle_event("menu_cut", _params, %{assigns: %{dialog: {:menu, menu}}} = socket) do
     {:noreply,
      socket
      |> select_menu_events(menu)
      |> copy()
      |> edit(EditorCommands.delete(menu.ids, socket.assigns.insert?))
-     |> assign(:menu, nil)}
+     |> assign(:dialog, nil)}
   end
 
   # "Tempo change here…": a new change where the right-clicked note or rest
-  # starts, at the tempo already in force there.
-  def handle_event("menu_tempo", _params, %{assigns: %{menu: %{} = menu}} = socket) do
+  # starts, at the tempo already in force there. The tempo dialog takes the
+  # menu's place.
+  def handle_event("menu_tempo", _params, %{assigns: %{dialog: {:menu, menu}}} = socket) do
     %{session: session} = socket.assigns
+    socket = assign(socket, :dialog, nil)
 
-    socket =
-      case Enum.find(Timeline.flatten(session.score, session.ctx), &(&1.event.id == menu.id)) do
-        nil ->
-          socket
+    case Enum.find(Timeline.flatten(session.score, session.ctx), &(&1.event.id == menu.id)) do
+      nil ->
+        {:noreply, socket}
 
-        entry ->
-          bpm = TempoMap.bpm_at(TempoMap.new(session.score, session.ctx), entry.start)
-          open_tempo(socket, nil, entry.start, TempoForm.params(bpm, session.ctx))
-      end
-
-    {:noreply, assign(socket, :menu, nil)}
+      entry ->
+        bpm = TempoMap.bpm_at(TempoMap.new(session.score, session.ctx), entry.start)
+        {:noreply, open_tempo(socket, nil, entry.start, TempoForm.params(bpm, session.ctx))}
+    end
   end
 
-  def handle_event(event, params, %{assigns: %{menu: %{} = menu}} = socket)
+  def handle_event(event, params, %{assigns: %{dialog: {:menu, menu}}} = socket)
       when event in @menu_events do
     fun = EditorCommands.menu(event, params, menu, socket.assigns.insert?)
 
     {:noreply,
      socket
      |> edit(fun)
-     |> assign(:menu, nil)}
+     |> assign(:dialog, nil)}
   end
 
   ## Tempo changes
@@ -638,15 +633,16 @@ defmodule DrawMusicWeb.EditorLive do
   def handle_event(
         "validate_tempo",
         %{"tempo" => params},
-        %{assigns: %{tempo: %{} = dialog}} = socket
+        %{assigns: %{dialog: {:tempo, dialog}}} = socket
       ) do
-    {:noreply, assign(socket, :tempo, %{dialog | form: tempo_form(params, dialog, socket)})}
+    form = tempo_form(params, dialog, socket)
+    {:noreply, assign(socket, :dialog, {:tempo, %{dialog | form: form}})}
   end
 
   def handle_event(
         "save_tempo",
         %{"tempo" => params},
-        %{assigns: %{tempo: %{} = dialog}} = socket
+        %{assigns: %{dialog: {:tempo, dialog}}} = socket
       ) do
     case TempoForm.validate(params, dialog.tick, dialog.id, socket.assigns.session.ctx) do
       {:ok, change} ->
@@ -654,23 +650,22 @@ defmodule DrawMusicWeb.EditorLive do
 
         {:noreply,
          socket
-         |> assign(:tempo, nil)
+         |> assign(:dialog, nil)
          |> edit_and_select(&with_ids(TempoEditing.put(&1, &2, change), [change.id]))}
 
       {:error, _errors} ->
-        {:noreply, assign(socket, :tempo, %{dialog | form: tempo_form(params, dialog, socket)})}
+        form = tempo_form(params, dialog, socket)
+        {:noreply, assign(socket, :dialog, {:tempo, %{dialog | form: form}})}
     end
   end
 
-  def handle_event("delete_tempo", _params, %{assigns: %{tempo: %{id: id}}} = socket)
+  def handle_event("delete_tempo", _params, %{assigns: %{dialog: {:tempo, %{id: id}}}} = socket)
       when is_binary(id) do
     {:noreply,
      socket
-     |> assign(:tempo, nil)
+     |> assign(:dialog, nil)
      |> edit(EditorCommands.delete([id], socket.assigns.insert?))}
   end
-
-  def handle_event("close_tempo", _params, socket), do: {:noreply, assign(socket, :tempo, nil)}
 
   def handle_event("move_tempo", %{"id" => id, "tick" => tick}, socket)
       when is_binary(id) and is_integer(tick) do
@@ -739,13 +734,9 @@ defmodule DrawMusicWeb.EditorLive do
 
   def handle_event("open_save_as", _params, socket), do: {:noreply, open_save_as(socket)}
 
-  def handle_event("close_save_as", _params, socket) do
-    {:noreply, assign(socket, :save_as_form, nil)}
-  end
-
   def handle_event("validate_save_as", %{"composition" => params}, socket) do
     changeset = Library.change_composition(socket.assigns.current_scope, %Composition{}, params)
-    {:noreply, assign(socket, :save_as_form, to_form(changeset, action: :validate))}
+    {:noreply, assign(socket, :dialog, {:save_as, to_form(changeset, action: :validate)})}
   end
 
   def handle_event("save_as", %{"composition" => params}, socket) do
@@ -756,11 +747,11 @@ defmodule DrawMusicWeb.EditorLive do
       {:ok, saved} ->
         {:noreply,
          socket
-         |> assign(:save_as_form, nil)
+         |> assign(:dialog, nil)
          |> saved_and_open(saved, "Saved")}
 
       {:error, %Ecto.Changeset{data: %Composition{}} = changeset} ->
-        {:noreply, assign(socket, :save_as_form, to_form(changeset, action: :insert))}
+        {:noreply, assign(socket, :dialog, {:save_as, to_form(changeset, action: :insert)})}
 
       {:error, changeset} ->
         {:noreply, put_flash(socket, :error, EditorSaving.error_message(changeset))}
@@ -772,14 +763,14 @@ defmodule DrawMusicWeb.EditorLive do
   def handle_event("edit_details", _params, socket) do
     %{current_scope: scope, composition: composition} = socket.assigns
 
-    {:noreply,
-     assign(socket, :details_form, to_form(Library.change_composition(scope, composition)))}
+    form = to_form(Library.change_composition(scope, composition))
+    {:noreply, assign(socket, :dialog, {:details, form})}
   end
 
   def handle_event("validate_details", %{"composition" => params}, socket) do
     %{current_scope: scope, composition: composition} = socket.assigns
     changeset = Library.change_composition(scope, composition, params)
-    {:noreply, assign(socket, :details_form, to_form(changeset, action: :validate))}
+    {:noreply, assign(socket, :dialog, {:details, to_form(changeset, action: :validate)})}
   end
 
   # A saved composition's details are stored at once (they aren't part of
@@ -790,16 +781,12 @@ defmodule DrawMusicWeb.EditorLive do
       {:ok, composition} ->
         {:noreply,
          socket
-         |> assign(composition: composition, page_title: composition.name, details_form: nil)
+         |> assign(composition: composition, page_title: composition.name, dialog: nil)
          |> put_flash(:info, "Details saved.")}
 
       {:error, changeset} ->
-        {:noreply, assign(socket, :details_form, to_form(changeset, action: :update))}
+        {:noreply, assign(socket, :dialog, {:details, to_form(changeset, action: :update)})}
     end
-  end
-
-  def handle_event("close_details", _params, socket) do
-    {:noreply, assign(socket, :details_form, nil)}
   end
 
   ## Score settings
@@ -807,11 +794,7 @@ defmodule DrawMusicWeb.EditorLive do
   def handle_event("open_settings", _params, socket) do
     %{session: session, tempo_text: tempo_text, instrument: instrument} = socket.assigns
     params = EditorSettings.params(session.ctx, tempo_text, instrument)
-    {:noreply, assign(socket, :settings_form, to_form(params, as: :settings))}
-  end
-
-  def handle_event("close_settings", _params, socket) do
-    {:noreply, assign(socket, :settings_form, nil)}
+    {:noreply, assign(socket, :dialog, {:settings, to_form(params, as: :settings)})}
   end
 
   # Settings apply at once; a new key is confirmed in the transpose dialog.
@@ -822,26 +805,22 @@ defmodule DrawMusicWeb.EditorLive do
 
       {:error, errors} ->
         form = to_form(params, as: :settings, errors: errors, action: :validate)
-        {:noreply, assign(socket, :settings_form, form)}
+        {:noreply, assign(socket, :dialog, {:settings, form})}
 
       :error ->
         {:noreply, socket}
     end
   end
 
-  def handle_event("cancel_transpose", _params, socket) do
-    {:noreply, assign(socket, :pending_key, nil)}
-  end
-
   def handle_event(
         "transpose_key",
         %{"direction" => dir},
-        %{assigns: %{pending_key: {sf, mode}}} = socket
+        %{assigns: %{dialog: {:transpose, {sf, mode}}}} = socket
       )
       when dir in ~w(nearest up down) do
     %{session: session} = socket.assigns
     from = {session.ctx.sf, session.ctx.mode}
-    socket = assign(socket, :pending_key, nil)
+    socket = assign(socket, :dialog, nil)
 
     case Transpose.to_key(session.score, from, {sf, mode}, direction(dir)) do
       {:ok, score} ->
@@ -984,7 +963,7 @@ defmodule DrawMusicWeb.EditorLive do
 
   defp open_tempo(socket, id, tick, params) do
     dialog = %TempoDialog{id: id, tick: tick, form: to_form(params, as: :tempo)}
-    assign(socket, :tempo, dialog)
+    assign(socket, :dialog, {:tempo, dialog})
   end
 
   # The form with any errors the params have, shown as they're typed.
@@ -1172,6 +1151,12 @@ defmodule DrawMusicWeb.EditorLive do
     update(socket, :session, &Session.select(&1, ids, false))
   end
 
+  # Switching modes closes a right-click menu, but not a dialog.
+  defp close_menu(%{assigns: %{dialog: {:menu, _menu}}} = socket),
+    do: assign(socket, :dialog, nil)
+
+  defp close_menu(socket), do: socket
+
   defp copy(socket), do: update(socket, :session, &Session.copy/1)
 
   ## Settings helpers
@@ -1188,11 +1173,7 @@ defmodule DrawMusicWeb.EditorLive do
           |> touched(fields.instrument, old_instrument)
 
         socket
-        |> assign(
-          session: session,
-          settings_form: nil,
-          pending_key: pending_key(key, session.ctx)
-        )
+        |> assign(session: session, dialog: transpose_prompt(key, session.ctx))
         |> assign(:tempo_text, tempo_text)
         |> assign_instrument(fields.instrument)
         |> stop_playback()
@@ -1228,9 +1209,10 @@ defmodule DrawMusicWeb.EditorLive do
     )
   end
 
-  # A key other than the current one waits for the transpose dialog.
-  defp pending_key({sf, mode}, %Context{sf: sf, mode: mode}), do: nil
-  defp pending_key(key, _ctx), do: key
+  # A key other than the current one waits for the transpose dialog; the
+  # same key closes the settings with nothing more to ask.
+  defp transpose_prompt({sf, mode}, %Context{sf: sf, mode: mode}), do: nil
+  defp transpose_prompt(key, _ctx), do: {:transpose, key}
 
   ## Saving helpers
 
@@ -1258,7 +1240,7 @@ defmodule DrawMusicWeb.EditorLive do
     changeset =
       Library.change_composition(scope, EditorSaving.save_as_start(composition, version))
 
-    assign(socket, :save_as_form, to_form(changeset))
+    assign(socket, :dialog, {:save_as, to_form(changeset)})
   end
 
   # A key change on a saved version is stored as a new version in that key;

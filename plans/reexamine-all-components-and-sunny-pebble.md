@@ -122,13 +122,14 @@ only), so no module goes over ~500 lines. When the last hook moves out, the exte
    - `menu_for`/`menu_target` → `ContextMenu`;
    - `copy`/`paste_at` → `EditorCommands`;
    - `version_attrs`/`draft_name`/`changeset_message` → `EditorSaving`.
-2. **`Editor.Intent` + the single `@dialog` assign + the test-only
-   `ComponentHostLive`:** `EditorLive`'s `handle_info` intents (still fed by the
-   old handlers for now).
-3. **`DetailsDialog`**, shared by `EditorLive` and `LibraryLive`.
+2. **The single `@dialog` assign** and `EditorComponents.editor_dialog/1`.
+   `Editor.Intent` and `ComponentHostLive` each arrive with their first user
+   (PR 6 and PR 3), so no PR adds dead code.
+3. **`DetailsDialog`**, shared by `EditorLive` and `LibraryLive`, plus the
+   test-only `ComponentHostLive`.
 4. **`LayoutToggle` + `InkPicker`**, shared by `EditorLive` and `UserLive.Settings`.
 5. **`Library.ImportDialog`.**
-6. **`Editor.SaveMenu` + `SaveAsDialog`.**
+6. **`Editor.SaveMenu` + `SaveAsDialog`**, plus `Editor.Intent` (its first user).
 7. **`Editor.SettingsDialog` + `TransposeDialog`**, and help moves to JS commands.
 8. **`Editor.TempoDialog` + `Editor.NoteMenu`.**
 9. **Palette, in two parts:**
