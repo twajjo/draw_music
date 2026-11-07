@@ -18,8 +18,7 @@ defmodule DrawMusicWeb.EditorLive do
     EditorComponents,
     LibraryComponents,
     PaletteComponents,
-    ScoreComponents,
-    SettingsComponents
+    ScoreComponents
   }
 
   alias DrawMusic.Engraving.{Engraved, Layout}
@@ -49,8 +48,8 @@ defmodule DrawMusicWeb.EditorLive do
     EditorSaving,
     EditorSettings,
     InstrumentSource,
+    LayoutToggle,
     PlaybackPayload,
-    ScorePreferences,
     ScoreSvg,
     TempoDialog,
     TempoForm,
@@ -132,9 +131,10 @@ defmodule DrawMusicWeb.EditorLive do
         <:below_mode>
           <%!-- Its buttons are cells of the palette's grid, so Page and Strip
                line up under Edit and Play, the same widths. --%>
-          <.layout_toggle
+          <.live_component
+            module={LayoutToggle}
             id="score-layout"
-            layout={@current_scope.user.score_layout}
+            scope={@current_scope}
             class="contents"
             button_class="row-start-2 h-auto w-full"
           />
@@ -276,6 +276,14 @@ defmodule DrawMusicWeb.EditorLive do
   end
 
   def handle_info({DetailsDialog, :closed}, socket), do: {:noreply, assign(socket, :dialog, nil)}
+
+  # A new layout preference: the score is laid out again in it.
+  def handle_info({LayoutToggle, {:updated, user}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:current_scope, %{socket.assigns.current_scope | user: user})
+     |> assign_layout()}
+  end
 
   defp load(:new, _scope, _params) do
     composition = %Composition{name: EditorSaving.untitled(), keys: []}
@@ -918,15 +926,6 @@ defmodule DrawMusicWeb.EditorLive do
      socket
      |> update(:session, &Session.redo/1)
      |> stop_playback()
-     |> assign_layout()}
-  end
-
-  ## Preferences
-
-  def handle_event("set_score_layout" = event, params, socket) do
-    {:noreply,
-     event
-     |> ScorePreferences.apply_event(params, socket)
      |> assign_layout()}
   end
 

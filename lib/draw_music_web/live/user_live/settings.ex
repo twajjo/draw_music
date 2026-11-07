@@ -3,10 +3,8 @@ defmodule DrawMusicWeb.UserLive.Settings do
 
   on_mount {DrawMusicWeb.UserAuth, :require_sudo_mode}
 
-  import DrawMusicWeb.SettingsComponents
-
   alias DrawMusic.Accounts
-  alias DrawMusicWeb.ScorePreferences
+  alias DrawMusicWeb.{InkPicker, LayoutToggle}
 
   @impl true
   def render(assigns) do
@@ -90,15 +88,11 @@ defmodule DrawMusicWeb.UserLive.Settings do
         </.header>
         <div class="space-y-2">
           <p class="text-sm font-medium">Layout</p>
-          <.layout_toggle id="settings-layout" layout={@current_scope.user.score_layout} />
+          <.live_component module={LayoutToggle} id="settings-layout" scope={@current_scope} />
         </div>
         <div class="space-y-2">
           <p class="text-sm font-medium">Dark mode ink</p>
-          <.ink_picker
-            id="settings-ink"
-            color={@current_scope.user.score_ink_dark}
-            form={@preferences_form}
-          />
+          <.live_component module={InkPicker} id="settings-ink" scope={@current_scope} />
         </div>
       </section>
     </Layouts.app>
@@ -129,16 +123,12 @@ defmodule DrawMusicWeb.UserLive.Settings do
       |> assign(:current_email, user.email)
       |> assign(:email_form, to_form(email_changeset))
       |> assign(:password_form, to_form(password_changeset))
-      |> assign(:preferences_form, ScorePreferences.form(socket.assigns.current_scope))
       |> assign(:trigger_submit, false)
 
     {:ok, socket}
   end
 
   @impl true
-  def handle_event(event, params, socket) when event in ~w(set_score_layout set_score_ink),
-    do: {:noreply, ScorePreferences.apply_event(event, params, socket)}
-
   def handle_event("validate_email", params, socket) do
     %{"user" => user_params} = params
 
@@ -197,4 +187,15 @@ defmodule DrawMusicWeb.UserLive.Settings do
         {:noreply, assign(socket, password_form: to_form(changeset, action: :insert))}
     end
   end
+
+  # A saved score preference: the page (and its ink) follows the new user.
+  @impl true
+  def handle_info({component, {:updated, user}}, socket)
+      when component in [InkPicker, LayoutToggle] do
+    {:noreply, assign(socket, :current_scope, %{socket.assigns.current_scope | user: user})}
+  end
+
+  # Anything else (e.g. the test mailer's copy of a sent email) is ignored,
+  # as it was before this page handled any messages.
+  def handle_info(_message, socket), do: {:noreply, socket}
 end

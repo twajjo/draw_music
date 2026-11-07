@@ -4,7 +4,7 @@ defmodule DrawMusic.Accounts.PreferencesTest do
   import DrawMusic.DataCase, only: [errors_on: 1]
 
   alias DrawMusic.Accounts.User
-  alias DrawMusicWeb.SettingsComponents
+  alias DrawMusicWeb.InkPicker
 
   defp prefs(attrs), do: User.preferences_changeset(%User{}, attrs)
 
@@ -27,7 +27,7 @@ defmodule DrawMusic.Accounts.PreferencesTest do
   end
 
   test "every preset swatch is accepted" do
-    for {_name, color} <- SettingsComponents.ink_presets() do
+    for {_name, color} <- InkPicker.presets() do
       assert prefs(%{score_ink_dark: color}).valid?, "#{color} should be readable on black"
     end
   end
