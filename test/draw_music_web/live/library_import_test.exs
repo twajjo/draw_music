@@ -29,7 +29,11 @@ defmodule DrawMusicWeb.LibraryImportTest do
     view |> form("#import-name-form", import: %{name: name}) |> render_submit()
   end
 
-  defp opened({:error, {:live_redirect, %{to: to}}}), do: to
+  # Where the library sent us once the dialog reported the import.
+  defp opened(view) do
+    {to, _flash} = assert_redirect(view)
+    to
+  end
 
   defp versions(scope, name) do
     composition = Library.get_composition_by_name(scope, name)
@@ -43,10 +47,8 @@ defmodule DrawMusicWeb.LibraryImportTest do
 
     assert has_element?(view, "#import-name-form input[value='Waltz']")
 
-    {:ok, editor, _html} =
-      view
-      |> name_it("Evening Waltz")
-      |> follow_redirect(conn)
+    name_it(view, "Evening Waltz")
+    {:ok, editor, _html} = live(conn, opened(view))
 
     assert has_element?(editor, "#composition-name", "Evening Waltz")
   end
@@ -77,7 +79,8 @@ defmodule DrawMusicWeb.LibraryImportTest do
 
     test "Replace stores it as version 1 of that key", %{conn: conn, scope: scope} do
       view = collide(conn)
-      to = view |> element("#import-replace") |> render_click() |> opened()
+      view |> element("#import-replace") |> render_click()
+      to = opened(view)
 
       assert to =~ "/c-major/v/1"
       assert versions(scope, "Waltz") == [{"C major", 1}]
@@ -85,7 +88,8 @@ defmodule DrawMusicWeb.LibraryImportTest do
 
     test "New version adds the next version in that key", %{conn: conn, scope: scope} do
       view = collide(conn)
-      to = view |> element("#import-new-version") |> render_click() |> opened()
+      view |> element("#import-new-version") |> render_click()
+      to = opened(view)
 
       assert to =~ "/c-major/v/3"
       assert versions(scope, "Waltz") == [{"C major", 1}, {"C major", 2}, {"C major", 3}]
@@ -100,7 +104,8 @@ defmodule DrawMusicWeb.LibraryImportTest do
       assert has_element?(view, "#import-collision")
 
       view |> element("#import-rename") |> render_click()
-      to = view |> name_it("Second Waltz") |> opened()
+      name_it(view, "Second Waltz")
+      to = opened(view)
 
       assert to =~ "/c-major/v/1"
       assert versions(scope, "Second Waltz") == [{"C major", 1}]
