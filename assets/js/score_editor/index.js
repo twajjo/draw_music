@@ -348,7 +348,9 @@ export default {
     // The bar controls are ordinary buttons.
     if (e.target.closest("button")) return
     // In the paper's margin, outside the music, a press only starts a band.
-    if (!this.el.contains(e.target)) return this.startBand(e)
+    // Anything else drawn over the paper (a dialog, its backdrop) keeps its
+    // own presses: capturing the pointer would rob a drop list of its release.
+    if (!this.el.contains(e.target)) return e.target === this.paper && this.startBand(e)
 
     const hit = eventTarget(e)
     // Play mode: a note sounds its chord; anywhere else starts a range selection.
