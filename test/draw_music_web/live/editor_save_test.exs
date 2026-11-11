@@ -49,10 +49,9 @@ defmodule DrawMusicWeb.EditorSaveTest do
 
     test "Save as new version stores the next version and opens it", %{view: view} do
       add_note(view)
+      view |> element("#save-new-version") |> render_click()
 
-      assert {:error, {:live_redirect, %{to: to}}} =
-               view |> element("#save-new-version") |> render_click()
-
+      {to, _flash} = assert_redirect(view)
       assert to =~ ~r{/v/2$}
     end
   end
@@ -75,9 +74,9 @@ defmodule DrawMusicWeb.EditorSaveTest do
       view |> element("#save") |> render_click()
       assert has_element?(view, "#save-as-form")
 
-      assert {:error, {:live_redirect, %{to: to}}} =
-               view |> form("#save-as-form", composition: %{name: "Etude"}) |> render_submit()
+      view |> form("#save-as-form", composition: %{name: "Etude"}) |> render_submit()
 
+      {to, _flash} = assert_redirect(view)
       assert to =~ ~r{/c-major/v/1$}
       composition = Library.get_composition_by_name(scope, "Etude")
       assert composition

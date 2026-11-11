@@ -56,6 +56,8 @@ defmodule DrawMusicWeb.EditorLive do
     VersionLookup
   }
 
+  alias DrawMusicWeb.Editor.{SaveAsDialog, SaveMenu}
+
   @draft_measures 4
   @menu_events ~w(split set_value toggle_menu_dot to_rest to_note tie_next untie add_third_above
                   add_third_below menu_delete transpose reverse)
@@ -69,7 +71,7 @@ defmodule DrawMusicWeb.EditorLive do
   @play_events ~w(play rewind skip toggle_loop audition set_playback_instrument
                   use_playback_instrument)
   # Each dialog's Cancel, Esc and click-away; any of them closes the open one.
-  @close_events ~w(close_help close_menu close_tempo close_save_as close_settings cancel_transpose)
+  @close_events ~w(close_help close_menu close_tempo close_settings cancel_transpose)
 
   @impl true
   def render(assigns) do
@@ -140,7 +142,14 @@ defmodule DrawMusicWeb.EditorLive do
           />
         </:below_mode>
         <:trailing>
-          <.save_menu dirty?={@session.dirty?} saved?={@version.id != nil} />
+          <.live_component
+            module={SaveMenu}
+            id="saving"
+            scope={@current_scope}
+            version={@version}
+            version_attrs={EditorSettings.version_attrs(@session, @tempo_text, @instrument)}
+            dirty?={@session.dirty?}
+          />
         </:trailing>
       </.palette>
 
@@ -227,6 +236,16 @@ defmodule DrawMusicWeb.EditorLive do
           composition={@composition}
           persist?={@version.id != nil}
         />
+        <.live_component
+          :if={@dialog == :save_as}
+          module={SaveAsDialog}
+          id="save-as"
+          scope={@current_scope}
+          composition={@composition}
+          version={@version}
+          key={%{sf: @session.ctx.sf, mode: @session.ctx.mode}}
+          version_attrs={EditorSettings.version_attrs(@session, @tempo_text, @instrument)}
+        />
       </div>
     </Layouts.app>
     """
@@ -276,6 +295,32 @@ defmodule DrawMusicWeb.EditorLive do
   end
 
   def handle_info({DetailsDialog, :closed}, socket), do: {:noreply, assign(socket, :dialog, nil)}
+
+  # The editor components' results (see `DrawMusicWeb.Editor.Intent`).
+  def handle_info({:editor, :close}, socket), do: {:noreply, assign(socket, :dialog, nil)}
+
+  def handle_info({:editor, {:flash, kind, message}}, socket) do
+    {:noreply, put_flash(socket, kind, message)}
+  end
+
+  def handle_info({:editor, {:open, dialog}}, socket),
+    do: {:noreply, assign(socket, :dialog, dialog)}
+
+  # The version being edited was stored: carry on with it.
+  def handle_info(
+        {:editor, {:saved, %Version{id: id} = saved, message}},
+        %{assigns: %{version: %Version{id: id}}} = socket
+      ) do
+    {:noreply,
+     socket
+     |> assign(version: saved, session: Session.saved(socket.assigns.session))
+     |> put_flash(:info, message)}
+  end
+
+  # A new version or composition: open it.
+  def handle_info({:editor, {:saved, saved, message}}, socket) do
+    {:noreply, saved_and_open(socket, saved, message)}
+  end
 
   # A new layout preference: the score is laid out again in it.
   def handle_info({LayoutToggle, {:updated, user}}, socket) do
@@ -726,67 +771,6 @@ defmodule DrawMusicWeb.EditorLive do
     {:noreply, edit(socket, &Editing.append_measure/2)}
   end
 
-  ## Saving
-
-  # On the draft, Save means "save as a new composition".
-  def handle_event("save", _params, %{assigns: %{version: %Version{id: nil}}} = socket) do
-    {:noreply, open_save_as(socket)}
-  end
-
-  def handle_event("save", _params, socket) do
-    %{current_scope: scope, version: version, session: session} = socket.assigns
-
-    case Library.save_version(scope, version, version_attrs(socket)) do
-      {:ok, saved} ->
-        {:noreply,
-         socket
-         |> assign(version: %{saved | key: version.key}, session: Session.saved(session))
-         |> put_flash(:info, "Saved")}
-
-      {:error, changeset} ->
-        {:noreply, put_flash(socket, :error, EditorSaving.error_message(changeset))}
-    end
-  end
-
-  def handle_event("save_new_version", _params, %{assigns: %{version: %Version{id: id}}} = socket)
-      when not is_nil(id) do
-    %{current_scope: scope, version: version} = socket.assigns
-
-    case Library.save_new_version(scope, version.key, version_attrs(socket)) do
-      {:ok, saved} ->
-        {:noreply, saved_and_open(socket, saved, "Saved as version #{saved.number}")}
-
-      {:error, changeset} ->
-        {:noreply, put_flash(socket, :error, EditorSaving.error_message(changeset))}
-    end
-  end
-
-  def handle_event("open_save_as", _params, socket), do: {:noreply, open_save_as(socket)}
-
-  def handle_event("validate_save_as", %{"composition" => params}, socket) do
-    changeset = Library.change_composition(socket.assigns.current_scope, %Composition{}, params)
-    {:noreply, assign(socket, :dialog, {:save_as, to_form(changeset, action: :validate)})}
-  end
-
-  def handle_event("save_as", %{"composition" => params}, socket) do
-    %{current_scope: scope, session: %{ctx: ctx}} = socket.assigns
-    key_attrs = %{sf: ctx.sf, mode: ctx.mode}
-
-    case Library.create_composition(scope, params, key_attrs, version_attrs(socket)) do
-      {:ok, saved} ->
-        {:noreply,
-         socket
-         |> assign(:dialog, nil)
-         |> saved_and_open(saved, "Saved")}
-
-      {:error, %Ecto.Changeset{data: %Composition{}} = changeset} ->
-        {:noreply, assign(socket, :dialog, {:save_as, to_form(changeset, action: :insert)})}
-
-      {:error, changeset} ->
-        {:noreply, put_flash(socket, :error, EditorSaving.error_message(changeset))}
-    end
-  end
-
   ## Composition details
 
   def handle_event("edit_details", _params, socket) do
@@ -1214,15 +1198,6 @@ defmodule DrawMusicWeb.EditorLive do
   defp version_attrs(socket) do
     %{session: session, tempo_text: tempo_text, instrument: instrument} = socket.assigns
     EditorSettings.version_attrs(session, tempo_text, instrument)
-  end
-
-  defp open_save_as(socket) do
-    %{current_scope: scope, composition: composition, version: version} = socket.assigns
-
-    changeset =
-      Library.change_composition(scope, EditorSaving.save_as_start(composition, version))
-
-    assign(socket, :dialog, {:save_as, to_form(changeset)})
   end
 
   # A key change on a saved version is stored as a new version in that key;

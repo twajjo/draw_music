@@ -83,12 +83,9 @@ defmodule DrawMusicWeb.CompositionDetailsTest do
                "#save-as-form input[name='composition[composer]'][value='J. Field']"
              )
 
-      {:ok, _view, _html} =
-        view
-        |> form("#save-as-form")
-        |> render_submit()
-        |> follow_redirect(conn)
+      view |> form("#save-as-form") |> render_submit()
 
+      assert_redirect(view)
       assert [%{name: "Nocturne", composer: "J. Field"}] = Library.list_compositions(scope)
     end
   end

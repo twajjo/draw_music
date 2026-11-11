@@ -471,65 +471,6 @@ defmodule DrawMusicWeb.PaletteComponents do
     """
   end
 
-  @doc """
-  Save, with a menu for Save as new version (saved versions only) and Save
-  as new composition, and a dot when there are unsaved changes.
-  """
-  attr :dirty?, :boolean, required: true
-  attr :saved?, :boolean, required: true, doc: "whether this is a stored version (not the draft)"
-
-  @spec save_menu(map()) :: Phoenix.LiveView.Rendered.t()
-  def save_menu(assigns) do
-    ~H"""
-    <div class="flex items-stretch gap-1">
-      <span
-        :if={@dirty?}
-        id="dirty-marker"
-        title="Unsaved changes"
-        class="size-2 self-center rounded-full bg-warning"
-        aria-label="Unsaved changes"
-      />
-      <div class="join">
-        <button
-          id="save"
-          type="button"
-          phx-click="save"
-          class="join-item btn btn-primary btn-sm h-auto"
-        >
-          Save
-        </button>
-        <details id="save-menu" class="dropdown dropdown-end join-item flex">
-          <summary class="btn btn-primary btn-sm btn-square h-auto" aria-label="More ways to save">
-            <.icon name="hero-chevron-down-micro" class="size-4" />
-          </summary>
-          <ul class="dropdown-content z-30 mt-1 w-56 rounded-box border border-base-300 bg-base-100 p-1 text-sm shadow-lg">
-            <li :if={@saved?}>
-              <button
-                id="save-new-version"
-                type="button"
-                phx-click="save_new_version"
-                class="w-full rounded px-2 py-1.5 text-left transition-colors hover:bg-base-200"
-              >
-                Save as new version
-              </button>
-            </li>
-            <li>
-              <button
-                id="save-as"
-                type="button"
-                phx-click="open_save_as"
-                class="w-full rounded px-2 py-1.5 text-left transition-colors hover:bg-base-200"
-              >
-                Save as new composition…
-              </button>
-            </li>
-          </ul>
-        </details>
-      </div>
-    </div>
-    """
-  end
-
   attr :id, :string, required: true
   attr :event, :string, required: true
   attr :title, :string, required: true
