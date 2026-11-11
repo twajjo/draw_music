@@ -68,9 +68,9 @@ defmodule DrawMusicWeb.EditorSettingsTest do
 
     apply_settings(view, %{"key" => "g-major"})
 
-    assert {:error, {:live_redirect, %{to: to}}} =
-             view |> element("#transpose-up") |> render_click()
+    view |> element("#transpose-up") |> render_click()
 
+    {to, _flash} = assert_redirect(view)
     assert to =~ ~r{/g-major/v/1$}
   end
 
@@ -122,7 +122,10 @@ defmodule DrawMusicWeb.EditorSettingsTest do
       view = draft(conn)
       view |> element("#settings-button") |> render_click()
 
-      render_hook(view, "apply_settings", %{"settings" => Map.put(@settings, "instrument", "128")})
+      # Not one of the select's options, so submitted past the form's checks.
+      view
+      |> element("#settings-form")
+      |> render_submit(%{"settings" => Map.put(@settings, "instrument", "128")})
 
       assert has_element?(view, "#settings-form", "must be less than or equal to 127")
       assert :sys.get_state(view.pid).socket.assigns.instrument == 0
