@@ -12,7 +12,7 @@ defmodule DrawMusic.Library.Version do
   import Ecto.Changeset
 
   alias DrawMusic.Library.Key
-  alias DrawMusic.Music.{Context, Score}
+  alias DrawMusic.Music.{Context, Score, TempoMarking}
 
   @defaults %Context{}
   @time_denominators Context.time_denominators()
@@ -20,7 +20,6 @@ defmodule DrawMusic.Library.Version do
   @acoustic_grand_piano 0
   @max_program 127
   @max_label_length 120
-  @max_tempo_text_length 60
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -31,7 +30,7 @@ defmodule DrawMusic.Library.Version do
     field :time_den, :integer, default: @defaults.time_den
     field :time_symbol, Ecto.Enum, values: [:none, :common, :cut], default: @defaults.time_symbol
     field :tempo_bpm, :integer, default: @defaults.tempo_bpm
-    field :tempo_text, :string
+    field :tempo_text, :string, default: TempoMarking.default()
     # Length of an opening incomplete (anacrusis) bar, in score ticks; 0 = none.
     field :pickup_ticks, :integer, default: @defaults.pickup_ticks
     # General MIDI program number used for playback.
@@ -52,7 +51,7 @@ defmodule DrawMusic.Library.Version do
           time_den: pos_integer(),
           time_symbol: :none | :common | :cut,
           tempo_bpm: pos_integer(),
-          tempo_text: String.t() | nil,
+          tempo_text: String.t(),
           pickup_ticks: non_neg_integer(),
           instrument: 0..127,
           score: Score.t(),
@@ -84,9 +83,17 @@ defmodule DrawMusic.Library.Version do
     version
     |> cast(attrs, @fields)
     |> put_score(attrs)
-    |> validate_required([:number, :time_num, :time_den, :time_symbol, :tempo_bpm, :score])
+    |> validate_required([
+      :number,
+      :time_num,
+      :time_den,
+      :time_symbol,
+      :tempo_bpm,
+      :tempo_text,
+      :score
+    ])
     |> validate_length(:label, max: @max_label_length)
-    |> validate_length(:tempo_text, max: @max_tempo_text_length)
+    |> validate_inclusion(:tempo_text, TempoMarking.all(), message: "isn't a known tempo marking")
     |> validate_number(:time_num,
       greater_than_or_equal_to: 1,
       less_than_or_equal_to: Context.max_time_num()

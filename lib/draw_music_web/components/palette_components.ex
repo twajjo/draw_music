@@ -281,7 +281,7 @@ defmodule DrawMusicWeb.PaletteComponents do
               phx-click="open_settings"
               class="btn btn-ghost btn-sm btn-square h-auto"
             >
-              <.icon name="hero-adjustments-horizontal" class="size-4" />
+              <.icon name="hero-cog-6-tooth" class="size-4" />
             </button>
             <button
               id="palette-select-all"

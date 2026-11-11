@@ -87,10 +87,14 @@ defmodule DrawMusic.Library.ValidationsTest do
                errors_on(version(%{time_num: 4, time_den: 4, time_symbol: :cut}))
     end
 
-    test "tempo 5..400 bpm, tempo text at most 60 characters" do
+    test "tempo 5..400 bpm, and a tempo marking from the known list" do
       assert %{tempo_bpm: [_]} = errors_on(version(%{tempo_bpm: 4}))
       assert %{tempo_bpm: [_]} = errors_on(version(%{tempo_bpm: 401}))
-      assert %{tempo_text: [_]} = errors_on(version(%{tempo_text: String.duplicate("x", 61)}))
+      assert version(%{tempo_text: "Allegro ma non troppo"}).valid?
+      assert version(%{tempo_text: "Mäßig bewegt"}).valid?
+
+      assert %{tempo_text: ["isn't a known tempo marking"]} =
+               errors_on(version(%{tempo_text: "Zippy"}))
     end
 
     test "pickup is non-negative; instrument is a MIDI program 0..127" do
