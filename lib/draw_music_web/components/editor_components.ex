@@ -35,38 +35,6 @@ defmodule DrawMusicWeb.EditorComponents do
     {:two_hundred_fifty_sixth, :note256thUp, "256th"}
   ]
 
-  @doc "Asks for the new composition's name (and credits) when saving as a new composition."
-  attr :form, Phoenix.HTML.Form, required: true
-
-  @spec save_as_dialog(map()) :: Phoenix.LiveView.Rendered.t()
-  def save_as_dialog(assigns) do
-    ~H"""
-    <div class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-      <div
-        class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-box border border-base-300 bg-base-100 p-6 shadow-2xl"
-        phx-click-away="close_save_as"
-        phx-window-keydown="close_save_as"
-        phx-key="Escape"
-      >
-        <h2 class="text-lg font-semibold">Save as a new composition</h2>
-        <.form
-          for={@form}
-          id="save-as-form"
-          phx-change="validate_save_as"
-          phx-submit="save_as"
-          class="mt-4 space-y-1"
-        >
-          <LibraryComponents.composition_fields form={@form} />
-          <div class="flex justify-end gap-2 pt-2">
-            <button type="button" phx-click="close_save_as" class="btn btn-ghost">Cancel</button>
-            <button type="submit" class="btn btn-primary" phx-disable-with="Saving...">Save</button>
-          </div>
-        </.form>
-      </div>
-    </div>
-    """
-  end
-
   @doc "The cheat-sheet over the score, the current mode's groups first."
   attr :shortcuts, :list, required: true
 
@@ -394,9 +362,9 @@ defmodule DrawMusicWeb.EditorComponents do
 
   @doc """
   The one dialog (or right-click menu) open over the score, if any. `dialog`
-  says which: `:help`, `{:menu, menu}`, `{:tempo, dialog}`, `{:save_as, form}`,
-  `{:settings, form}` or `{:transpose, {sf, mode}}`. Anything else (such as
-  `:details`, a LiveComponent the editor renders itself) draws nothing here.
+  says which: `:help`, `{:menu, menu}`, `{:tempo, dialog}`, `{:settings, form}`
+  or `{:transpose, {sf, mode}}`. Anything else (such as `:details` or
+  `:save_as`, LiveComponents the editor renders itself) draws nothing here.
   """
   attr :dialog, :any, required: true
   attr :editor_mode, :atom, required: true, doc: "whose shortcuts help shows"
@@ -421,14 +389,6 @@ defmodule DrawMusicWeb.EditorComponents do
 
     ~H"""
     <.tempo_dialog dialog={@tempo} />
-    """
-  end
-
-  def editor_dialog(%{dialog: {:save_as, form}} = assigns) do
-    assigns = assign(assigns, :form, form)
-
-    ~H"""
-    <.save_as_dialog form={@form} />
     """
   end
 
