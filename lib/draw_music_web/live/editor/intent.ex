@@ -15,15 +15,23 @@ defmodule DrawMusicWeb.Editor.Intent do
       `message` tells the user.
     * `{:flash, kind, message}`: show a flash (`:info` or `:error`). A
       component's own flash wouldn't reach the page's layout.
+    * `{:settings, {sf, mode}, fields}`: apply checked score settings (see
+      `DrawMusicWeb.Editor.SettingsDialog`). A new key is confirmed first.
+    * `{:transpose, {sf, mode}, direction}`: move the notes into the key,
+      `:nearest`, `:up` or `:down`.
   """
 
   alias DrawMusic.Library.Version
+
+  @type key :: {-7..7, :major | :minor}
 
   @type t ::
           {:open, atom()}
           | :close
           | {:saved, Version.t(), String.t()}
           | {:flash, :info | :error, String.t()}
+          | {:settings, key(), map()}
+          | {:transpose, key(), :nearest | :up | :down}
 
   @doc "Sends `intent` to the editor (the LiveView this process runs)."
   @spec notify(t()) :: {:editor, t()}

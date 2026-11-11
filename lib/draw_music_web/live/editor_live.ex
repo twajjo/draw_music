@@ -56,7 +56,7 @@ defmodule DrawMusicWeb.EditorLive do
     VersionLookup
   }
 
-  alias DrawMusicWeb.Editor.{SaveAsDialog, SaveMenu}
+  alias DrawMusicWeb.Editor.{SaveAsDialog, SaveMenu, SettingsDialog, TransposeDialog}
 
   @draft_measures 4
   @menu_events ~w(split set_value toggle_menu_dot to_rest to_note tie_next untie add_third_above
@@ -65,13 +65,13 @@ defmodule DrawMusicWeb.EditorLive do
   @edit_events ~w(arm arm_value arm_chord single_notes arm_tie toggle_rest toggle_dot set_accidental
                   toggle_insert place move delete cut paste drop tie open_menu menu_copy menu_cut
                   insert_measure delete_measure add_measure undo redo open_settings
-                  apply_settings transpose_key select_all menu_tempo edit_tempo validate_tempo
+                  select_all menu_tempo edit_tempo validate_tempo
                   save_tempo delete_tempo move_tempo resize_tempo) ++ @menu_events
   # The play controls; Edit mode ignores them.
   @play_events ~w(play rewind skip toggle_loop audition set_playback_instrument
                   use_playback_instrument)
   # Each dialog's Cancel, Esc and click-away; any of them closes the open one.
-  @close_events ~w(close_help close_menu close_tempo close_settings cancel_transpose)
+  @close_events ~w(close_help close_menu close_tempo)
 
   @impl true
   def render(assigns) do
@@ -246,6 +246,20 @@ defmodule DrawMusicWeb.EditorLive do
           key={%{sf: @session.ctx.sf, mode: @session.ctx.mode}}
           version_attrs={EditorSettings.version_attrs(@session, @tempo_text, @instrument)}
         />
+        <.live_component
+          :if={@dialog == :settings}
+          module={SettingsDialog}
+          id="settings"
+          ctx={@session.ctx}
+          tempo_text={@tempo_text}
+          instrument={@instrument}
+        />
+        <.live_component
+          :if={match?({:transpose, _key}, @dialog)}
+          module={TransposeDialog}
+          id="transpose"
+          key={elem(@dialog, 1)}
+        />
       </div>
     </Layouts.app>
     """
@@ -297,6 +311,12 @@ defmodule DrawMusicWeb.EditorLive do
   def handle_info({DetailsDialog, :closed}, socket), do: {:noreply, assign(socket, :dialog, nil)}
 
   # The editor components' results (see `DrawMusicWeb.Editor.Intent`).
+  # Play mode doesn't change the score's settings or its key.
+  def handle_info({:editor, {intent, _key, _value}}, %{assigns: %{editor_mode: :play}} = socket)
+      when intent in [:settings, :transpose] do
+    {:noreply, socket}
+  end
+
   def handle_info({:editor, :close}, socket), do: {:noreply, assign(socket, :dialog, nil)}
 
   def handle_info({:editor, {:flash, kind, message}}, socket) do
@@ -320,6 +340,31 @@ defmodule DrawMusicWeb.EditorLive do
   # A new version or composition: open it.
   def handle_info({:editor, {:saved, saved, message}}, socket) do
     {:noreply, saved_and_open(socket, saved, message)}
+  end
+
+  # Settings apply at once; a new key is confirmed in the transpose dialog.
+  def handle_info({:editor, {:settings, key, fields}}, socket) do
+    {:noreply, apply_settings(socket, key, fields)}
+  end
+
+  def handle_info({:editor, {:transpose, {sf, mode}, direction}}, socket) do
+    %{session: session} = socket.assigns
+    from = {session.ctx.sf, session.ctx.mode}
+    socket = assign(socket, :dialog, nil)
+
+    case Transpose.to_key(session.score, from, {sf, mode}, direction) do
+      {:ok, score} ->
+        session = Session.change_context(session, %{session.ctx | sf: sf, mode: mode}, score)
+
+        {:noreply,
+         socket
+         |> assign(:session, session)
+         |> stop_playback()
+         |> in_new_key(sf, mode)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, error_message(reason))}
+    end
   end
 
   # A new layout preference: the score is laid out again in it.
@@ -780,49 +825,7 @@ defmodule DrawMusicWeb.EditorLive do
   ## Score settings
 
   def handle_event("open_settings", _params, socket) do
-    %{session: session, tempo_text: tempo_text, instrument: instrument} = socket.assigns
-    params = EditorSettings.params(session.ctx, tempo_text, instrument)
-    {:noreply, assign(socket, :dialog, {:settings, to_form(params, as: :settings)})}
-  end
-
-  # Settings apply at once; a new key is confirmed in the transpose dialog.
-  def handle_event("apply_settings", %{"settings" => params}, socket) do
-    case EditorSettings.validate(params) do
-      {:ok, key, fields} ->
-        {:noreply, apply_settings(socket, params, key, fields)}
-
-      {:error, errors} ->
-        form = to_form(params, as: :settings, errors: errors, action: :validate)
-        {:noreply, assign(socket, :dialog, {:settings, form})}
-
-      :error ->
-        {:noreply, socket}
-    end
-  end
-
-  def handle_event(
-        "transpose_key",
-        %{"direction" => dir},
-        %{assigns: %{dialog: {:transpose, {sf, mode}}}} = socket
-      )
-      when dir in ~w(nearest up down) do
-    %{session: session} = socket.assigns
-    from = {session.ctx.sf, session.ctx.mode}
-    socket = assign(socket, :dialog, nil)
-
-    case Transpose.to_key(session.score, from, {sf, mode}, direction(dir)) do
-      {:ok, score} ->
-        session = Session.change_context(session, %{session.ctx | sf: sf, mode: mode}, score)
-
-        {:noreply,
-         socket
-         |> assign(:session, session)
-         |> stop_playback()
-         |> in_new_key(sf, mode)}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, error_message(reason))}
-    end
+    {:noreply, assign(socket, :dialog, :settings)}
   end
 
   ## Playback
@@ -1008,10 +1011,6 @@ defmodule DrawMusicWeb.EditorLive do
   defp next_mode(_toggle, :edit), do: :play
   defp next_mode(_toggle, :play), do: :edit
 
-  defp direction("nearest"), do: :nearest
-  defp direction("up"), do: :up
-  defp direction("down"), do: :down
-
   defp beats("left"), do: -1
   defp beats("right"), do: 1
 
@@ -1140,20 +1139,19 @@ defmodule DrawMusicWeb.EditorLive do
 
   ## Settings helpers
 
-  defp apply_settings(socket, params, key, fields) do
+  defp apply_settings(socket, key, fields) do
     case EditorSettings.apply(socket.assigns.session, fields) do
       {:ok, session} ->
         %{tempo_text: old_text, instrument: old_instrument} = socket.assigns
-        tempo_text = EditorSettings.tempo_text(params["tempo_text"])
 
         session =
           session
-          |> touched(tempo_text, old_text)
+          |> touched(fields.tempo_text, old_text)
           |> touched(fields.instrument, old_instrument)
 
         socket
         |> assign(session: session, dialog: transpose_prompt(key, session.ctx))
-        |> assign(:tempo_text, tempo_text)
+        |> assign(:tempo_text, fields.tempo_text)
         |> assign_instrument(fields.instrument)
         |> stop_playback()
         |> assign_layout()

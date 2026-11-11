@@ -10,12 +10,10 @@ defmodule DrawMusicWeb.EditorComponents do
   import DrawMusicWeb.CoreComponents, only: [icon: 1, input: 1]
 
   alias DrawMusic.Engraving.Smufl
-  alias DrawMusic.Library.Key
 
   alias DrawMusicWeb.{
     BarControl,
     HelpComponents,
-    LibraryComponents,
     ScoreComponents,
     Shortcuts
   }
@@ -64,37 +62,6 @@ defmodule DrawMusicWeb.EditorComponents do
           </button>
         </div>
         <HelpComponents.cheat_sheet shortcuts={@shortcuts} />
-      </div>
-    </div>
-    """
-  end
-
-  @doc "The score's settings: key, time signature, tempo and pickup."
-  attr :form, Phoenix.HTML.Form, required: true
-
-  @spec settings_panel(map()) :: Phoenix.LiveView.Rendered.t()
-  def settings_panel(assigns) do
-    ~H"""
-    <div class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-      <div
-        class="w-full max-w-lg rounded-box border border-base-300 bg-base-100 p-6 shadow-2xl"
-        phx-click-away="close_settings"
-        phx-window-keydown="close_settings"
-        phx-key="Escape"
-      >
-        <h2 class="text-lg font-semibold">Score settings</h2>
-        <.form
-          for={@form}
-          id="settings-form"
-          phx-submit="apply_settings"
-          class="mt-4 grid gap-x-4 sm:grid-cols-2"
-        >
-          <LibraryComponents.score_settings_fields form={@form} />
-          <div class="flex justify-end gap-2 pt-2 sm:col-span-2">
-            <button type="button" phx-click="close_settings" class="btn btn-ghost">Cancel</button>
-            <button type="submit" class="btn btn-primary">Apply</button>
-          </div>
-        </.form>
       </div>
     </div>
     """
@@ -160,34 +127,6 @@ defmodule DrawMusicWeb.EditorComponents do
             <button id="tempo-save" type="submit" class="btn btn-primary">Save</button>
           </div>
         </.form>
-      </div>
-    </div>
-    """
-  end
-
-  @doc "Asks how to move the notes into a newly chosen key."
-  attr :key_name, :string, required: true
-
-  @spec transpose_dialog(map()) :: Phoenix.LiveView.Rendered.t()
-  def transpose_dialog(assigns) do
-    ~H"""
-    <div id="transpose-dialog" class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-      <div class="w-full max-w-sm rounded-box border border-base-300 bg-base-100 p-6 shadow-2xl">
-        <h2 class="text-lg font-semibold">Transpose to {@key_name}?</h2>
-        <p class="mt-1 text-sm opacity-70">The notes move with the key.</p>
-        <div class="mt-4 flex flex-wrap gap-2">
-          <button
-            :for={{dir, label} <- [{"nearest", "Nearest"}, {"up", "Up"}, {"down", "Down"}]}
-            id={"transpose-#{dir}"}
-            type="button"
-            phx-click="transpose_key"
-            phx-value-direction={dir}
-            class={["btn", if(dir == "nearest", do: "btn-primary", else: "btn-ghost")]}
-          >
-            {label}
-          </button>
-          <button type="button" phx-click="cancel_transpose" class="btn btn-ghost ml-auto">Cancel</button>
-        </div>
       </div>
     </div>
     """
@@ -362,9 +301,9 @@ defmodule DrawMusicWeb.EditorComponents do
 
   @doc """
   The one dialog (or right-click menu) open over the score, if any. `dialog`
-  says which: `:help`, `{:menu, menu}`, `{:tempo, dialog}`, `{:settings, form}`
-  or `{:transpose, {sf, mode}}`. Anything else (such as `:details` or
-  `:save_as`, LiveComponents the editor renders itself) draws nothing here.
+  says which: `:help`, `{:menu, menu}` or `{:tempo, dialog}`. Anything else
+  (such as `:details`, `:save_as`, `:settings` or `{:transpose, key}`,
+  LiveComponents the editor renders itself) draws nothing here.
   """
   attr :dialog, :any, required: true
   attr :editor_mode, :atom, required: true, doc: "whose shortcuts help shows"
@@ -389,22 +328,6 @@ defmodule DrawMusicWeb.EditorComponents do
 
     ~H"""
     <.tempo_dialog dialog={@tempo} />
-    """
-  end
-
-  def editor_dialog(%{dialog: {:settings, form}} = assigns) do
-    assigns = assign(assigns, :form, form)
-
-    ~H"""
-    <.settings_panel form={@form} />
-    """
-  end
-
-  def editor_dialog(%{dialog: {:transpose, {sf, mode}}} = assigns) do
-    assigns = assign(assigns, :key_name, Key.name(sf, mode))
-
-    ~H"""
-    <.transpose_dialog key_name={@key_name} />
     """
   end
 

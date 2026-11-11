@@ -139,14 +139,15 @@ defmodule DrawMusicWeb.EditorModeTest do
     render_hook(view, "open_settings", %{})
     refute has_element?(view, "#settings-form")
 
-    settings = %{
-      "key" => "g-major",
-      "time_num" => "3",
-      "time_den" => "4",
-      "time_symbol" => "none"
-    }
+    # As if a settings dialog opened in Edit mode reported after the switch.
+    send(
+      view.pid,
+      {:editor, {:settings, {1, :major}, %{time_num: 3, tempo_text: nil, instrument: 0}}}
+    )
 
-    render_hook(view, "apply_settings", %{"settings" => settings})
+    send(view.pid, {:editor, {:transpose, {1, :major}, :up}})
+
     assert session_of(view).ctx.time_num == 4
+    assert session_of(view).ctx.sf == 0
   end
 end
