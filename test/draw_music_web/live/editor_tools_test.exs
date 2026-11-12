@@ -106,7 +106,7 @@ defmodule DrawMusicWeb.EditorToolsTest do
       put_notes(view, [{0, "C4"}])
       open_menu(view, 0)
       assert has_element?(view, "#context-menu")
-      render_hook(view, "close_menu", %{})
+      view |> element("#context-menu") |> render_keydown(%{"key" => "Escape"})
       refute has_element?(view, "#context-menu")
     end
 

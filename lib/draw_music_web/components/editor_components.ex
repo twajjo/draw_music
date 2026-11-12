@@ -1,8 +1,8 @@
 defmodule DrawMusicWeb.EditorComponents do
   @moduledoc """
-  Editor pieces around the score: the right-click menu for a note or rest,
-  and the per-bar controls (insert a bar before, delete the bar, add a bar
-  at the end) laid over the score.
+  Editor pieces around the score: the help dialog, and the per-bar controls
+  (insert a bar before, delete the bar, add a bar at the end) laid over the
+  score. The right-click menu is `DrawMusicWeb.Editor.NoteMenu`.
   """
 
   use Phoenix.Component
@@ -10,8 +10,6 @@ defmodule DrawMusicWeb.EditorComponents do
   import DrawMusicWeb.CoreComponents, only: [icon: 1]
 
   alias Phoenix.LiveView.JS
-
-  alias DrawMusic.Engraving.Smufl
 
   alias DrawMusicWeb.{
     BarControl,
@@ -21,18 +19,6 @@ defmodule DrawMusicWeb.EditorComponents do
 
   # Bar controls sit this far above a system's top line (staff spaces).
   @controls_raise 2.2
-
-  @lengths [
-    {:whole, :noteWhole, "Whole"},
-    {:half, :noteHalfUp, "Half"},
-    {:quarter, :noteQuarterUp, "Quarter"},
-    {:eighth, :note8thUp, "Eighth"},
-    {:sixteenth, :note16thUp, "16th"},
-    {:thirty_second, :note32ndUp, "32nd"},
-    {:sixty_fourth, :note64thUp, "64th"},
-    {:hundred_twenty_eighth, :note128thUp, "128th"},
-    {:two_hundred_fifty_sixth, :note256thUp, "256th"}
-  ]
 
   @doc """
   The cheat-sheet over the score, the current mode's groups first. It is
@@ -85,194 +71,6 @@ defmodule DrawMusicWeb.EditorComponents do
   @doc "Shows the help dialog, in the browser."
   @spec show_help(JS.t()) :: JS.t()
   def show_help(js \\ %JS{}), do: JS.show(js, to: "#help", display: "grid")
-
-  @intervals ~w(m2 M2 m3 M3 P4 A4 P5 m6 M6 m7 M7 P8)
-
-  @doc """
-  The right-click menu, at the pointer: for a selection (`kind: :selection`)
-  or for one note or rest.
-  """
-  attr :menu, :map, required: true, doc: "%{id, ids, kind: :note | :rest | :selection, x, y}"
-
-  @spec context_menu(map()) :: Phoenix.LiveView.Rendered.t()
-  def context_menu(%{menu: %{kind: :selection}} = assigns) do
-    assigns = assign(assigns, :intervals, @intervals)
-
-    ~H"""
-    <div
-      id="context-menu"
-      role="menu"
-      phx-click-away="close_menu"
-      phx-window-keydown="close_menu"
-      phx-key="Escape"
-      class="fixed z-40 w-64 rounded-box border border-base-300 bg-base-100 p-2 text-sm shadow-xl"
-      style={"left: #{@menu.x}px; top: #{@menu.y}px"}
-    >
-      <p class="px-2 pb-1 text-xs opacity-60">
-        {length(@menu.ids)} selected
-      </p>
-      <p class="px-2 pt-1 pb-1 text-xs opacity-60">Transpose</p>
-      <div class="grid grid-cols-2 gap-1 px-1">
-        <.transpose_button
-          :for={{by, label} <- [{"step", "Step"}, {"semitone", "Semitone"}, {"octave", "Octave"}]}
-          by={by}
-          label={label}
-        />
-      </div>
-      <details class="px-1 pt-1">
-        <summary class="cursor-pointer rounded px-1 py-1 transition-colors hover:bg-base-200">
-          By interval…
-        </summary>
-        <div class="grid grid-cols-4 gap-1 pt-1">
-          <%= for interval <- @intervals, dir <- ["up", "down"] do %>
-            <button
-              id={"menu-interval-#{interval_slug(interval)}-#{dir}"}
-              type="button"
-              phx-click="transpose"
-              phx-value-by="interval"
-              phx-value-interval={interval}
-              phx-value-dir={dir}
-              class="rounded px-1 py-1 transition-colors hover:bg-base-200"
-            >
-              {interval} {if dir == "up", do: "↑", else: "↓"}
-            </button>
-          <% end %>
-        </div>
-      </details>
-      <div class="my-1 border-t border-base-300" />
-      <.item id="menu-reverse" event="reverse">Reverse</.item>
-      <.item id="menu-copy" event="menu_copy">Copy</.item>
-      <.item id="menu-cut" event="menu_cut">Cut</.item>
-      <div class="my-1 border-t border-base-300" />
-      <.item id="menu-delete" event="menu_delete" danger>Delete</.item>
-    </div>
-    """
-  end
-
-  def context_menu(assigns) do
-    assigns = assign(assigns, :lengths, @lengths)
-
-    ~H"""
-    <div
-      id="context-menu"
-      role="menu"
-      phx-click-away="close_menu"
-      phx-window-keydown="close_menu"
-      phx-key="Escape"
-      class="fixed z-40 w-60 rounded-box border border-base-300 bg-base-100 p-2 text-sm shadow-xl"
-      style={"left: #{@menu.x}px; top: #{@menu.y}px"}
-    >
-      <.item id="menu-split" event="split">Split in two</.item>
-      <p class="px-2 pt-2 pb-1 text-xs opacity-60">Length</p>
-      <div class="flex flex-wrap gap-1 px-1 pb-1">
-        <button
-          :for={{value, glyph, label} <- @lengths}
-          id={"menu-length-#{value}"}
-          type="button"
-          title={label}
-          aria-label={label}
-          phx-click="set_value"
-          value={value}
-          class="grid h-8 w-7 place-items-center rounded transition-colors hover:bg-base-200"
-        >
-          <span class="font-['Bravura'] text-xl leading-none">{Smufl.char(glyph)}</span>
-        </button>
-        <button
-          id="menu-length-dot"
-          type="button"
-          title="Dotted"
-          aria-label="Dotted"
-          phx-click="toggle_menu_dot"
-          class="grid h-8 w-7 place-items-center rounded transition-colors hover:bg-base-200"
-        >
-          <span class="font-['Bravura'] text-xl leading-none">{Smufl.char(:augmentationDot)}</span>
-        </button>
-      </div>
-      <div class="my-1 border-t border-base-300" />
-      <%= if @menu.kind == :note do %>
-        <.item id="menu-add-third-above" event="add_third_above">Add a 3rd above</.item>
-        <.item id="menu-add-third-below" event="add_third_below">Add a 3rd below</.item>
-        <.item id="menu-to-rest" event="to_rest">Make it a rest</.item>
-        <.item id="menu-tie-next" event="tie_next">Tie to the next note</.item>
-        <.item id="menu-untie" event="untie">Remove ties</.item>
-      <% else %>
-        <.item id="menu-to-note" event="to_note">Make it a note here</.item>
-      <% end %>
-      <%!-- None on the opening beat: its tempo is the score's settings. --%>
-      <.item :if={@menu.tempo?} id="menu-tempo" event="menu_tempo">Tempo change here…</.item>
-      <div class="my-1 border-t border-base-300" />
-      <.item id="menu-delete" event="menu_delete" danger>Delete</.item>
-    </div>
-    """
-  end
-
-  # DOM ids must not differ only by case (m3 vs M3).
-  defp interval_slug("m" <> n), do: "min" <> n
-  defp interval_slug("M" <> n), do: "maj" <> n
-  defp interval_slug("P" <> n), do: "p" <> n
-  defp interval_slug("A" <> n), do: "aug" <> n
-
-  attr :by, :string, required: true
-  attr :label, :string, required: true
-
-  defp transpose_button(assigns) do
-    ~H"""
-    <%= for dir <- ["up", "down"] do %>
-      <button
-        id={"menu-transpose-#{@by}-#{dir}"}
-        type="button"
-        phx-click="transpose"
-        phx-value-by={@by}
-        phx-value-dir={dir}
-        class="rounded px-2 py-1 text-left transition-colors hover:bg-base-200"
-      >
-        {@label} {if dir == "up", do: "up", else: "down"}
-      </button>
-    <% end %>
-    """
-  end
-
-  attr :id, :string, required: true
-  attr :event, :string, required: true
-  attr :danger, :boolean, default: false
-  slot :inner_block, required: true
-
-  defp item(assigns) do
-    ~H"""
-    <button
-      id={@id}
-      type="button"
-      role="menuitem"
-      phx-click={@event}
-      class={[
-        "block w-full rounded px-2 py-1.5 text-left transition-colors hover:bg-base-200",
-        @danger && "text-error"
-      ]}
-    >
-      {render_slot(@inner_block)}
-    </button>
-    """
-  end
-
-  @doc """
-  The one dialog (or right-click menu) open over the score, if any. `dialog`
-  says which: `{:menu, menu}`. Anything else (such as `:details`,
-  `:save_as`, `:settings`, `{:transpose, key}` or `{:tempo, target}`,
-  LiveComponents the editor renders itself) draws nothing here. Help is
-  apart: see `help_dialog/1`.
-  """
-  attr :dialog, :any, required: true
-
-  @spec editor_dialog(map()) :: Phoenix.LiveView.Rendered.t()
-  def editor_dialog(%{dialog: {:menu, menu}} = assigns) do
-    assigns = assign(assigns, :menu, menu)
-
-    ~H"""
-    <.context_menu menu={@menu} />
-    """
-  end
-
-  def editor_dialog(assigns), do: ~H""
 
   @doc """
   Small ⊕/⊖ buttons at each bar's top-left (insert a bar before it, delete

@@ -52,26 +52,28 @@ defmodule DrawMusicWeb.EditorLive do
     PlaybackPayload,
     ScoreSvg,
     Shortcuts,
-    TempoForm,
     TempoTarget,
     VersionLookup
   }
 
-  alias DrawMusicWeb.Editor.{SaveAsDialog, SaveMenu, SettingsDialog, TempoDialog, TransposeDialog}
+  alias DrawMusicWeb.Editor.{
+    NoteMenu,
+    SaveAsDialog,
+    SaveMenu,
+    SettingsDialog,
+    TempoDialog,
+    TransposeDialog
+  }
 
   @draft_measures 4
-  @menu_events ~w(split set_value toggle_menu_dot to_rest to_note tie_next untie add_third_above
-                  add_third_below menu_delete transpose reverse)
   # Everything that changes the score or arms the palette; Play mode ignores them.
   @edit_events ~w(arm arm_value arm_chord single_notes arm_tie toggle_rest toggle_dot set_accidental
-                  toggle_insert place move delete cut paste drop tie open_menu menu_copy menu_cut
+                  toggle_insert place move delete cut paste drop tie open_menu
                   insert_measure delete_measure add_measure undo redo open_settings
-                  select_all menu_tempo edit_tempo move_tempo resize_tempo) ++ @menu_events
+                  select_all edit_tempo move_tempo resize_tempo)
   # The play controls; Edit mode ignores them.
   @play_events ~w(play rewind skip toggle_loop audition set_playback_instrument
                   use_playback_instrument)
-  # Each dialog's Cancel, Esc and click-away; any of them closes the open one.
-  @close_events ~w(close_menu)
 
   @impl true
   def render(assigns) do
@@ -224,7 +226,15 @@ defmodule DrawMusicWeb.EditorLive do
             score={@session.score}
           />
         </div>
-        <.editor_dialog dialog={@dialog} />
+        <.live_component
+          :if={match?({:menu, _menu}, @dialog)}
+          module={NoteMenu}
+          id="note-menu"
+          menu={elem(@dialog, 1)}
+          insert?={@insert?}
+          score={@session.score}
+          ctx={@session.ctx}
+        />
         <.help_dialog shortcuts={Shortcuts.for_mode(@editor_mode)} />
         <%!-- A saved composition's details are stored at once (they aren't
              part of the score, so not of its undo or its unsaved changes); a
@@ -285,7 +295,7 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign(:version, version)
      |> assign(:session, Session.new(version.score, Context.from_version(version)))
      |> assign(armed: nil, row_kind: :note, insert?: true, last_click: nil)
-     # At most one dialog is open at a time; see `EditorComponents.editor_dialog/1`.
+     # At most one dialog (or the right-click menu) is open at a time.
      |> assign(:dialog, nil)
      |> assign(playback: :idle, loop?: false, editor_mode: :edit)
      |> assign(:instrument_options, instrument_options())
@@ -334,6 +344,10 @@ defmodule DrawMusicWeb.EditorLive do
   def handle_info({:editor, :close}, socket), do: {:noreply, assign(socket, :dialog, nil)}
 
   def handle_info({:editor, {:edit, fun}}, socket), do: {:noreply, edit(socket, fun)}
+
+  def handle_info({:editor, {:session, fun}}, socket) do
+    {:noreply, update(socket, :session, fun)}
+  end
 
   def handle_info({:editor, {:edit, fun, :select}}, socket) do
     {:noreply, edit_and_select(socket, fun)}
@@ -456,10 +470,6 @@ defmodule DrawMusicWeb.EditorLive do
      socket
      |> assign(:session, touched(session, program, socket.assigns.instrument))
      |> assign(:instrument, program)}
-  end
-
-  def handle_event(event, _params, socket) when event in @close_events do
-    {:noreply, assign(socket, :dialog, nil)}
   end
 
   # Play mode: a click on a note sounds its chord and makes it the start point.
@@ -705,58 +715,11 @@ defmodule DrawMusicWeb.EditorLive do
       event ->
         menu = %{
           ContextMenu.new(session.selection, event, params)
-          | tempo?: TempoEditing.changeable?(event_start(session, id))
+          | tempo?: TempoEditing.changeable?(Timeline.start_of(session.score, session.ctx, id))
         }
 
         {:noreply, assign(socket, :dialog, {:menu, menu})}
     end
-  end
-
-  def handle_event("menu_copy", _params, %{assigns: %{dialog: {:menu, menu}}} = socket) do
-    {:noreply,
-     socket
-     |> select_menu_events(menu)
-     |> copy()
-     |> assign(:dialog, nil)}
-  end
-
-  def handle_event("menu_cut", _params, %{assigns: %{dialog: {:menu, menu}}} = socket) do
-    {:noreply,
-     socket
-     |> select_menu_events(menu)
-     |> copy()
-     |> edit(EditorCommands.delete(menu.ids, socket.assigns.insert?))
-     |> assign(:dialog, nil)}
-  end
-
-  # "Tempo change here…": a new change where the right-clicked note or rest
-  # starts, at the tempo already in force there. The tempo dialog takes the
-  # menu's place.
-  def handle_event("menu_tempo", _params, %{assigns: %{dialog: {:menu, menu}}} = socket) do
-    %{session: session} = socket.assigns
-    socket = assign(socket, :dialog, nil)
-
-    case event_start(session, menu.id) do
-      nil ->
-        {:noreply, socket}
-
-      0 ->
-        {:noreply, put_flash(socket, :error, error_message(:opening_beat))}
-
-      start ->
-        bpm = TempoMap.bpm_at(TempoMap.new(session.score, session.ctx), start)
-        {:noreply, open_tempo(socket, nil, start, TempoForm.params(bpm, session.ctx))}
-    end
-  end
-
-  def handle_event(event, params, %{assigns: %{dialog: {:menu, menu}}} = socket)
-      when event in @menu_events do
-    fun = EditorCommands.menu(event, params, menu, socket.assigns.insert?)
-
-    {:noreply,
-     socket
-     |> edit(fun)
-     |> assign(:dialog, nil)}
   end
 
   ## Tempo changes
@@ -766,8 +729,12 @@ defmodule DrawMusicWeb.EditorLive do
 
     case TempoEditing.find(session.score, id) do
       {:ok, change} ->
-        socket = update(socket, :session, &Session.select(&1, [id], false))
-        {:noreply, open_tempo(socket, id, change.tick, TempoForm.params(change, session.ctx))}
+        target = TempoTarget.for_change(session.score, session.ctx, change)
+
+        {:noreply,
+         socket
+         |> update(:session, &Session.select(&1, [id], false))
+         |> assign(:dialog, {:tempo, target})}
 
       {:error, _not_found} ->
         {:noreply, socket}
@@ -930,30 +897,6 @@ defmodule DrawMusicWeb.EditorLive do
 
   defp with_ids({:ok, score}, ids), do: {:ok, score, ids}
   defp with_ids(error, _ids), do: error
-
-  # The tick where the note or rest with `id` starts, nil if it's gone.
-  defp event_start(session, id) do
-    session.score
-    |> Timeline.flatten(session.ctx)
-    |> Enum.find_value(&(&1.event.id == id && &1.start))
-  end
-
-  # The dialog knows how far a rit. or accel. from `tick` may reach.
-  defp open_tempo(socket, id, tick, params) do
-    %{score: score, ctx: ctx} = socket.assigns.session
-    {reach, until} = TempoEditing.reach(score, ctx, tick, id)
-
-    target = %TempoTarget{
-      id: id,
-      tick: tick,
-      params: params,
-      reach: reach,
-      until: until,
-      max_beats: TempoForm.beats_text(reach - tick, ctx)
-    }
-
-    assign(socket, :dialog, {:tempo, target})
-  end
 
   # `apply_edit/2` when the outcome doesn't matter beyond the socket.
   defp edit(socket, fun) do
@@ -1125,10 +1068,6 @@ defmodule DrawMusicWeb.EditorLive do
 
   defp stop_unless_playing_mode(%{assigns: %{editor_mode: :play}} = socket), do: socket
   defp stop_unless_playing_mode(socket), do: stop_playback(socket)
-
-  defp select_menu_events(socket, %ContextMenu{ids: ids}) do
-    update(socket, :session, &Session.select(&1, ids, false))
-  end
 
   # Switching modes closes a right-click menu, but not a dialog.
   defp close_menu(%{assigns: %{dialog: {:menu, _menu}}} = socket),

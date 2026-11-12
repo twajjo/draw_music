@@ -164,7 +164,7 @@ defmodule DrawMusicWeb.EditorTempoTest do
     render_hook(view, "open_menu", %{"id" => c4_id, "x" => 10, "y" => 10})
     assert has_element?(view, "#menu-split")
     refute has_element?(view, "#menu-tempo")
-    render_hook(view, "close_menu", %{})
+    view |> element("#context-menu") |> render_keydown(%{"key" => "Escape"})
 
     add_tempo(view, %{bpm: "60"})
     [%{id: id}] = tempos(view)
