@@ -228,7 +228,7 @@ defmodule DrawMusic.Engraving.LayoutTest do
   end
 
   describe "the opening tempo marking" do
-    test "goes over the first beat, with the starting tempo, above the staff" do
+    test "goes over the first beat, with the starting tempo, above the bar buttons" do
       {score, _id} = place("G4", %{})
       ctx = %Context{tempo_bpm: 120}
       layout = Layout.layout(score, ctx, marking: "Allegro")
@@ -238,7 +238,8 @@ defmodule DrawMusic.Engraving.LayoutTest do
 
       assert [%{x: note_x}] = role(layout, :notehead)
       assert_in_delta mark.x, note_x, 1.0
-      assert mark.y < 0
+      # Above the editor's bar buttons, centred 2.2 above the top line.
+      assert mark.y <= -3.5
       assert mark.width > TempoMark.width(%{mark | words: nil})
     end
 
