@@ -6,11 +6,11 @@ defmodule DrawMusicWeb.TempoForm do
 
   A rit. or accel. can't contradict itself or its neighbours: it reaches a
   different tempo, and it ends at the latest where the next change starts
-  or the score ends (the dialog's `reach`, see `DrawMusicWeb.TempoDialog`).
+  or the score ends (the target's `reach`, see `DrawMusicWeb.TempoTarget`).
   """
 
   alias DrawMusic.Music.{Context, TempoChange}
-  alias DrawMusicWeb.TempoDialog
+  alias DrawMusicWeb.TempoTarget
 
   @doc "How many beats of the time signature `ticks` are, as the form shows them."
   @spec beats_text(non_neg_integer(), Context.t()) :: String.t()
@@ -57,18 +57,18 @@ defmodule DrawMusicWeb.TempoForm do
   end
 
   @doc """
-  The change the params describe, starting at the dialog's tick (keeping
+  The change the params describe, starting at the target's tick (keeping
   its id), or form errors by field.
   """
-  @spec validate(map(), TempoDialog.t(), Context.t()) ::
+  @spec validate(map(), TempoTarget.t(), Context.t()) ::
           {:ok, TempoChange.t()} | {:error, keyword()}
-  def validate(params, %TempoDialog{} = dialog, ctx) do
+  def validate(params, %TempoTarget{} = target, ctx) do
     range = Context.tempo_range()
     bpm = tempo(params["bpm"], range)
 
     {to_bpm, to_tick} =
       case params["gradual"] do
-        "true" -> {other_tempo(params["to_bpm"], bpm, range), span(params["beats"], dialog, ctx)}
+        "true" -> {other_tempo(params["to_bpm"], bpm, range), span(params["beats"], target, ctx)}
         _steady -> {nil, nil}
       end
 
@@ -80,8 +80,8 @@ defmodule DrawMusicWeb.TempoForm do
       [] ->
         {:ok,
          %TempoChange{
-           id: dialog.id,
-           tick: dialog.tick,
+           id: target.id,
+           tick: target.tick,
            bpm: bpm,
            to_bpm: to_bpm,
            to_tick: to_tick
@@ -101,17 +101,17 @@ defmodule DrawMusicWeb.TempoForm do
   end
 
   # Beats may be fractional (a dotted beat), and run at most to the
-  # dialog's reach.
-  defp span(text, dialog, ctx) do
-    {max_beats, ""} = Float.parse(dialog.max_beats)
+  # target's reach.
+  defp span(text, target, ctx) do
+    {max_beats, ""} = Float.parse(target.max_beats)
 
     case Float.parse(text || "") do
       {beats, ""} when beats > max_beats ->
-        {:error, "can be at most #{dialog.max_beats}, #{until(dialog.until)}"}
+        {:error, "can be at most #{target.max_beats}, #{until(target.until)}"}
 
       {beats, ""} when beats > 0 ->
         ticks = round(beats * Context.beat_ticks(ctx))
-        if ticks > 0, do: min(dialog.tick + ticks, dialog.reach), else: too_short()
+        if ticks > 0, do: min(target.tick + ticks, target.reach), else: too_short()
 
       _other ->
         too_short()
