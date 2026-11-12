@@ -43,6 +43,12 @@ defmodule DrawMusic.Music.Timeline do
     end)
   end
 
+  @doc "The tick where the note or rest with `id` starts, nil if there is none."
+  @spec start_of(Score.t(), Context.t(), Ecto.UUID.t()) :: non_neg_integer() | nil
+  def start_of(%Score{} = score, ctx, id) do
+    Enum.find_value(flatten(score, ctx), &(&1.event.id == id && &1.start))
+  end
+
   @doc "Entry for an event placed in a measure starting at `bar_start`."
   @spec entry(Note.t() | Rest.t(), non_neg_integer()) :: Entry.t()
   def entry(%Note{} = note, bar_start) do

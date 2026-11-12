@@ -13,6 +13,9 @@ defmodule DrawMusicWeb.Editor.Intent do
       `DrawMusic.Music.Session.edit/2` function, `(score, ctx -> result)`.
     * `{:edit, fun, :select}`: the same, and select what it reports
       (`{:ok, score, ids}`).
+    * `{:session, fun}`: change the selection or the clipboard, not the
+      score (no undo step). `fun` takes and returns the
+      `DrawMusic.Music.Session`.
     * `{:saved, version, message}`: the score was stored as `version`,
       which has its key and composition loaded. If it is the version being
       edited, the editor carries on with it. Otherwise the editor opens it.
@@ -36,6 +39,7 @@ defmodule DrawMusicWeb.Editor.Intent do
           | :close
           | {:edit, edit()}
           | {:edit, edit(), :select}
+          | {:session, (DrawMusic.Music.Session.t() -> DrawMusic.Music.Session.t())}
           | {:saved, Version.t(), String.t()}
           | {:flash, :info | :error, String.t()}
           | {:settings, key(), map()}
