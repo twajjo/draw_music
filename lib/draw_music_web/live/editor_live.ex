@@ -685,7 +685,11 @@ defmodule DrawMusicWeb.EditorLive do
         {:noreply, socket}
 
       event ->
-        menu = ContextMenu.new(session.selection, event, params)
+        menu = %{
+          ContextMenu.new(session.selection, event, params)
+          | tempo?: TempoEditing.changeable?(event_start(session, id))
+        }
+
         {:noreply, assign(socket, :dialog, {:menu, menu})}
     end
   end
@@ -714,13 +718,16 @@ defmodule DrawMusicWeb.EditorLive do
     %{session: session} = socket.assigns
     socket = assign(socket, :dialog, nil)
 
-    case Enum.find(Timeline.flatten(session.score, session.ctx), &(&1.event.id == menu.id)) do
+    case event_start(session, menu.id) do
       nil ->
         {:noreply, socket}
 
-      entry ->
-        bpm = TempoMap.bpm_at(TempoMap.new(session.score, session.ctx), entry.start)
-        {:noreply, open_tempo(socket, nil, entry.start, TempoForm.params(bpm, session.ctx))}
+      0 ->
+        {:noreply, put_flash(socket, :error, error_message(:opening_beat))}
+
+      start ->
+        bpm = TempoMap.bpm_at(TempoMap.new(session.score, session.ctx), start)
+        {:noreply, open_tempo(socket, nil, start, TempoForm.params(bpm, session.ctx))}
     end
   end
 
@@ -943,6 +950,13 @@ defmodule DrawMusicWeb.EditorLive do
   defp with_ids({:ok, score}, ids), do: {:ok, score, ids}
   defp with_ids(error, _ids), do: error
 
+  # The tick where the note or rest with `id` starts, nil if it's gone.
+  defp event_start(session, id) do
+    session.score
+    |> Timeline.flatten(session.ctx)
+    |> Enum.find_value(&(&1.event.id == id && &1.start))
+  end
+
   # The dialog knows how far a rit. or accel. from `tick` may reach.
   defp open_tempo(socket, id, tick, params) do
     %{score: score, ctx: ctx} = socket.assigns.session
@@ -1009,7 +1023,8 @@ defmodule DrawMusicWeb.EditorLive do
     pickup_bar: "Remove the pickup in the score settings first",
     past_end: "That's past the end of the score",
     invalid_tempo: "A rit. or accel. has to end after it starts",
-    same_tempo: "A rit. or accel. has to reach a different tempo"
+    same_tempo: "A rit. or accel. has to reach a different tempo",
+    opening_beat: "The opening tempo is set in Score settings"
   }
 
   @doc "What to tell the user when an edit is refused for `reason`."

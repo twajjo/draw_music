@@ -260,7 +260,8 @@ defmodule DrawMusicWeb.EditorComponents do
       <% else %>
         <.item id="menu-to-note" event="to_note">Make it a note here</.item>
       <% end %>
-      <.item id="menu-tempo" event="menu_tempo">Tempo change here…</.item>
+      <%!-- None on the opening beat: its tempo is the score's settings. --%>
+      <.item :if={@menu.tempo?} id="menu-tempo" event="menu_tempo">Tempo change here…</.item>
       <div class="my-1 border-t border-base-300" />
       <.item id="menu-delete" event="menu_delete" danger>Delete</.item>
     </div>
