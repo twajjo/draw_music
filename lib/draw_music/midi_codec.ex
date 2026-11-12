@@ -323,9 +323,10 @@ defmodule DrawMusic.MidiCodec do
     }
   end
 
-  # String-keyed map -> atom-keyed map with only the expected fields.
+  # String-keyed map -> atom-keyed map with only the expected fields. A
+  # field the file left empty is left out, so its default applies.
   defp known(map, fields) when is_map(map) do
-    for field <- fields, Map.has_key?(map, Atom.to_string(field)), into: %{} do
+    for field <- fields, map[Atom.to_string(field)] != nil, into: %{} do
       {field, map[Atom.to_string(field)]}
     end
   end

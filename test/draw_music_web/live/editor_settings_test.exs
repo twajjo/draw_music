@@ -16,14 +16,22 @@ defmodule DrawMusicWeb.EditorSettingsTest do
     "time_den" => "4",
     "time_symbol" => "none",
     "tempo_bpm" => "100",
-    "tempo_text" => "",
+    "tempo_marking" => "Moderato",
+    "tempo_text" => "Moderato",
     "pickup_beats" => "0",
     "instrument" => "0"
   }
 
+  # A marking is chosen first: its words are then the ones that can be printed.
   defp apply_settings(view, changes) do
+    settings = Map.merge(@settings, changes)
     view |> element("#settings-button") |> render_click()
-    view |> form("#settings-form", settings: Map.merge(@settings, changes)) |> render_submit()
+
+    view
+    |> form("#settings-form", settings: Map.take(settings, ["tempo_marking"]))
+    |> render_change()
+
+    view |> form("#settings-form", settings: settings) |> render_submit()
   end
 
   defp draft(conn) do
@@ -84,7 +92,7 @@ defmodule DrawMusicWeb.EditorSettingsTest do
 
   test "changing only the tempo marking counts as unsaved", %{conn: conn} do
     view = draft(conn)
-    apply_settings(view, %{"tempo_text" => "Adagio"})
+    apply_settings(view, %{"tempo_marking" => "Adagio", "tempo_text" => "Adagio"})
     assert has_element?(view, "#dirty-marker")
   end
 
@@ -145,7 +153,12 @@ defmodule DrawMusicWeb.EditorSettingsTest do
     {:ok, view, _html} =
       live(conn, LibraryComponents.version_path(version.key.composition.id, version.key, 1))
 
-    apply_settings(view, %{"tempo_bpm" => "90", "tempo_text" => "Andante"})
+    apply_settings(view, %{
+      "tempo_bpm" => "90",
+      "tempo_marking" => "Andante",
+      "tempo_text" => "Andante"
+    })
+
     view |> element("#save") |> render_click()
 
     saved = Library.get_version!(scope, version.id)

@@ -9,13 +9,13 @@ defmodule DrawMusicWeb.Editor.SettingsDialog do
   ## Inputs
     * `:id`: the component's id (required by LiveView).
     * `:ctx`: the score's `DrawMusic.Music.Context` (required).
-    * `:tempo_text`: the tempo marking, or `nil` (default `nil`).
+    * `:tempo_text`: the tempo marking (required).
     * `:instrument`: the version's GM program, 0..127 (required).
 
   ## Intents
     * `{:settings, {sf, mode}, fields}`: settings that passed. `{sf, mode}`
       is the chosen key, and `fields` holds the Context fields they set
-      plus `:instrument` and `:tempo_text` (a blank marking is `nil`).
+      plus `:tempo_text` and `:instrument`.
     * `:close`: Cancel, Esc or a click outside; nothing changed.
   """
 
@@ -33,8 +33,7 @@ defmodule DrawMusicWeb.Editor.SettingsDialog do
   def handle_event("apply", %{"settings" => params}, socket) do
     case EditorSettings.validate(params) do
       {:ok, key, fields} ->
-        tempo_text = EditorSettings.tempo_text(params["tempo_text"])
-        Intent.notify({:settings, key, Map.put(fields, :tempo_text, tempo_text)})
+        Intent.notify({:settings, key, fields})
         {:noreply, socket}
 
       {:error, errors} ->
@@ -44,6 +43,13 @@ defmodule DrawMusicWeb.Editor.SettingsDialog do
       :error ->
         {:noreply, socket}
     end
+  end
+
+  # The fields follow what is being chosen (a marking decides which words
+  # can be printed); nothing is checked until Apply.
+  def handle_event("change", %{"settings" => params}, socket) do
+    form = to_form(EditorSettings.follow_tempo_marking(params), as: :settings)
+    {:noreply, assign(socket, :form, form)}
   end
 
   def handle_event("close", _params, socket) do
@@ -70,6 +76,7 @@ defmodule DrawMusicWeb.Editor.SettingsDialog do
         <.form
           for={@form}
           id="settings-form"
+          phx-change="change"
           phx-submit="apply"
           phx-target={@myself}
           class="mt-4 grid gap-x-4 sm:grid-cols-2"

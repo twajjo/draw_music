@@ -10,7 +10,7 @@ defmodule DrawMusicWeb.LibraryComponents do
   import DrawMusicWeb.CoreComponents, only: [icon: 1, input: 1]
 
   alias DrawMusic.Library.Key
-  alias DrawMusic.Music.Context
+  alias DrawMusic.Music.{Context, TempoMarking}
   alias DrawMusic.Samples
 
   @doc "Every key as select options, grouped into major and minor, valued by slug."
@@ -106,7 +106,7 @@ defmodule DrawMusicWeb.LibraryComponents do
       min={@tempo_range.first}
       max={@tempo_range.last}
     />
-    <.input field={@form[:tempo_text]} label="Tempo marking" placeholder="Allegro" />
+    <.tempo_marking form={@form} />
     <.input field={@form[:pickup_beats]} type="number" label="Pickup beats" min="0" />
     <.input
       id="settings-instrument"
@@ -116,6 +116,53 @@ defmodule DrawMusicWeb.LibraryComponents do
       options={@instrument_options}
     />
     """
+  end
+
+  @doc """
+  The tempo marking: which tempo, each shown with its words in every
+  language that has one, and which of its words is printed over the first
+  bar. Only the chosen marking's words can be printed (see
+  `DrawMusicWeb.EditorSettings.follow_tempo_marking/1`).
+  """
+  attr :form, Phoenix.HTML.Form, required: true
+
+  @spec tempo_marking(map()) :: Phoenix.LiveView.Rendered.t()
+  def tempo_marking(assigns) do
+    marking =
+      TempoMarking.find(assigns.form[:tempo_marking].value) ||
+        TempoMarking.find(TempoMarking.default())
+
+    assigns = assign(assigns, :printed_options, printed_options(marking))
+
+    ~H"""
+    <div class="col-span-full flex flex-wrap items-end gap-x-4">
+      <.input
+        id="settings-tempo-marking"
+        field={@form[:tempo_marking]}
+        type="select"
+        label="Tempo marking"
+        options={tempo_marking_options()}
+        class="select w-full sm:w-96"
+      />
+      <.input
+        id="settings-tempo-text"
+        field={@form[:tempo_text]}
+        type="select"
+        label="Printed in"
+        options={@printed_options}
+        class="select w-56"
+      />
+    </div>
+    """
+  end
+
+  @doc "The tempo markings as select options, a group per section, valued by their key."
+  @spec tempo_marking_options() :: [{String.t(), [{String.t(), String.t()}]}]
+  def tempo_marking_options do
+    for {title, markings} <- TempoMarking.sections() do
+      {title,
+       for(marking <- markings, do: {TempoMarking.label(marking), TempoMarking.key(marking)})}
+    end
   end
 
   @doc """
@@ -264,5 +311,12 @@ defmodule DrawMusicWeb.LibraryComponents do
     [composition.composer, composition.arranger && "arr. #{composition.arranger}"]
     |> Enum.reject(&(&1 in [nil, ""]))
     |> Enum.join(" · ")
+  end
+
+  # A marking's words as "Printed in" options, e.g. {"German: Schnell", "Schnell"}.
+  defp printed_options(marking) do
+    for {language, word} <- TempoMarking.words(marking) do
+      {"#{TempoMarking.language_name(language)}: #{word}", word}
+    end
   end
 end

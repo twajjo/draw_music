@@ -7,9 +7,17 @@ defmodule DrawMusicWeb.EditorSettings do
   """
 
   alias DrawMusic.Library.{Key, Version}
-  alias DrawMusic.Music.{Context, Editing, Session}
+  alias DrawMusic.Music.{Context, Editing, Session, TempoMarking}
 
-  @fields [:time_num, :time_den, :time_symbol, :tempo_bpm, :pickup_ticks, :instrument]
+  @fields [
+    :time_num,
+    :time_den,
+    :time_symbol,
+    :tempo_bpm,
+    :tempo_text,
+    :pickup_ticks,
+    :instrument
+  ]
 
   @doc "The settings form's params for a context, tempo marking and GM instrument."
   @spec params(Context.t(), String.t() | nil, 0..127) :: %{String.t() => String.t()}
@@ -20,6 +28,7 @@ defmodule DrawMusicWeb.EditorSettings do
       "time_den" => to_string(ctx.time_den),
       "time_symbol" => to_string(ctx.time_symbol),
       "tempo_bpm" => to_string(ctx.tempo_bpm),
+      "tempo_marking" => tempo_marking_key(tempo_text),
       "tempo_text" => tempo_text || "",
       "pickup_beats" => to_string(div(ctx.pickup_ticks, Context.beat_ticks(ctx))),
       "instrument" => to_string(instrument)
@@ -28,7 +37,7 @@ defmodule DrawMusicWeb.EditorSettings do
 
   @doc """
   Checks submitted settings: `{:ok, key, fields}` with the `{sf, mode}` key
-  and the fields they set (the Context's, plus `:instrument`),
+  and the fields they set (the Context's, plus `:tempo_text` and `:instrument`),
   `{:error, errors}` (keyed by form field) or `:error` for an unknown key.
   """
   @spec validate(map()) ::
@@ -49,8 +58,26 @@ defmodule DrawMusicWeb.EditorSettings do
   @spec form_attrs(map()) :: %{String.t() => term()}
   def form_attrs(params) do
     params
+    |> follow_tempo_marking()
     |> Map.take(~w(time_num time_den time_symbol tempo_bpm tempo_text instrument))
     |> Map.put("pickup_ticks", pickup_ticks(params))
+  end
+
+  @doc """
+  Keeps the printed word (`"tempo_text"`) one of the chosen marking's
+  (`"tempo_marking"`), in the same language where the marking has a word
+  in it (see `TempoMarking.word_for/2`). The two can't contradict each
+  other: a word belongs to one marking only.
+  """
+  @spec follow_tempo_marking(map()) :: map()
+  def follow_tempo_marking(params) do
+    case TempoMarking.find(params["tempo_marking"]) do
+      nil ->
+        params
+
+      marking ->
+        Map.put(params, "tempo_text", TempoMarking.word_for(marking, params["tempo_text"]))
+    end
   end
 
   @doc "Version changeset errors keyed by form field."
@@ -101,6 +128,13 @@ defmodule DrawMusicWeb.EditorSettings do
   # What decides where the bar lines fall.
   defp bars(%Context{} = ctx), do: {ctx.time_num, ctx.time_den, ctx.pickup_ticks}
 
+  defp tempo_marking_key(tempo_text) do
+    case TempoMarking.find(tempo_text) do
+      nil -> ""
+      marking -> TempoMarking.key(marking)
+    end
+  end
+
   @doc "What a save stores: the score, the settings it is read against, and its instrument."
   @spec version_attrs(Session.t(), String.t() | nil, 0..127) :: map()
   def version_attrs(%Session{score: score, ctx: ctx}, tempo_text, instrument) do
@@ -115,9 +149,4 @@ defmodule DrawMusicWeb.EditorSettings do
       instrument: instrument
     }
   end
-
-  @doc "A blank tempo marking is none."
-  @spec tempo_text(String.t() | nil) :: String.t() | nil
-  def tempo_text(value) when value in [nil, ""], do: nil
-  def tempo_text(value), do: value
 end
