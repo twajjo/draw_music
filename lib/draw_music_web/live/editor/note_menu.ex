@@ -5,7 +5,8 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
   or for a selection (transpose, reverse, copy, cut, delete).
 
   A standalone LiveComponent: its actions are built by
-  `DrawMusicWeb.EditorCommands.menu/4` and reported to the editor.
+  `DrawMusicWeb.EditorCommands.menu/4` and reported to the editor. Its
+  colocated `.MenuPlacement` hook keeps the whole menu on screen.
 
   ## Inputs
     * `:id`: the component's id (required by LiveView).
@@ -101,8 +102,8 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
   def render(%{menu: %ContextMenu{kind: :selection}} = assigns) do
     ~H"""
     <div>
-      <.menu_box menu={@menu} width="w-64" target={@myself}>
-        <p class="px-2 pb-1 text-xs opacity-60">{length(@menu.ids)} selected</p>
+      <.menu_box menu={@menu} width="w-56" target={@myself}>
+        <p class="px-2 pb-1 text-[0.65rem] opacity-60">{length(@menu.ids)} selected</p>
         <.transpose_items target={@myself} />
         <.separator />
         <.item id="menu-reverse" action="reverse" target={@myself}>Reverse</.item>
@@ -118,7 +119,7 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
   def render(assigns) do
     ~H"""
     <div>
-      <.menu_box menu={@menu} width="w-60" target={@myself}>
+      <.menu_box menu={@menu} width="w-52" target={@myself}>
         <.item id="menu-split" action="split" target={@myself}>Split in two</.item>
         <.length_items target={@myself} />
         <.separator />
@@ -168,7 +169,7 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
       phx-click={@action}
       phx-target={@target}
       class={[
-        "block w-full rounded px-2 py-1.5 text-left transition-colors hover:bg-base-200",
+        "block w-full rounded px-2 py-1 text-left transition-colors hover:bg-base-200",
         @danger && "text-error"
       ]}
     >
@@ -185,8 +186,8 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
     assigns = assign(assigns, :lengths, @lengths)
 
     ~H"""
-    <p class="px-2 pt-2 pb-1 text-xs opacity-60">Length</p>
-    <div class="flex flex-wrap gap-1 px-1 pb-1">
+    <p class="px-2 pt-1.5 pb-1 text-[0.65rem] opacity-60">Length</p>
+    <div class="flex flex-wrap gap-0.5 px-1 pb-1">
       <button
         :for={{value, glyph, label} <- @lengths}
         id={"menu-length-#{value}"}
@@ -196,9 +197,9 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
         phx-click="set_value"
         phx-target={@target}
         value={value}
-        class="grid h-8 w-7 place-items-center rounded transition-colors hover:bg-base-200"
+        class="grid h-7 w-6 place-items-center rounded transition-colors hover:bg-base-200"
       >
-        <span class="font-['Bravura'] text-xl leading-none">{Smufl.char(glyph)}</span>
+        <span class="font-['Bravura'] text-base leading-none">{Smufl.char(glyph)}</span>
       </button>
       <button
         id="menu-length-dot"
@@ -207,9 +208,9 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
         aria-label="Dotted"
         phx-click="toggle_menu_dot"
         phx-target={@target}
-        class="grid h-8 w-7 place-items-center rounded transition-colors hover:bg-base-200"
+        class="grid h-7 w-6 place-items-center rounded transition-colors hover:bg-base-200"
       >
-        <span class="font-['Bravura'] text-xl leading-none">{Smufl.char(:augmentationDot)}</span>
+        <span class="font-['Bravura'] text-base leading-none">{Smufl.char(:augmentationDot)}</span>
       </button>
     </div>
     """
@@ -220,24 +221,54 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
   attr :target, :any, required: true
   slot :inner_block, required: true
 
-  # The menu's box at the pointer; Esc or a click outside closes it.
+  # The menu's box at the pointer, moved to stay wholly on screen (taller
+  # than the window, it scrolls); Esc or a click outside closes it.
   defp menu_box(assigns) do
     ~H"""
     <div
       id="context-menu"
       role="menu"
+      phx-hook=".MenuPlacement"
       phx-click-away="close"
       phx-window-keydown="close"
       phx-key="Escape"
       phx-target={@target}
+      data-x={@menu.x}
+      data-y={@menu.y}
       class={[
-        "fixed z-40 rounded-box border border-base-300 bg-base-100 p-2 text-sm shadow-xl",
+        "fixed z-40 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-1.5",
+        "text-xs shadow-xl",
         @width
       ]}
       style={"left: #{@menu.x}px; top: #{@menu.y}px"}
     >
       {render_slot(@inner_block)}
     </div>
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".MenuPlacement">
+      // Keeps the menu inside the window: it opens at the pointer (data-x,
+      // data-y) and moves left or up only as far as it must. Opening
+      // "By interval…" makes it taller, so it is placed again.
+      const MARGIN = 8
+
+      export default {
+        mounted() {
+          this.el.addEventListener("toggle", () => this.place(), true)
+          this.place()
+        },
+        updated() {
+          this.place()
+        },
+        place() {
+          const el = this.el
+          el.style.maxHeight = `${window.innerHeight - 2 * MARGIN}px`
+          const {width, height} = el.getBoundingClientRect()
+          const left = Math.min(Number(el.dataset.x), window.innerWidth - width - MARGIN)
+          const top = Math.min(Number(el.dataset.y), window.innerHeight - height - MARGIN)
+          el.style.left = `${Math.max(MARGIN, left)}px`
+          el.style.top = `${Math.max(MARGIN, top)}px`
+        }
+      }
+    </script>
     """
   end
 
@@ -279,7 +310,7 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
     assigns = assign(assigns, :intervals, @intervals)
 
     ~H"""
-    <p class="px-2 pt-1 pb-1 text-xs opacity-60">Transpose</p>
+    <p class="px-2 pt-1 pb-1 text-[0.65rem] opacity-60">Transpose</p>
     <div class="grid grid-cols-2 gap-1 px-1">
       <%= for {by, label} <- [{"step", "Step"}, {"semitone", "Semitone"}, {"octave", "Octave"}],
               dir <- ["up", "down"] do %>

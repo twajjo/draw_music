@@ -218,7 +218,7 @@ defmodule DrawMusicWeb.Shortcuts do
       mouse: "right-click",
       modes: @edit,
       action:
-        "A note's menu: split, length, rest or note, tie, transpose, a tempo change here, delete"
+        "The menu for what's selected, wherever you right-click in the music. One note or rest: its own menu (split, length, rest or note, ties, a tempo change here, delete); one tempo mark: its dialog. Two or more: the selection's menu (transpose, reverse, copy, cut, delete). With nothing selected, right-click a note or rest for its menu"
     },
     %Shortcut{
       group: "Editing",

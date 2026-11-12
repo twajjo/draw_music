@@ -26,9 +26,10 @@ defmodule DrawMusicWeb.EditorTempoTest do
     |> Map.fetch!(:id)
   end
 
-  # Right-click the E4, "Tempo change here…", fill in the dialog (ticking
-  # "Gradually" first shows its fields).
+  # Select the E4 and right-click it, "Tempo change here…", fill in the
+  # dialog (ticking "Gradually" first shows its fields).
   defp add_tempo(view, params) do
+    render_hook(view, "select", %{"ids" => [e4_id(view)], "add" => false})
     render_hook(view, "open_menu", %{"id" => e4_id(view), "x" => 10, "y" => 10})
     view |> element("#menu-tempo") |> render_click()
 
