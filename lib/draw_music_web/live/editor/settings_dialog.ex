@@ -47,9 +47,10 @@ defmodule DrawMusicWeb.Editor.SettingsDialog do
 
   # The fields follow what is being chosen (the time decides whether a
   # symbol can be chosen and how long the pickup can be, a marking which
-  # words can be printed); nothing is checked until Apply.
-  def handle_event("change", %{"settings" => params}, socket) do
-    form = to_form(EditorSettings.follow(params), as: :settings)
+  # words can be printed and the BPM it suggests); nothing is checked
+  # until Apply.
+  def handle_event("change", %{"settings" => params} = event, socket) do
+    form = to_form(EditorSettings.follow(params, event["_target"] || []), as: :settings)
     {:noreply, assign(socket, :form, form)}
   end
 
