@@ -53,6 +53,29 @@ defmodule DrawMusic.Music.TempoEditingTest do
     assert TempoEditing.move(score(), @ctx, "gone", 0) == {:error, :not_found}
   end
 
+  test "a rit. or accel. reaches a different tempo" do
+    level = %TempoChange{id: "r", tick: 0, bpm: 60, to_tick: 1920, to_bpm: 60}
+    assert TempoEditing.put(score(), @ctx, level) == {:error, :same_tempo}
+  end
+
+  test "a rit. ends at the latest where the next change starts, however it's put" do
+    ramp = %TempoChange{id: "r", tick: 0, bpm: 60, to_tick: 3840, to_bpm: 40}
+
+    {:ok, s} = TempoEditing.put(score([mark("a", 1920, 90)]), @ctx, ramp)
+    assert ticks(s) == [{0, 60, 1920}, {1920, 90, nil}]
+
+    {:ok, s} = TempoEditing.put(score([ramp]), @ctx, mark("a", 960, 90))
+    assert ticks(s) == [{0, 60, 960}, {960, 90, nil}]
+  end
+
+  test "reach is where the next other change starts, else the score's end" do
+    s = score([mark("a", 0, 60), mark("b", 1920, 90)])
+
+    assert TempoEditing.reach(s, @ctx, 0, "a") == {1920, :next_change}
+    assert TempoEditing.reach(s, @ctx, 960, nil) == {1920, :next_change}
+    assert TempoEditing.reach(s, @ctx, 1920, "b") == {7680, :score_end}
+  end
+
   test "remove takes out the named changes and ignores other ids" do
     s = TempoEditing.remove(score([mark("a", 0, 60), mark("b", 960, 80)]), ["a", "note-id"])
     assert TempoEditing.ids(s) == ["b"]

@@ -80,6 +80,45 @@ defmodule DrawMusicWeb.EditorTempoTest do
     assert has_element?(view, "#tempo-end-#{id}")
   end
 
+  test "a gradual change shows rit. or accel., and must reach a different tempo",
+       %{view: view} do
+    render_hook(view, "open_menu", %{"id" => e4_id(view), "x" => 10, "y" => 10})
+    view |> element("#menu-tempo") |> render_click()
+    view |> form("#tempo-form", tempo: %{gradual: "true"}) |> render_change()
+
+    view |> form("#tempo-form", tempo: %{bpm: "80", to_bpm: "50"}) |> render_change()
+    assert has_element?(view, "#tempo-ramp", "rit.")
+
+    view |> form("#tempo-form", tempo: %{to_bpm: "80", beats: "2"}) |> render_submit()
+    assert has_element?(view, "#tempo-form", "must differ from the starting tempo")
+    assert tempos(view) == []
+  end
+
+  test "a gradual change reaches at most the next change", %{view: view} do
+    render_hook(view, "arm", %{"kind" => "note", "value" => "quarter"})
+    place(view, 0, 1920, "G4")
+    render_hook(view, "disarm", %{})
+
+    g4_id =
+      session_of(view).score.measures
+      |> hd()
+      |> Map.fetch!(:notes)
+      |> Enum.find(&(&1.offset == 1920))
+      |> Map.fetch!(:id)
+
+    render_hook(view, "open_menu", %{"id" => g4_id, "x" => 10, "y" => 10})
+    view |> element("#menu-tempo") |> render_click()
+    view |> form("#tempo-form", tempo: %{bpm: "60"}) |> render_submit()
+
+    add_tempo(view, %{bpm: "80", gradual: "true", to_bpm: "50", beats: "4"})
+    assert has_element?(view, "#tempo-room", "At most 1 beat, up to the next tempo change")
+    assert has_element?(view, "#tempo-form", "can be at most 1, up to the next tempo change")
+    assert [%{tick: 1920}] = tempos(view)
+
+    view |> form("#tempo-form", tempo: %{beats: "1"}) |> render_submit()
+    assert [%{tick: 960, to_tick: 1920}, %{tick: 1920}] = tempos(view)
+  end
+
   test "bad values are shown and nothing is saved", %{view: view} do
     add_tempo(view, %{bpm: "2"})
 

@@ -9,12 +9,14 @@ defmodule DrawMusic.Music.TempoEditing do
 
   alias DrawMusic.Music.{Context, Score, TempoChange, Timeline}
 
-  @type result :: {:ok, Score.t()} | {:error, :not_found | :past_end | :invalid_tempo}
+  @type result ::
+          {:ok, Score.t()} | {:error, :not_found | :past_end | :invalid_tempo | :same_tempo}
 
   @doc """
   Adds `change`, or rewrites the one with its id. Another change at the
-  same tick gives way to it. A rit. or accel. ends at the latest at the
-  score's end.
+  same tick gives way to it. A rit. or accel. reaches a different tempo
+  (`:same_tempo` otherwise), and ends at the latest where the next change
+  starts or the score ends; a change put inside one cuts it short there.
   """
   @spec put(Score.t(), Context.t(), TempoChange.t()) :: result()
   def put(%Score{} = score, %Context{} = ctx, %TempoChange{} = change) do
@@ -22,9 +24,11 @@ defmodule DrawMusic.Music.TempoEditing do
     end_tick = Timeline.end_tick(score, ctx)
 
     with :ok <- inside(change.tick, end_tick),
+         :ok <- changing(change),
          {:ok, change} <- fit_end(change, end_tick) do
       kept = Enum.reject(score.tempos, &(&1.id == change.id or &1.tick == change.tick))
-      {:ok, %{score | tempos: Enum.sort_by([change | kept], & &1.tick)}}
+      tempos = Enum.sort_by([change | kept], & &1.tick)
+      {:ok, %{score | tempos: within_room(tempos)}}
     end
   end
 
@@ -51,6 +55,27 @@ defmodule DrawMusic.Music.TempoEditing do
     end
   end
 
+  @doc """
+  How far a rit. or accel. starting at `tick` may reach: `{tick,
+  :next_change}` where the next change (other than the one with `id`)
+  starts, else `{tick, :score_end}` where the score ends.
+  """
+  @spec reach(Score.t(), Context.t(), non_neg_integer(), Ecto.UUID.t() | nil) ::
+          {pos_integer(), :next_change | :score_end}
+  def reach(%Score{} = score, %Context{} = ctx, tick, id) do
+    end_tick = Timeline.end_tick(score, ctx)
+
+    next =
+      score.tempos
+      |> Enum.filter(&(&1.id != id and &1.tick > tick and &1.tick < end_tick))
+      |> Enum.min_by(& &1.tick, fn -> nil end)
+
+    case next do
+      nil -> {end_tick, :score_end}
+      change -> {change.tick, :next_change}
+    end
+  end
+
   @doc "Removes the changes with these ids (other ids are ignored)."
   @spec remove(Score.t(), [Ecto.UUID.t()]) :: Score.t()
   def remove(%Score{} = score, ids) do
@@ -71,6 +96,13 @@ defmodule DrawMusic.Music.TempoEditing do
     end
   end
 
+  # A rit. or accel. that reaches its own tempo changes nothing.
+  defp changing(%TempoChange{to_tick: to_tick, bpm: bpm, to_bpm: bpm}) when to_tick != nil do
+    {:error, :same_tempo}
+  end
+
+  defp changing(_change), do: :ok
+
   defp inside(tick, end_tick) when tick >= 0 and tick < end_tick, do: :ok
   defp inside(_tick, _end_tick), do: {:error, :past_end}
 
@@ -82,4 +114,18 @@ defmodule DrawMusic.Music.TempoEditing do
       _none -> {:error, :invalid_tempo}
     end
   end
+
+  # Each rit. or accel. (in tick order) ends at the latest where the next
+  # change starts, so two never overlap.
+  defp within_room(tempos) do
+    next_ticks = tl(Enum.map(tempos, & &1.tick)) ++ [nil]
+    Enum.zip_with(tempos, next_ticks, &stop_by/2)
+  end
+
+  defp stop_by(%TempoChange{to_tick: to_tick} = change, next)
+       when is_integer(to_tick) and is_integer(next) and to_tick > next do
+    %{change | to_tick: next}
+  end
+
+  defp stop_by(change, _next), do: change
 end
