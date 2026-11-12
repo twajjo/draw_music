@@ -34,6 +34,7 @@ defmodule DrawMusicWeb.Palette.Buttons do
   attr :kind, :atom, default: nil
   attr :value, :atom, default: nil
   attr :alter, :integer, default: nil
+  attr :target, :any, default: nil, doc: "the component its click goes to"
   attr :glyph, :atom, required: true, doc: "the SMuFL glyph it shows"
 
   attr :own_box, :boolean,
@@ -53,6 +54,7 @@ defmodule DrawMusicWeb.Palette.Buttons do
       data-kind={@kind}
       data-value={@value}
       phx-click={@event}
+      phx-target={@target}
       phx-value-kind={@kind}
       value={@value}
       phx-value-alter={@alter}
@@ -91,6 +93,7 @@ defmodule DrawMusicWeb.Palette.Buttons do
   attr :id, :string, required: true
   attr :title, :string, required: true
   attr :click, :any, required: true, doc: "the event name, or a JS command"
+  attr :target, :any, default: nil, doc: "the component its click goes to"
   attr :disabled, :boolean, default: false
   attr :pressed, :boolean, default: nil, doc: "nil for a button that isn't a toggle"
   attr :on, :string, default: "btn-primary", doc: "the look while pressed"
@@ -113,6 +116,7 @@ defmodule DrawMusicWeb.Palette.Buttons do
       aria-pressed={@pressed != nil && to_string(@pressed)}
       disabled={@disabled}
       phx-click={@click}
+      phx-target={@target}
       class={[
         "btn btn-sm transition-colors",
         @square && "btn-square",

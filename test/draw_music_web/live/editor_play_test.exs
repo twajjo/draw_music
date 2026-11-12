@@ -10,7 +10,7 @@ defmodule DrawMusicWeb.EditorPlayTest do
 
   setup %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/")
-    render_hook(view, "arm", %{"kind" => "note", "value" => "quarter"})
+    view |> element("#palette") |> render_hook("arm", %{"kind" => "note", "value" => "quarter"})
     place(view, 0, 0, "C4")
     place(view, 0, 960, "E4")
     place(view, 0, 1920, "G4")

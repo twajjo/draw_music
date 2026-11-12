@@ -20,13 +20,14 @@ import {chordAt} from "./chord"
 import {cursorFor} from "./cursor"
 import {playheadAt, playheadSpan, secondsAt, tickAt} from "./playhead"
 import {Audio} from "./audio"
-// The keys this hook acts on; the cheat-sheet (DrawMusicWeb.Shortcuts) lists the same ones.
+import {dialogOpen, keyId, typing} from "./keyboard"
+// The editor's keys, this hook's and the palette's (Editor.Palette's
+// .PaletteKeys); the cheat-sheet (DrawMusicWeb.Shortcuts) lists the same ones.
 import KEYS from "./keys.json"
 
 const SVG = "http://www.w3.org/2000/svg"
 const CURSOR_STYLE_ID = "score-editor-cursor"
 const ACCIDENTALS = {"-2": "", "-1": "", 0: "", 1: "", 2: ""}
-const VALUES = ["whole", "half", "quarter", "eighth", "sixteenth", "thirty_second", "sixty_fourth", "hundred_twenty_eighth", "two_hundred_fifty_sixth"]
 // A pointer drag shorter than this (staff spaces) is a click.
 const DRAG_THRESHOLD = 0.5
 // Clicks on empty staff remember a paste position on this grid (a 16th).
@@ -94,17 +95,6 @@ function nearestColumn(measure, x, afterOpening = false) {
   return spots.reduce((best, spot) => (Math.abs(spot.x - x) < Math.abs(best.x - x) ? spot : best))
 }
 
-const typing = (e) => e.target.closest && e.target.closest("input, textarea, select, [contenteditable]")
-
-// A key press as keys.json names it: "Ctrl+Z", "Shift+ArrowUp", "Space", "R".
-// Modifiers only count where they change what the key does.
-function keyId(e) {
-  const ctrl = e.ctrlKey || e.metaKey
-  const name = e.key === " " ? "Space" : e.key.length === 1 ? e.key.toUpperCase() : e.key
-  if (name === "ArrowUp" || name === "ArrowDown") return ctrl ? `Ctrl+${name}` : e.shiftKey ? `Shift+${name}` : name
-  if (ctrl) return e.shiftKey ? `Ctrl+Shift+${name}` : `Ctrl+${name}`
-  return name
-}
 
 export default {
   mounted() {
@@ -708,13 +698,10 @@ export default {
     this.pushEvent("place", params)
   },
 
+  // The score's keys. The palette's (P, the lengths, R, ., T, Insert, undo,
+  // redo and select all) are its own hook's, Editor.Palette's .PaletteKeys.
   key(e) {
-    if (typing(e)) return
-    // A dialog is open: its own keys (Esc) handle it; leave the score alone.
-    // Help is always on the page, shown and hidden in the browser.
-    if (document.querySelector("#settings-form, #save-as-form, #transpose-dialog, #tempo-dialog")) return
-    const help = document.getElementById("help")
-    if (help && help.style.display !== "none") return
+    if (typing(e) || dialogOpen()) return
     if (!KEYS.includes(keyId(e))) return
     const ctrl = e.ctrlKey || e.metaKey
     const k = e.key.toLowerCase()
@@ -723,8 +710,8 @@ export default {
       this.pushEvent(event, payload)
     }
 
-    // Mode and help keys work in both modes.
-    if (k === "p" && !ctrl && !e.altKey) return send("toggle_mode")
+    // Help works in both modes.
+    const help = document.getElementById("help")
     if (e.key === "?" && help) {
       e.preventDefault()
       return this.js().exec(help.dataset.show)
@@ -747,20 +734,11 @@ export default {
       return send("move", {dir: dirs[e.key], by})
     }
 
-    if (ctrl && k === "z") return send(e.shiftKey ? "redo" : "undo")
-    if (ctrl && k === "y") return send("redo")
-    if (ctrl && k === "a") return send("select_all")
     if (ctrl && k === "c") return send("copy")
     if (ctrl && k === "x") return send("cut")
     if (ctrl && k === "v") return send("paste")
     if (ctrl || e.altKey) return
     if (e.key === "Delete" || e.key === "Backspace") return send("delete")
-    if (e.key === "Insert") return send("toggle_insert")
-    if (/^[1-9]$/.test(e.key)) return send("arm_value", {value: VALUES[Number(e.key) - 1]})
-    if (e.key === "0") return send("disarm")
-    if (k === "r") return send("toggle_rest")
-    if (e.key === ".") return send("toggle_dot")
-    if (k === "t") return send("arm_tie")
   },
 
   // Pausing and stopping happen here at once, not after the round trip to

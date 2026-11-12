@@ -57,23 +57,29 @@ defmodule DrawMusicWeb.Palette.EditTools do
   attr :can_undo?, :boolean, default: false
   attr :can_redo?, :boolean, default: false
   attr :mode, :atom, default: :major, doc: "the key's mode, for chord numerals"
+  attr :target, :any, default: nil, doc: "the component the controls' clicks go to"
 
   @spec edit_tools(map()) :: Phoenix.LiveView.Rendered.t()
   def edit_tools(assigns) do
     ~H"""
     <div id="palette-edit" class="contents">
       <div class="col-start-3 row-start-1 ml-3 flex min-w-0 flex-nowrap items-stretch gap-2">
-        <.durations armed={@armed} row_kind={@row_kind} />
+        <.durations armed={@armed} row_kind={@row_kind} target={@target} />
         <div class="join" role="group" aria-label="Ties and chords">
-          <.tie_button armed={@armed} />
-          <.chords_menu armed={@armed} row_kind={@row_kind} numerals={Chords.numerals(@mode)} />
+          <.tie_button armed={@armed} target={@target} />
+          <.chords_menu
+            armed={@armed}
+            row_kind={@row_kind}
+            numerals={Chords.numerals(@mode)}
+            target={@target}
+          />
         </div>
       </div>
 
       <div class="col-start-3 row-start-2 ml-3 flex min-w-0 flex-nowrap items-stretch gap-2">
-        <.modifiers armed={@armed} row_kind={@row_kind} />
-        <.placing_toggle insert?={@insert?} />
-        <.history_tools can_undo?={@can_undo?} can_redo?={@can_redo?} />
+        <.modifiers armed={@armed} row_kind={@row_kind} target={@target} />
+        <.placing_toggle insert?={@insert?} target={@target} />
+        <.history_tools can_undo?={@can_undo?} can_redo?={@can_redo?} target={@target} />
       </div>
     </div>
     """
@@ -106,6 +112,7 @@ defmodule DrawMusicWeb.Palette.EditTools do
   attr :armed, :map, required: true
   attr :row_kind, :atom, required: true
   attr :numerals, :list, required: true
+  attr :target, :any, required: true
 
   # Chord mode: on while a chord is picked, whichever of length and chord
   # came first; it doesn't apply to rests.
@@ -134,6 +141,7 @@ defmodule DrawMusicWeb.Palette.EditTools do
           id="palette-single-notes"
           type="button"
           phx-click="single_notes"
+          phx-target={@target}
           class="mb-3 w-full rounded border border-base-300 px-2 py-1 text-sm transition-colors hover:bg-base-200"
         >
           Single notes
@@ -146,6 +154,7 @@ defmodule DrawMusicWeb.Palette.EditTools do
             type="button"
             phx-click="arm_chord"
             phx-value-quality={quality}
+            phx-target={@target}
             class={chip_class(@armed && @armed.chord == {:quality, quality})}
           >
             {Chords.name(quality)}
@@ -159,6 +168,7 @@ defmodule DrawMusicWeb.Palette.EditTools do
             type="button"
             phx-click="arm_chord"
             phx-value-degree={degree}
+            phx-target={@target}
             class={chip_class(@armed && @armed.chord == {:degree, degree})}
           >
             {numeral}
@@ -184,6 +194,7 @@ defmodule DrawMusicWeb.Palette.EditTools do
 
   attr :armed, :map, required: true
   attr :row_kind, :atom, required: true
+  attr :target, :any, required: true
 
   # The lengths, as notes or rests (the rest toggle switches the row).
   defp durations(assigns) do
@@ -200,6 +211,7 @@ defmodule DrawMusicWeb.Palette.EditTools do
         title={"#{label} #{if @row_kind == :rest, do: "rest", else: "note"} (#{key})"}
         pressed={armed?(@armed, [:note, :rest, :chord], value)}
         glyph={if @row_kind == :rest, do: rest_glyph, else: note_glyph}
+        target={@target}
       />
     </div>
     """
@@ -207,6 +219,7 @@ defmodule DrawMusicWeb.Palette.EditTools do
 
   attr :can_undo?, :boolean, required: true
   attr :can_redo?, :boolean, required: true
+  attr :target, :any, required: true
 
   # Settings, select all, undo and redo.
   defp history_tools(assigns) do
@@ -216,6 +229,7 @@ defmodule DrawMusicWeb.Palette.EditTools do
         id="settings-button"
         title="Key, time signature, tempo and pickup"
         click="open_settings"
+        target={@target}
         class="h-auto"
       >
         <.icon name="hero-cog-6-tooth" class="size-4" />
@@ -224,6 +238,7 @@ defmodule DrawMusicWeb.Palette.EditTools do
         id="palette-select-all"
         title="Select all (Ctrl+A)"
         click="select_all"
+        target={@target}
         class="h-auto"
       >
         <.icon name="hero-squares-2x2" class="size-4" />
@@ -232,6 +247,7 @@ defmodule DrawMusicWeb.Palette.EditTools do
         id="palette-undo"
         title="Undo (Ctrl+Z)"
         click="undo"
+        target={@target}
         disabled={!@can_undo?}
         class="h-auto"
       >
@@ -241,6 +257,7 @@ defmodule DrawMusicWeb.Palette.EditTools do
         id="palette-redo"
         title="Redo (Ctrl+Shift+Z)"
         click="redo"
+        target={@target}
         disabled={!@can_redo?}
         class="h-auto"
       >
@@ -260,6 +277,7 @@ defmodule DrawMusicWeb.Palette.EditTools do
 
   attr :armed, :map, required: true
   attr :row_kind, :atom, required: true
+  attr :target, :any, required: true
 
   # Rest or note, the dot and the accidentals.
   defp modifiers(assigns) do
@@ -274,6 +292,7 @@ defmodule DrawMusicWeb.Palette.EditTools do
         pressed={@row_kind == :rest}
         glyph={if @row_kind == :rest, do: :noteQuarterUp, else: :restQuarter}
         own_box
+        target={@target}
       />
       <.piece
         id="palette-dot"
@@ -282,6 +301,7 @@ defmodule DrawMusicWeb.Palette.EditTools do
         pressed={@armed != nil and Map.get(@armed, :dots, 0) > 0}
         disabled={!EditorPalette.dottable?(@armed)}
         glyph={:augmentationDot}
+        target={@target}
       />
       <.piece
         :for={{id, alter, glyph, label} <- @accidentals}
@@ -291,12 +311,14 @@ defmodule DrawMusicWeb.Palette.EditTools do
         title={label}
         pressed={@armed != nil and Map.get(@armed, :alter) == alter}
         glyph={glyph}
+        target={@target}
       />
     </div>
     """
   end
 
   attr :insert?, :boolean, required: true
+  attr :target, :any, required: true
 
   # One button naming the current placing mode; a click switches it.
   defp placing_toggle(assigns) do
@@ -305,6 +327,7 @@ defmodule DrawMusicWeb.Palette.EditTools do
       id="palette-insert"
       title={insert_title(@insert?)}
       click="toggle_insert"
+      target={@target}
       pressed={@insert?}
       off="btn-outline"
       square={false}
@@ -320,6 +343,7 @@ defmodule DrawMusicWeb.Palette.EditTools do
   defp row_kind_title(_note), do: "Switch to rest (R)"
 
   attr :armed, :map, required: true
+  attr :target, :any, required: true
 
   defp tie_button(assigns) do
     ~H"""
@@ -329,6 +353,7 @@ defmodule DrawMusicWeb.Palette.EditTools do
       title="Tie: drag from one note to the next (T)"
       aria-pressed={to_string(armed?(@armed, [:tie]))}
       phx-click="arm_tie"
+      phx-target={@target}
       class={piece_class(armed?(@armed, [:tie]))}
     >
       <svg viewBox="0 0 24 12" class="h-3 w-6" aria-hidden="true">

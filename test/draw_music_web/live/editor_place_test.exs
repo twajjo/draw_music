@@ -50,7 +50,7 @@ defmodule DrawMusicWeb.EditorPlaceTest do
     {:ok, view, _html} =
       live(conn, LibraryComponents.version_path(version.key.composition.id, version.key, 1))
 
-    render_hook(view, "arm", %{"kind" => "note", "value" => "quarter"})
+    view |> element("#palette") |> render_hook("arm", %{"kind" => "note", "value" => "quarter"})
     place(view, 0, 0, "F4")
     place(view, 0, 960, "F4", alter: true)
 
@@ -304,7 +304,7 @@ defmodule DrawMusicWeb.EditorPlaceTest do
 
       assert has_element?(view, "#palette-chords[aria-disabled=true]")
       refute has_element?(view, "#palette-chords[aria-pressed=true]")
-      render_hook(view, "arm_chord", %{"quality" => "major"})
+      view |> element("#palette") |> render_hook("arm_chord", %{"quality" => "major"})
       refute has_element?(view, "#palette-chords[aria-pressed=true]")
     end
 

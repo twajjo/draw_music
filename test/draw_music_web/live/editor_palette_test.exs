@@ -37,7 +37,7 @@ defmodule DrawMusicWeb.EditorPaletteTest do
   end
 
   test "unknown values are not armed", %{view: view} do
-    render_hook(view, "arm", %{"kind" => "note", "value" => "bogus"})
+    view |> element("#palette") |> render_hook("arm", %{"kind" => "note", "value" => "bogus"})
     refute has_element?(view, "#palette [aria-pressed=true][data-value]")
   end
 

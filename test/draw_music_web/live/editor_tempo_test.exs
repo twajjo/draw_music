@@ -9,7 +9,7 @@ defmodule DrawMusicWeb.EditorTempoTest do
   # A draft with C4 and E4 quarters at the start of bar 0, at 100 BPM.
   setup %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/")
-    render_hook(view, "arm", %{"kind" => "note", "value" => "quarter"})
+    view |> element("#palette") |> render_hook("arm", %{"kind" => "note", "value" => "quarter"})
     place(view, 0, 0, "C4")
     place(view, 0, 960, "E4")
     render_hook(view, "disarm", %{})
@@ -96,7 +96,7 @@ defmodule DrawMusicWeb.EditorTempoTest do
   end
 
   test "a gradual change reaches at most the next change", %{view: view} do
-    render_hook(view, "arm", %{"kind" => "note", "value" => "quarter"})
+    view |> element("#palette") |> render_hook("arm", %{"kind" => "note", "value" => "quarter"})
     place(view, 0, 1920, "G4")
     render_hook(view, "disarm", %{})
 
@@ -191,7 +191,7 @@ defmodule DrawMusicWeb.EditorTempoTest do
     [%{id: id}] = tempos(view)
     render_hook(view, "clear_selection", %{})
 
-    render_hook(view, "select_all", %{})
+    view |> element("#palette") |> render_hook("select_all", %{})
     assert has_element?(view, "[data-tempo-id='#{id}'].selected")
   end
 

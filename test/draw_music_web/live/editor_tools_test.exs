@@ -15,7 +15,7 @@ defmodule DrawMusicWeb.EditorToolsTest do
   end
 
   defp put_notes(view, notes) do
-    render_hook(view, "arm", %{"kind" => "note", "value" => "quarter"})
+    view |> element("#palette") |> render_hook("arm", %{"kind" => "note", "value" => "quarter"})
     for {offset, spn} <- notes, do: place(view, 0, offset, spn)
     render_hook(view, "disarm", %{})
   end
@@ -156,7 +156,7 @@ defmodule DrawMusicWeb.EditorToolsTest do
 
     test "splitting a half gives two tied quarters and leaves the rest of the bar alone",
          %{view: view} do
-      render_hook(view, "arm", %{"kind" => "note", "value" => "half"})
+      view |> element("#palette") |> render_hook("arm", %{"kind" => "note", "value" => "half"})
       place(view, 0, 0, "D4")
       place(view, 0, 1920, "A4")
       render_hook(view, "disarm", %{})
