@@ -11,10 +11,13 @@ defmodule DrawMusic.Music.TempoMarking do
 
   Each word belongs to one marking only, so a stored word (see
   `DrawMusic.Library.Version`) tells both the marking and its language.
+
+  Most markings have a usual tempo (`bpm`), which choosing the marking
+  suggests as the starting tempo; the BPM can then be set to anything.
   """
 
   @enforce_keys [:english]
-  defstruct [:italian, :german, :french, :english]
+  defstruct [:italian, :german, :french, :english, :bpm]
 
   @type language :: :italian | :german | :french | :english
 
@@ -22,59 +25,67 @@ defmodule DrawMusic.Music.TempoMarking do
           italian: String.t() | nil,
           german: String.t() | nil,
           french: String.t() | nil,
-          english: String.t()
+          english: String.t(),
+          bpm: pos_integer() | nil
         }
 
   @languages [italian: "Italian", german: "German", french: "French", english: "English"]
 
-  # Rows are {Italian, German, French, English}, slowest first; nil where a
-  # language has no word for the tempo.
+  # Rows are {Italian, German, French, English, usual BPM}, slowest first;
+  # nil where a language has no word for the tempo. The BPM is a common
+  # metronome value inside the marking's usual range (sources differ by a
+  # few BPM); it's only a suggestion, and the score's BPM stays free.
   @by_speed [
-    {"Larghissimo", nil, nil, "As slowly as possible"},
-    {"Grave", "Schwer", "Gravement", "Solemnly"},
-    {"Lento assai", "Sehr langsam", "Très lent", "Very slowly"},
-    {"Largo", "Breit", "Largement", "Broadly"},
-    {"Lento", "Langsam", "Lent", "Slowly"},
-    {"Adagio molto", nil, nil, "Very leisurely"},
-    {"Larghetto", "Etwas breit", nil, "Rather broadly"},
-    {"Adagio", "Gemächlich", nil, "Leisurely"},
-    {"Adagietto", nil, nil, "Moderately slow"},
-    {"Andante", "Gehend", "Allant", "At a walking pace"},
-    {"Andante con moto", "Bewegt", nil, "Walking, with motion"},
-    {"Andantino", nil, nil, "At an easy walking pace"},
-    {"Moderato", "Mäßig", "Modéré", "Moderately"},
-    {nil, "Mäßig bewegt", nil, "With moderate motion"},
-    {"Allegretto", "Etwas bewegt", "Un peu animé", "Moderately fast"},
-    {"Allegro moderato", "Mäßig schnell", "Assez vif", "Fairly quick"},
-    {"Allegro", "Schnell", "Vite", "Fast"},
-    {"Allegro vivace", nil, nil, "Fast and lively"},
-    {"Vivace", "Lebhaft", "Vif", "Lively"},
-    {"Allegro molto", "Rasch", nil, "Briskly"},
-    {"Allegro assai", nil, nil, "Very quick"},
-    {"Vivacissimo", "Sehr lebhaft", "Très vif", "Very lively"},
-    {"Allegrissimo", nil, nil, "Extremely quick"},
-    {"Presto", "Sehr schnell", "Très vite", "Very fast"},
-    {"Prestissimo", "Äußerst schnell", "Le plus vite possible", "As fast as possible"}
+    {"Larghissimo", nil, nil, "As slowly as possible", 20},
+    {"Grave", "Schwer", "Gravement", "Solemnly", 35},
+    {"Lento assai", "Sehr langsam", "Très lent", "Very slowly", 40},
+    {"Largo", "Breit", "Largement", "Broadly", 50},
+    {"Lento", "Langsam", "Lent", "Slowly", 54},
+    {"Adagio molto", nil, nil, "Very leisurely", 58},
+    {"Larghetto", "Etwas breit", nil, "Rather broadly", 63},
+    {"Adagio", "Gemächlich", nil, "Leisurely", 70},
+    {"Adagietto", nil, nil, "Moderately slow", 76},
+    {"Andante", "Gehend", "Allant", "At a walking pace", 84},
+    {"Andante con moto", "Bewegt", nil, "Walking, with motion", 92},
+    {"Andantino", nil, nil, "At an easy walking pace", 96},
+    # 100 BPM: also a new score's starting tempo, with its default marking.
+    {"Moderato", "Mäßig", "Modéré", "Moderately", 100},
+    {nil, "Mäßig bewegt", nil, "With moderate motion", 104},
+    {"Allegretto", "Etwas bewegt", "Un peu animé", "Moderately fast", 112},
+    {"Allegro moderato", "Mäßig schnell", "Assez vif", "Fairly quick", 120},
+    {"Allegro", "Schnell", "Vite", "Fast", 132},
+    {"Allegro vivace", nil, nil, "Fast and lively", 144},
+    {"Vivace", "Lebhaft", "Vif", "Lively", 156},
+    {"Allegro molto", "Rasch", nil, "Briskly", 160},
+    {"Allegro assai", nil, nil, "Very quick", 164},
+    {"Vivacissimo", "Sehr lebhaft", "Très vif", "Very lively", 172},
+    {"Allegrissimo", nil, nil, "Extremely quick", 176},
+    {"Presto", "Sehr schnell", "Très vite", "Very fast", 184},
+    {"Prestissimo", "Äußerst schnell", "Le plus vite possible", "As fast as possible", 208}
   ]
 
-  # Markings that name a character or a dance as well as a speed.
+  # Markings that name a character or a dance as well as a speed. Those
+  # that name no speed (calm, strict time, animated) suggest no BPM.
   @by_character [
-    {"Tranquillo", "Ruhig", "Tranquille", "Calmly"},
-    {"Adagio ma non troppo", nil, nil, "Slowly, but not too slowly"},
-    {"Andante cantabile", nil, nil, "Walking, in a singing style"},
-    {"Tempo giusto", nil, nil, "In strict time"},
-    {"Tempo di minuetto", nil, nil, "At minuet tempo"},
-    {"Tempo di valse", nil, nil, "At waltz tempo"},
-    {"Tempo di marcia", nil, nil, "At march tempo"},
-    {"Animato", "Belebt", "Animé", "Animated"},
-    {"Allegro giusto", nil, nil, "Fast, in strict time"},
-    {"Allegro ma non troppo", nil, nil, "Fast, but not too fast"},
-    {"Allegro con brio", nil, nil, "Fast, with vigour"},
-    {"Allegro con fuoco", nil, nil, "Fast, with fire"},
-    {"Presto agitato", nil, nil, "Very fast and agitated"}
+    {"Tranquillo", "Ruhig", "Tranquille", "Calmly", nil},
+    {"Adagio ma non troppo", nil, nil, "Slowly, but not too slowly", 66},
+    {"Andante cantabile", nil, nil, "Walking, in a singing style", 80},
+    {"Tempo giusto", nil, nil, "In strict time", nil},
+    {"Tempo di minuetto", nil, nil, "At minuet tempo", 116},
+    {"Tempo di valse", nil, nil, "At waltz tempo", 150},
+    {"Tempo di marcia", nil, nil, "At march tempo", 120},
+    {"Animato", "Belebt", "Animé", "Animated", nil},
+    {"Allegro giusto", nil, nil, "Fast, in strict time", 132},
+    {"Allegro ma non troppo", nil, nil, "Fast, but not too fast", 126},
+    {"Allegro con brio", nil, nil, "Fast, with vigour", 144},
+    {"Allegro con fuoco", nil, nil, "Fast, with fire", 152},
+    {"Presto agitato", nil, nil, "Very fast and agitated", 184}
   ]
 
-  @all for row <- @by_speed ++ @by_character, word <- Tuple.to_list(row), word, do: word
+  @all for row <- @by_speed ++ @by_character,
+           word <- Tuple.to_list(row),
+           is_binary(word),
+           do: word
 
   # The marking for the default starting tempo, 100 BPM.
   @default "Moderato"
@@ -146,8 +157,8 @@ defmodule DrawMusic.Music.TempoMarking do
     end
   end
 
-  defp marking({italian, german, french, english}) do
-    %__MODULE__{italian: italian, german: german, french: french, english: english}
+  defp marking({italian, german, french, english, bpm}) do
+    %__MODULE__{italian: italian, german: german, french: french, english: english, bpm: bpm}
   end
 
   defp markings, do: Enum.flat_map(sections(), fn {_title, markings} -> markings end)

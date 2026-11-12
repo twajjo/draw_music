@@ -1,7 +1,7 @@
 defmodule DrawMusic.Music.TempoMarkingTest do
   use ExUnit.Case, async: true
 
-  alias DrawMusic.Music.TempoMarking
+  alias DrawMusic.Music.{Context, TempoMarking}
 
   test "each word belongs to one marking only, so a stored word tells its marking" do
     words = TempoMarking.all()
@@ -12,6 +12,20 @@ defmodule DrawMusic.Music.TempoMarkingTest do
     for {_title, markings} <- TempoMarking.sections(), marking <- markings do
       assert is_binary(marking.english)
     end
+  end
+
+  test "markings by speed suggest tempos in range, rising down the list" do
+    [{"By speed", by_speed}, {"By character", by_character}] = TempoMarking.sections()
+    bpms = Enum.map(by_speed, & &1.bpm)
+
+    assert Enum.all?(bpms, &(&1 in Context.tempo_range()))
+    assert bpms == Enum.sort(bpms)
+
+    for %{bpm: bpm} <- by_character, bpm, do: assert(bpm in Context.tempo_range())
+  end
+
+  test "a new score's marking suggests its starting tempo" do
+    assert TempoMarking.find(TempoMarking.default()).bpm == %Context{}.tempo_bpm
   end
 
   test "a word finds its marking, in any language" do

@@ -39,9 +39,21 @@ defmodule DrawMusicWeb.Editor.SettingsDialogTest do
     view |> form("#settings-form", settings: settings) |> render_submit()
   end
 
+  # As the browser does, the change names the field that changed.
   defp choose_marking(view, marking) do
-    view |> form("#settings-form", settings: %{"tempo_marking" => marking}) |> render_change()
+    view
+    |> form("#settings-form", settings: %{"tempo_marking" => marking})
+    |> render_change(%{"_target" => ["settings", "tempo_marking"]})
   end
+
+  defp set_bpm(view, bpm) do
+    view
+    |> form("#settings-form", settings: %{"tempo_bpm" => bpm})
+    |> render_change(%{"_target" => ["settings", "tempo_bpm"]})
+  end
+
+  defp bpm?(view, bpm),
+    do: has_element?(view, "#settings-form input[name='settings[tempo_bpm]'][value='#{bpm}']")
 
   defp print(view, word) do
     view |> form("#settings-form", settings: %{"tempo_text" => word}) |> render_change()
@@ -105,6 +117,27 @@ defmodule DrawMusicWeb.Editor.SettingsDialogTest do
   end
 
   describe "the tempo marking" do
+    test "choosing one suggests its usual tempo; the BPM stays free", %{view: view} do
+      choose_marking(view, "Allegro")
+      assert bpm?(view, "132")
+
+      set_bpm(view, "140")
+      assert bpm?(view, "140")
+      assert has_element?(view, "#settings-tempo-marking option[selected][value='Allegro']")
+
+      print(view, "Schnell")
+      assert bpm?(view, "140")
+
+      # Strict time names no speed: the BPM stays.
+      choose_marking(view, "Tempo giusto")
+      assert bpm?(view, "140")
+
+      view |> form("#settings-form") |> render_submit()
+
+      assert_received {:component_sent,
+                       {:editor, {:settings, _key, %{tempo_bpm: 140, tempo_text: "Tempo giusto"}}}}
+    end
+
     test "each marking shows its words in every language that has one", %{view: view} do
       assert has_element?(
                view,

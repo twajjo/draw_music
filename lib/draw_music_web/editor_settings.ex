@@ -67,9 +67,19 @@ defmodule DrawMusicWeb.EditorSettings do
   Keeps the settings being chosen from contradicting each other: the
   printed word stays one of the marking's (`follow_tempo_marking/1`), and
   the pickup stays shorter than a bar of the chosen time (`pickup_max/1`).
+
+  `target` is the field just changed (the form event's `"_target"`, e.g.
+  `["settings", "tempo_marking"]`). Choosing a marking suggests its usual
+  tempo as the starting BPM, where it has one; changing anything else, the
+  BPM included, leaves the BPM as it is.
   """
-  @spec follow(map()) :: map()
-  def follow(params), do: params |> follow_tempo_marking() |> keep_pickup_in_bar()
+  @spec follow(map(), [String.t()]) :: map()
+  def follow(params, target \\ []) do
+    params
+    |> suggest_tempo(target)
+    |> follow_tempo_marking()
+    |> keep_pickup_in_bar()
+  end
 
   @doc """
   The most pickup beats the params' time allows: a beat short of a full
@@ -120,6 +130,15 @@ defmodule DrawMusicWeb.EditorSettings do
       _in_range -> params
     end
   end
+
+  defp suggest_tempo(params, [_form, "tempo_marking"]) do
+    case TempoMarking.find(params["tempo_marking"]) do
+      %TempoMarking{bpm: bpm} when is_integer(bpm) -> Map.put(params, "tempo_bpm", to_string(bpm))
+      _no_usual_tempo -> params
+    end
+  end
+
+  defp suggest_tempo(params, _other_field), do: params
 
   defp pickup_ticks(params) do
     with {beats, ""} <- Integer.parse(params["pickup_beats"] || ""),
