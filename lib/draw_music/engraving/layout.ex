@@ -67,9 +67,11 @@ defmodule DrawMusic.Engraving.Layout do
   @tie_offset 0.6
   @tie_extent 1
   # Tempo marks: the bottom row's baseline sits this far above whatever is
-  # highest; rows are this far apart and this tall; marks on one row keep
-  # this gap; crowded marks go up to this row (from 0).
-  @tempo_clearance 1.5
+  # highest (clear of the editor's bar buttons, centred 2.2 above the top
+  # line: `DrawMusicWeb.EditorComponents.measure_controls/1`); rows are this
+  # far apart and this tall; marks on one row keep this gap; crowded marks
+  # go up to this row (from 0).
+  @tempo_clearance 3.5
   @tempo_row 2.4
   @tempo_height 2.0
   @tempo_gap 0.8
