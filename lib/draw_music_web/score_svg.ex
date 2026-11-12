@@ -242,6 +242,29 @@ defmodule DrawMusicWeb.ScoreSvg do
     ]
   end
 
+  # The opening tempo marking, "Moderato ♩ = 100". It is the score's
+  # settings, so it opens them (in the editor) rather than being selected
+  # or dragged. Cut into runs of bars, only the run holding it gives it
+  # its id.
+  defp item(%TempoMark{words: words} = mark, _selection, range) when is_binary(words) do
+    [
+      "<g",
+      attr("id", in_range?(mark.x, range) && "opening-tempo"),
+      attr("class", "opening-tempo"),
+      attr("font-family", "serif"),
+      attr("font-size", @tempo_font_size),
+      "><text",
+      attr("x", n(mark.x)),
+      attr("y", n(mark.y)),
+      attr("font-weight", "bold"),
+      ">",
+      escape(words),
+      "</text>",
+      tempo_text(mark.x + TempoMark.words_width(words), mark.y, TempoMark.label(mark), nil, nil),
+      "</g>"
+    ]
+  end
+
   # A tempo change: its label (selectable, draggable), and for a rit. or
   # accel. the dashed line and the end tempo (its end, draggable). A piece
   # continued from an earlier system has no label; it still selects. Cut

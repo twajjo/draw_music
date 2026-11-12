@@ -83,6 +83,9 @@ function eventTarget(e) {
 
 const tempoKind = (hit) => hit && (hit.kind === "tempo" || hit.kind === "tempo-end")
 
+// The opening tempo marking is the score's settings: it opens them.
+const onOpeningTempo = (e) => Boolean(e.target.closest && e.target.closest("#opening-tempo"))
+
 // The column (or the measure's end) whose x is nearest `x`: {offset, x}.
 function nearestColumn(measure, x) {
   const ends = [{offset: 0, x: measure.content_x}, {offset: measure.capacity, x: measure.content_end}]
@@ -123,10 +126,13 @@ export default {
     this.onCancel = () => this.cancelPress()
     this.onKey = (e) => this.key(e)
     this.onContext = (e) => this.contextMenu(e)
-    // Double-clicking a tempo mark opens its dialog.
+    // Double-clicking a tempo mark opens its dialog; the opening marking,
+    // the score's settings.
     this.onDoubleClick = (e) => {
+      if (this.mode !== "edit") return
+      if (onOpeningTempo(e)) return this.pushEvent("open_settings", {})
       const hit = eventTarget(e)
-      if (this.mode === "edit" && tempoKind(hit)) this.pushEvent("edit_tempo", {id: hit.id})
+      if (tempoKind(hit)) this.pushEvent("edit_tempo", {id: hit.id})
     }
     // Browsers allow audio only after a gesture: the first press, of a
     // pointer or a key, starts the audio clocks.
@@ -773,7 +779,8 @@ export default {
   },
 
   // Right-click: cancels placing or a drag; on a note or rest, opens its
-  // menu (or the selection's, if it is selected).
+  // menu (or the selection's, if it is selected); on the opening tempo
+  // marking, the score's settings.
   contextMenu(e) {
     if (this.mode === "play") return
     if (this.armed) {
@@ -784,6 +791,10 @@ export default {
     if (this.drag || this.pending) {
       e.preventDefault()
       return this.cancelPress()
+    }
+    if (this.el.contains(e.target) && onOpeningTempo(e)) {
+      e.preventDefault()
+      return this.pushEvent("open_settings", {})
     }
 
     const hit = this.el.contains(e.target) && eventTarget(e)

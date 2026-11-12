@@ -1235,7 +1235,7 @@ defmodule DrawMusicWeb.EditorLive do
 
   defp lay_out(socket, score, width, loading?) do
     ctx = socket.assigns.session.ctx
-    engraved = Layout.layout(score, ctx, width: width)
+    engraved = Layout.layout(score, ctx, width: width, marking: socket.assigns.tempo_text)
 
     # The score goes to the browser in pieces, each one finished piece of
     # SVG, not as a LiveView diff of every glyph and line: a long piece has

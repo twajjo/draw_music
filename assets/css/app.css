@@ -176,6 +176,11 @@
   cursor: ew-resize;
 }
 
+/* The opening tempo marking opens the score's settings (double- or right-click). */
+#score-editor:not(.play-mode) .opening-tempo {
+  cursor: pointer;
+}
+
 /* The playback point: a red line across the system being played. */
 #score-overlay .playhead {
   stroke: var(--score-playhead);

@@ -243,6 +243,13 @@ defmodule DrawMusicWeb.Shortcuts do
         "Move it along the music (it snaps to notes and rests); drag a rit.'s or accel.'s end tempo to make it longer or shorter",
       diagram: :tempo_ramp
     },
+    %Shortcut{
+      group: "Editing",
+      mouse: "double-click / right-click the opening tempo",
+      modes: @edit,
+      action:
+        "The marking over the first bar (e.g. Moderato ♩ = 100) is the score's settings: it opens them, to choose another marking or starting tempo"
+    },
     # Saving
     %Shortcut{
       group: "Saving",

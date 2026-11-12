@@ -40,7 +40,12 @@ defmodule DrawMusicWeb.ScoreExport do
   @doc "The SVG document for a version with its key and composition loaded."
   @spec svg(Version.t()) :: String.t()
   def svg(%Version{key: %Key{composition: %Composition{} = composition}} = version) do
-    layout = Layout.layout(version.score, Context.from_version(version), width: page_width())
+    layout =
+      Layout.layout(version.score, Context.from_version(version),
+        width: page_width(),
+        marking: version.tempo_text
+      )
+
     lines = credit_lines(composition)
 
     top =

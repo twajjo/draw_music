@@ -15,6 +15,9 @@ defmodule DrawMusic.Engraving.Layout do
       system. A number wraps measures into systems of that width, each
       stretched to fill it, except a last system less than 60% full.
     * `spacing`: staff spaces per quarter note (default 8).
+    * `marking`: the opening tempo marking's words, e.g. "Moderato". Given,
+      the score opens with "Moderato ♩ = 100" (the context's tempo) over
+      its first beat; nil (the default) leaves the opening tempo undrawn.
   """
 
   alias DrawMusic.Engraving.{
@@ -79,7 +82,8 @@ defmodule DrawMusic.Engraving.Layout do
                   ~w(timeSig0 timeSig1 timeSig2 timeSig3 timeSig4 timeSig5 timeSig6 timeSig7 timeSig8 timeSig9)a
                 )
 
-  @type option :: {:width, :infinity | number()} | {:spacing, number()}
+  @type option ::
+          {:width, :infinity | number()} | {:spacing, number()} | {:marking, String.t() | nil}
 
   # A score with no measures (e.g. imported from an empty file) is drawn
   # as one empty bar.
@@ -118,7 +122,7 @@ defmodule DrawMusic.Engraving.Layout do
     {systems, height} =
       systems
       |> add_ties(score, anchors)
-      |> add_tempos(score)
+      |> add_tempos(score, opening_tempo(Keyword.get(opts, :marking), ctx))
       |> stack()
 
     %Engraved{
@@ -434,13 +438,15 @@ defmodule DrawMusic.Engraving.Layout do
 
   # Each tempo change goes above the system it falls in, clear of whatever
   # rises above the treble staff; marks that would overlap go up a row.
-  defp add_tempos(systems, %Score{tempos: []}), do: systems
+  # The opening marking goes over the first beat, like a change there.
+  defp add_tempos(systems, %Score{tempos: []}, nil), do: systems
 
-  defp add_tempos(systems, %Score{tempos: tempos}) do
+  defp add_tempos(systems, %Score{tempos: tempos}, opening) do
     by_system =
       tempos
       |> Enum.sort_by(& &1.tick)
       |> Enum.flat_map(&tempo_pieces(&1, systems))
+      |> Kernel.++(opening_piece(opening, systems))
       |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
 
     Enum.map(systems, fn system ->
@@ -449,6 +455,18 @@ defmodule DrawMusic.Engraving.Layout do
         marks -> %{system | items: system.items ++ rows(marks, tempo_baseline(system))}
       end
     end)
+  end
+
+  # The opening marking's words and tempo, or nil when none is drawn.
+  defp opening_tempo(nil, _ctx), do: nil
+  defp opening_tempo(words, %Context{tempo_bpm: bpm}), do: {words, bpm}
+
+  defp opening_piece(nil, _systems), do: []
+
+  defp opening_piece({words, bpm}, systems) do
+    {system, x} = tick_place(systems, 0)
+    mark = %TempoMark{id: nil, x: x, y: 0.0, bpm: bpm, words: words, width: 0.0}
+    [{system.index, %{mark | width: TempoMark.width(mark)}}]
   end
 
   # {system index, mark} for each system a change is drawn in.
@@ -484,7 +502,7 @@ defmodule DrawMusic.Engraving.Layout do
       width: 0.0
     }
 
-    %{mark | width: TempoMark.text_width(TempoMark.label(mark))}
+    %{mark | width: TempoMark.width(mark)}
   end
 
   # The system and x of an absolute tick (past the end: the end).
