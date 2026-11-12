@@ -131,6 +131,57 @@ defmodule DrawMusicWeb.Editor.SettingsDialogTest do
     end
   end
 
+  describe "the time signature's symbol" do
+    defp change_time(view, num, den) do
+      view
+      |> form("#settings-form", settings: %{"time_num" => num, "time_den" => den})
+      |> render_change()
+    end
+
+    defp symbol_choice, do: "#settings-form select[name='settings[time_symbol]']"
+
+    test "4/4 can be shown as common time", %{view: view} do
+      assert has_element?(view, symbol_choice() <> " option[value='common']")
+      refute has_element?(view, symbol_choice() <> " option[value='cut']")
+    end
+
+    test "common time locks the numbers at 4/4 until Numbers is chosen", %{view: view} do
+      view |> form("#settings-form", settings: %{"time_symbol" => "common"}) |> render_change()
+
+      assert has_element?(
+               view,
+               "#settings-form input[type=number][name='settings[time_num]'][disabled]"
+             )
+
+      assert has_element?(view, "#settings-form select[name='settings[time_den]'][disabled]")
+
+      view |> form("#settings-form") |> render_submit()
+
+      assert_received {:component_sent,
+                       {:editor,
+                        {:settings, _key, %{time_num: 4, time_den: 4, time_symbol: :common}}}}
+
+      view |> form("#settings-form", settings: %{"time_symbol" => "none"}) |> render_change()
+      refute has_element?(view, "#settings-form input[name='settings[time_num]'][disabled]")
+    end
+
+    test "2/2 can be shown as cut time", %{view: view} do
+      change_time(view, "2", "2")
+
+      assert has_element?(view, symbol_choice() <> " option[value='cut']")
+      refute has_element?(view, symbol_choice() <> " option[value='common']")
+    end
+
+    test "any other time is shown as numbers, with no choice", %{view: view} do
+      change_time(view, "3", "4")
+
+      refute has_element?(view, symbol_choice())
+      apply_settings(view, %{"time_num" => "3"})
+
+      assert_received {:component_sent, {:editor, {:settings, _key, %{time_symbol: :none}}}}
+    end
+  end
+
   test "Cancel reports close", %{view: view} do
     view |> element("#settings-form button", "Cancel") |> render_click()
 

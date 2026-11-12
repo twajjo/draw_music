@@ -63,8 +63,9 @@ defmodule DrawMusicWeb.LibraryComponents do
   end
 
   @doc """
-  A score's settings inputs: key, time signature, tempo and pickup. The
-  caller's form lays them out; see `DrawMusicWeb.EditorSettings`.
+  A score's settings inputs, a row per group of related settings, each
+  labelled above its control: key, time signature and pickup; tempo
+  marking and starting tempo; instrument. See `DrawMusicWeb.EditorSettings`.
   """
   attr :form, Phoenix.HTML.Form, required: true
 
@@ -80,41 +81,100 @@ defmodule DrawMusicWeb.LibraryComponents do
       )
 
     ~H"""
-    <.input field={@form[:key]} type="select" label="Key" options={@key_options} />
-    <div class="flex items-end gap-2">
-      <.input
-        field={@form[:time_num]}
-        type="number"
-        label="Time"
-        min="1"
-        max={@max_time_num}
-        class="input w-20"
-      />
-      <span class="pb-3 text-lg">/</span>
-      <.input field={@form[:time_den]} type="select" options={@time_denominators} />
+    <%!-- What opens the staff: the key, the time signature and the pickup. --%>
+    <.settings_row>
+      <div class="w-36">
+        <.input field={@form[:key]} type="select" label="Key" options={@key_options} />
+      </div>
+      <.time_numbers form={@form} max_time_num={@max_time_num} denominators={@time_denominators} />
+      <.time_symbol form={@form} />
+      <div class="w-28">
+        <.input field={@form[:pickup_beats]} type="number" label="Pickup beats" min="0" />
+      </div>
+    </.settings_row>
+    <.tempo_marking form={@form} tempo_range={@tempo_range} />
+    <.settings_row>
+      <div class="w-72">
+        <.input
+          id="settings-instrument"
+          field={@form[:instrument]}
+          type="select"
+          label="Instrument"
+          options={@instrument_options}
+        />
+      </div>
+    </.settings_row>
+    """
+  end
+
+  @doc """
+  The time signature's numbers, under one label. Shown as common or cut
+  time, they are fixed (4/4 or 2/2): the fields are locked, and hidden
+  fields send the numbers, since a disabled field isn't submitted.
+  """
+  attr :form, Phoenix.HTML.Form, required: true
+  attr :max_time_num, :integer, required: true
+  attr :denominators, :list, required: true
+
+  @spec time_numbers(map()) :: Phoenix.LiveView.Rendered.t()
+  def time_numbers(assigns) do
+    assigns = assign(assigns, :locked, locked_time(to_string(assigns.form[:time_symbol].value)))
+
+    ~H"""
+    <%!-- Each field brings its own fieldset spacing (core `input/1`), so this
+         box adds none: the label and fields line up with the row's others. --%>
+    <div>
+      <span class="label">Time</span>
+      <div class="flex items-end gap-2">
+        <.input
+          field={@form[:time_num]}
+          type="number"
+          min="1"
+          max={@max_time_num}
+          class="input w-16"
+          aria-label="Beats per bar"
+          disabled={@locked != nil}
+        />
+        <span class="pb-4 text-lg">/</span>
+        <.input
+          field={@form[:time_den]}
+          type="select"
+          options={@denominators}
+          class="select w-20"
+          aria-label="Beat value"
+          disabled={@locked != nil}
+        />
+      </div>
+      <%= if @locked do %>
+        <input type="hidden" name={@form[:time_num].name} value={elem(@locked, 0)} />
+        <input type="hidden" name={@form[:time_den].name} value={elem(@locked, 1)} />
+      <% end %>
     </div>
-    <.input
-      field={@form[:time_symbol]}
-      type="select"
-      label="Written as"
-      options={[{"Numbers", "none"}, {"Common time (4/4)", "common"}, {"Cut time (2/2)", "cut"}]}
-    />
-    <.input
-      field={@form[:tempo_bpm]}
-      type="number"
-      label="Starting tempo (BPM)"
-      min={@tempo_range.first}
-      max={@tempo_range.last}
-    />
-    <.tempo_marking form={@form} />
-    <.input field={@form[:pickup_beats]} type="number" label="Pickup beats" min="0" />
-    <.input
-      id="settings-instrument"
-      field={@form[:instrument]}
-      type="select"
-      label="Instrument"
-      options={@instrument_options}
-    />
+    """
+  end
+
+  @doc """
+  How the time signature is printed. Only 4/4 and 2/2 have a symbol
+  (common and cut time), so only they get the choice; any other time is
+  printed as numbers.
+  """
+  attr :form, Phoenix.HTML.Form, required: true
+
+  @spec time_symbol(map()) :: Phoenix.LiveView.Rendered.t()
+  def time_symbol(assigns) do
+    time = {to_string(assigns.form[:time_num].value), to_string(assigns.form[:time_den].value)}
+    assigns = assign(assigns, :symbol, symbol_option(time))
+
+    ~H"""
+    <div :if={@symbol} class="w-48">
+      <.input
+        field={@form[:time_symbol]}
+        type="select"
+        label="Shown as"
+        options={[{"Numbers", "none"}, @symbol]}
+      />
+    </div>
+    <input :if={!@symbol} type="hidden" name={@form[:time_symbol].name} value="none" />
     """
   end
 
@@ -122,9 +182,11 @@ defmodule DrawMusicWeb.LibraryComponents do
   The tempo marking: which tempo, each shown with its words in every
   language that has one, and which of its words is printed over the first
   bar. Only the chosen marking's words can be printed (see
-  `DrawMusicWeb.EditorSettings.follow_tempo_marking/1`).
+  `DrawMusicWeb.EditorSettings.follow_tempo_marking/1`). The starting
+  tempo sits beside them, on the same row.
   """
   attr :form, Phoenix.HTML.Form, required: true
+  attr :tempo_range, Range, required: true
 
   @spec tempo_marking(map()) :: Phoenix.LiveView.Rendered.t()
   def tempo_marking(assigns) do
@@ -135,24 +197,35 @@ defmodule DrawMusicWeb.LibraryComponents do
     assigns = assign(assigns, :printed_options, printed_options(marking))
 
     ~H"""
-    <div class="col-span-full flex flex-wrap items-end gap-x-4">
-      <.input
-        id="settings-tempo-marking"
-        field={@form[:tempo_marking]}
-        type="select"
-        label="Tempo marking"
-        options={tempo_marking_options()}
-        class="select w-full sm:w-96"
-      />
-      <.input
-        id="settings-tempo-text"
-        field={@form[:tempo_text]}
-        type="select"
-        label="Printed in"
-        options={@printed_options}
-        class="select w-56"
-      />
-    </div>
+    <.settings_row>
+      <div class="w-full sm:w-72">
+        <.input
+          id="settings-tempo-marking"
+          field={@form[:tempo_marking]}
+          type="select"
+          label="Tempo marking"
+          options={tempo_marking_options()}
+        />
+      </div>
+      <div class="w-52">
+        <.input
+          id="settings-tempo-text"
+          field={@form[:tempo_text]}
+          type="select"
+          label="Printed in"
+          options={@printed_options}
+        />
+      </div>
+      <div class="w-40">
+        <.input
+          field={@form[:tempo_bpm]}
+          type="number"
+          label="Starting tempo (BPM)"
+          min={@tempo_range.first}
+          max={@tempo_range.last}
+        />
+      </div>
+    </.settings_row>
     """
   end
 
@@ -313,10 +386,33 @@ defmodule DrawMusicWeb.LibraryComponents do
     |> Enum.join(" · ")
   end
 
+  # The numbers a time signature symbol stands for; none for "Numbers".
+  defp locked_time("common"), do: {4, 4}
+  defp locked_time("cut"), do: {2, 2}
+  defp locked_time(_numbers), do: nil
+
   # A marking's words as "Printed in" options, e.g. {"German: Schnell", "Schnell"}.
   defp printed_options(marking) do
     for {language, word} <- TempoMarking.words(marking) do
       {"#{TempoMarking.language_name(language)}: #{word}", word}
     end
   end
+
+  # One row of related settings, each labelled above its control. A
+  # control keeps its own width (a sized box around it), so a row wraps
+  # only when the form is too narrow.
+  slot :inner_block, required: true
+
+  defp settings_row(assigns) do
+    ~H"""
+    <div class="col-span-full flex flex-wrap items-end gap-x-4">
+      {render_slot(@inner_block)}
+    </div>
+    """
+  end
+
+  # The one time signature symbol a time can be printed as, if any.
+  defp symbol_option({"4", "4"}), do: {"𝄴  Common time", "common"}
+  defp symbol_option({"2", "2"}), do: {"𝄵  Cut time", "cut"}
+  defp symbol_option(_time), do: nil
 end

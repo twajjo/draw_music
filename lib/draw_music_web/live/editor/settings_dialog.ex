@@ -45,8 +45,9 @@ defmodule DrawMusicWeb.Editor.SettingsDialog do
     end
   end
 
-  # The fields follow what is being chosen (a marking decides which words
-  # can be printed); nothing is checked until Apply.
+  # The fields follow what is being chosen (the time decides whether a
+  # symbol can be chosen, a marking which words can be printed); nothing
+  # is checked until Apply.
   def handle_event("change", %{"settings" => params}, socket) do
     form = to_form(EditorSettings.follow_tempo_marking(params), as: :settings)
     {:noreply, assign(socket, :form, form)}
@@ -66,7 +67,7 @@ defmodule DrawMusicWeb.Editor.SettingsDialog do
         id="settings-dialog"
         role="dialog"
         aria-label="Score settings"
-        class="w-full max-w-lg rounded-box border border-base-300 bg-base-100 p-6 shadow-2xl"
+        class="w-full max-w-3xl rounded-box border border-base-300 bg-base-100 p-6 shadow-2xl"
         phx-click-away="close"
         phx-window-keydown="close"
         phx-key="Escape"
