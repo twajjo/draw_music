@@ -225,7 +225,7 @@ defmodule DrawMusicWeb.Shortcuts do
       mouse: "right-click → Tempo change here…",
       modes: @edit,
       action:
-        "Change the tempo where that note or rest starts: a ♩ = N mark, or tick Gradually for a rit. or accel. that reaches another tempo over some beats. The tempo in the score settings is the one the piece starts at",
+        "Change the tempo where that note or rest starts: a ♩ = N mark, or tick Gradually for a rit. or accel. that reaches another tempo over some beats. The tempo in the score settings is the one the piece starts at, so a change can't go on its first beat",
       diagram: :tempo_mark
     },
     %Shortcut{

@@ -87,9 +87,10 @@ const tempoKind = (hit) => hit && (hit.kind === "tempo" || hit.kind === "tempo-e
 const onOpeningTempo = (e) => Boolean(e.target.closest && e.target.closest("#opening-tempo"))
 
 // The column (or the measure's end) whose x is nearest `x`: {offset, x}.
-function nearestColumn(measure, x) {
+// With `afterOpening`, the score's opening beat (tick 0) isn't a spot.
+function nearestColumn(measure, x, afterOpening = false) {
   const ends = [{offset: 0, x: measure.content_x}, {offset: measure.capacity, x: measure.content_end}]
-  const spots = [...measure.columns, ...ends]
+  const spots = [...measure.columns, ...ends].filter((spot) => !afterOpening || measure.start_tick + spot.offset > 0)
   return spots.reduce((best, spot) => (Math.abs(spot.x - x) < Math.abs(best.x - x) ? spot : best))
 }
 
@@ -478,12 +479,13 @@ export default {
   },
 
   // A dragged tempo mark (or a rit.'s end) snaps to the nearest note or rest
-  // column; a line shows where it would land.
+  // column; a line shows where it would land. A mark stops short of the
+  // opening beat, whose tempo is the score's settings.
   moveTempoDrag(e) {
     const point = this.toScore(e)
     const at = locate(this.geometry, point.x, this.tempoDrag.start.y)
     if (!at) return
-    const target = nearestColumn(at.measure, point.x)
+    const target = nearestColumn(at.measure, point.x, this.tempoDrag.hit.kind === "tempo")
     this.tempoDrag.tick = at.measure.start_tick + target.offset
     this.clearGhost()
     const {top, bottom} = playheadSpan(this.geometry)

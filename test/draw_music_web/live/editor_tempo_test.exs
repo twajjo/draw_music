@@ -145,11 +145,33 @@ defmodule DrawMusicWeb.EditorTempoTest do
     add_tempo(view, %{bpm: "80", gradual: "true", to_bpm: "50", beats: "1"})
     [%{id: id}] = tempos(view)
 
-    render_hook(view, "move_tempo", %{"id" => id, "tick" => 0})
-    assert [%{tick: 0, to_tick: 960}] = tempos(view)
+    render_hook(view, "move_tempo", %{"id" => id, "tick" => 1920})
+    assert [%{tick: 1920, to_tick: 2880}] = tempos(view)
 
     render_hook(view, "resize_tempo", %{"id" => id, "tick" => 3840})
-    assert [%{tick: 0, to_tick: 3840}] = tempos(view)
+    assert [%{tick: 1920, to_tick: 3840}] = tempos(view)
+  end
+
+  test "no change on the opening beat: the menu doesn't offer one, and a move there is refused",
+       %{view: view} do
+    c4_id =
+      session_of(view).score.measures
+      |> hd()
+      |> Map.fetch!(:notes)
+      |> Enum.find(&(&1.offset == 0))
+      |> Map.fetch!(:id)
+
+    render_hook(view, "open_menu", %{"id" => c4_id, "x" => 10, "y" => 10})
+    assert has_element?(view, "#menu-split")
+    refute has_element?(view, "#menu-tempo")
+    render_hook(view, "close_menu", %{})
+
+    add_tempo(view, %{bpm: "60"})
+    [%{id: id}] = tempos(view)
+
+    render_hook(view, "move_tempo", %{"id" => id, "tick" => 0})
+    assert [%{tick: 960}] = tempos(view)
+    assert has_element?(view, "#flash-error", "The opening tempo is set in Score settings")
   end
 
   test "Delete removes a selected mark and leaves the notes; Undo brings it back", %{view: view} do

@@ -2,15 +2,16 @@ defmodule DrawMusicWeb.ContextMenu do
   @moduledoc """
   An open right-click menu: the event it was opened on (`id`), the events
   its actions apply to (`ids`: the whole selection for `:selection`), where
-  it sits on screen, and the staff step that was clicked (for "Make it a
-  note here").
+  it sits on screen, the staff step that was clicked (for "Make it a note
+  here"), and whether a tempo change can start where the event starts
+  (`tempo?`: not on the opening beat, whose tempo is the score's settings).
   """
 
   alias DrawMusic.Music.Note
   alias DrawMusicWeb.EditorPlacement
 
   @enforce_keys [:id, :ids, :kind, :x, :y]
-  defstruct [:id, :ids, :kind, :x, :y, :step]
+  defstruct [:id, :ids, :kind, :x, :y, :step, tempo?: true]
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t(),
@@ -18,7 +19,8 @@ defmodule DrawMusicWeb.ContextMenu do
           kind: :note | :rest | :selection,
           x: number(),
           y: number(),
-          step: integer() | nil
+          step: integer() | nil,
+          tempo?: boolean()
         }
 
   @doc """

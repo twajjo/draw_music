@@ -54,18 +54,27 @@ defmodule DrawMusic.Music.TempoEditingTest do
   end
 
   test "a rit. or accel. reaches a different tempo" do
-    level = %TempoChange{id: "r", tick: 0, bpm: 60, to_tick: 1920, to_bpm: 60}
+    level = %TempoChange{id: "r", tick: 960, bpm: 60, to_tick: 1920, to_bpm: 60}
     assert TempoEditing.put(score(), @ctx, level) == {:error, :same_tempo}
   end
 
   test "a rit. ends at the latest where the next change starts, however it's put" do
-    ramp = %TempoChange{id: "r", tick: 0, bpm: 60, to_tick: 3840, to_bpm: 40}
+    ramp = %TempoChange{id: "r", tick: 960, bpm: 60, to_tick: 3840, to_bpm: 40}
 
     {:ok, s} = TempoEditing.put(score([mark("a", 1920, 90)]), @ctx, ramp)
-    assert ticks(s) == [{0, 60, 1920}, {1920, 90, nil}]
+    assert ticks(s) == [{960, 60, 1920}, {1920, 90, nil}]
 
-    {:ok, s} = TempoEditing.put(score([ramp]), @ctx, mark("a", 960, 90))
-    assert ticks(s) == [{0, 60, 960}, {960, 90, nil}]
+    {:ok, s} = TempoEditing.put(score([ramp]), @ctx, mark("a", 2880, 90))
+    assert ticks(s) == [{960, 60, 2880}, {2880, 90, nil}]
+  end
+
+  test "nothing starts on the opening beat: its tempo is the score's settings" do
+    assert TempoEditing.put(score(), @ctx, mark("a", 0, 60)) == {:error, :opening_beat}
+
+    {:ok, s} = TempoEditing.put(score(), @ctx, mark("a", 960, 60))
+    assert TempoEditing.move(s, @ctx, "a", 0) == {:error, :opening_beat}
+    refute TempoEditing.changeable?(0)
+    assert TempoEditing.changeable?(960)
   end
 
   test "reach is where the next other change starts, else the score's end" do

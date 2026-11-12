@@ -10,20 +10,31 @@ defmodule DrawMusic.Music.TempoEditing do
   alias DrawMusic.Music.{Context, Score, TempoChange, Timeline}
 
   @type result ::
-          {:ok, Score.t()} | {:error, :not_found | :past_end | :invalid_tempo | :same_tempo}
+          {:ok, Score.t()}
+          | {:error, :not_found | :past_end | :invalid_tempo | :same_tempo | :opening_beat}
+
+  @doc """
+  Whether a change may start at `tick`: anywhere but the opening beat,
+  whose tempo is the score's settings (`Context.tempo_bpm`).
+  """
+  @spec changeable?(integer()) :: boolean()
+  def changeable?(tick), do: tick != 0
 
   @doc """
   Adds `change`, or rewrites the one with its id. Another change at the
-  same tick gives way to it. A rit. or accel. reaches a different tempo
-  (`:same_tempo` otherwise), and ends at the latest where the next change
-  starts or the score ends; a change put inside one cuts it short there.
+  same tick gives way to it. None starts on the opening beat
+  (`:opening_beat`, see `changeable?/1`). A rit. or accel. reaches a
+  different tempo (`:same_tempo` otherwise), and ends at the latest where
+  the next change starts or the score ends; a change put inside one cuts
+  it short there.
   """
   @spec put(Score.t(), Context.t(), TempoChange.t()) :: result()
   def put(%Score{} = score, %Context{} = ctx, %TempoChange{} = change) do
     change = %{change | id: change.id || Ecto.UUID.generate()}
     end_tick = Timeline.end_tick(score, ctx)
 
-    with :ok <- inside(change.tick, end_tick),
+    with :ok <- after_opening(change.tick),
+         :ok <- inside(change.tick, end_tick),
          :ok <- changing(change),
          {:ok, change} <- fit_end(change, end_tick) do
       kept = Enum.reject(score.tempos, &(&1.id == change.id or &1.tick == change.tick))
@@ -93,6 +104,13 @@ defmodule DrawMusic.Music.TempoEditing do
     case Enum.find(tempos, &(&1.id == id)) do
       nil -> {:error, :not_found}
       change -> {:ok, change}
+    end
+  end
+
+  defp after_opening(tick) do
+    case changeable?(tick) do
+      true -> :ok
+      false -> {:error, :opening_beat}
     end
   end
 
