@@ -7,7 +7,7 @@ defmodule DrawMusicWeb.EditorComponents do
 
   use Phoenix.Component
 
-  import DrawMusicWeb.CoreComponents, only: [icon: 1, input: 1]
+  import DrawMusicWeb.CoreComponents, only: [icon: 1]
 
   alias Phoenix.LiveView.JS
 
@@ -16,8 +16,7 @@ defmodule DrawMusicWeb.EditorComponents do
   alias DrawMusicWeb.{
     BarControl,
     HelpComponents,
-    ScoreComponents,
-    TempoForm
+    ScoreComponents
   }
 
   # Bar controls sit this far above a system's top line (staff spaces).
@@ -86,86 +85,6 @@ defmodule DrawMusicWeb.EditorComponents do
   @doc "Shows the help dialog, in the browser."
   @spec show_help(JS.t()) :: JS.t()
   def show_help(js \\ %JS{}), do: JS.show(js, to: "#help", display: "grid")
-
-  @doc """
-  Adds or edits a tempo change: its tempo, and for a rit. or accel. the
-  tempo it reaches (shown as rit. or accel.) and over how many beats, at
-  most up to the next change or the score's end.
-  """
-  attr :dialog, DrawMusicWeb.TempoDialog, required: true
-
-  @spec tempo_dialog(map()) :: Phoenix.LiveView.Rendered.t()
-  def tempo_dialog(assigns) do
-    assigns =
-      assign(assigns,
-        form: assigns.dialog.form,
-        gradual?: assigns.dialog.form[:gradual].value == "true",
-        ramp: TempoForm.ramp_word(assigns.dialog.form.params)
-      )
-
-    ~H"""
-    <div class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-      <div
-        id="tempo-dialog"
-        role="dialog"
-        aria-label="Tempo change"
-        class="w-full max-w-sm rounded-box border border-base-300 bg-base-100 p-6 shadow-2xl"
-        phx-click-away="close_tempo"
-        phx-window-keydown="close_tempo"
-        phx-key="Escape"
-      >
-        <h2 class="text-lg font-semibold">
-          {if @dialog.id, do: "Tempo change", else: "New tempo change"}
-        </h2>
-        <.form
-          for={@form}
-          id="tempo-form"
-          phx-change="validate_tempo"
-          phx-submit="save_tempo"
-          class="mt-4"
-        >
-          <.input field={@form[:bpm]} type="number" label="Tempo (BPM)" />
-          <.input
-            field={@form[:gradual]}
-            type="checkbox"
-            label="Gradually (rit. or accel.)"
-            checked={@gradual?}
-          />
-          <div :if={@gradual?} class="grid grid-cols-2 gap-x-4">
-            <.input field={@form[:to_bpm]} type="number" label="Reaching (BPM)" />
-            <.input
-              field={@form[:beats]}
-              type="number"
-              step="any"
-              min="0"
-              max={@dialog.max_beats}
-              label="Over (beats)"
-            />
-            <p id="tempo-ramp" class="text-sm opacity-70">
-              {ramp_hint(@ramp)}
-            </p>
-            <p id="tempo-room" class="text-sm opacity-70">
-              {room_hint(@dialog.max_beats, @dialog.until)}
-            </p>
-          </div>
-          <div class="flex items-center gap-2 pt-2">
-            <button
-              :if={@dialog.id}
-              id="tempo-delete"
-              type="button"
-              phx-click="delete_tempo"
-              class="btn btn-ghost text-error"
-            >
-              Delete
-            </button>
-            <button type="button" phx-click="close_tempo" class="btn btn-ghost ml-auto">Cancel</button>
-            <button id="tempo-save" type="submit" class="btn btn-primary">Save</button>
-          </div>
-        </.form>
-      </div>
-    </div>
-    """
-  end
 
   @intervals ~w(m2 M2 m3 M3 P4 A4 P5 m6 M6 m7 M7 P8)
 
@@ -337,10 +256,10 @@ defmodule DrawMusicWeb.EditorComponents do
 
   @doc """
   The one dialog (or right-click menu) open over the score, if any. `dialog`
-  says which: `{:menu, menu}` or `{:tempo, dialog}`. Anything else (such as
-  `:details`, `:save_as`, `:settings` or `{:transpose, key}`, LiveComponents
-  the editor renders itself) draws nothing here. Help is apart: see
-  `help_dialog/1`.
+  says which: `{:menu, menu}`. Anything else (such as `:details`,
+  `:save_as`, `:settings`, `{:transpose, key}` or `{:tempo, target}`,
+  LiveComponents the editor renders itself) draws nothing here. Help is
+  apart: see `help_dialog/1`.
   """
   attr :dialog, :any, required: true
 
@@ -350,14 +269,6 @@ defmodule DrawMusicWeb.EditorComponents do
 
     ~H"""
     <.context_menu menu={@menu} />
-    """
-  end
-
-  def editor_dialog(%{dialog: {:tempo, tempo}} = assigns) do
-    assigns = assign(assigns, :tempo, tempo)
-
-    ~H"""
-    <.tempo_dialog dialog={@tempo} />
     """
   end
 
@@ -435,19 +346,6 @@ defmodule DrawMusicWeb.EditorComponents do
   end
 
   defp percent(part, whole), do: part / whole * 100
-
-  # What a gradual change does, once its two tempos are known.
-  defp ramp_hint(nil), do: "Set a tempo to reach"
-  defp ramp_hint("rit."), do: "rit.: slowing down"
-  defp ramp_hint("accel."), do: "accel.: speeding up"
-
-  # How long a gradual change may last, e.g. "At most 3 beats, up to the next tempo change".
-  defp room_hint(max_beats, until) do
-    "At most #{max_beats} #{if max_beats == "1", do: "beat", else: "beats"}, #{room_end(until)}"
-  end
-
-  defp room_end(:next_change), do: "up to the next tempo change"
-  defp room_end(:score_end), do: "up to the end of the score"
 
   defp filled_bars(score) do
     for {m, i} <- Enum.with_index(score.measures),

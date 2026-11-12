@@ -52,12 +52,12 @@ defmodule DrawMusicWeb.EditorLive do
     PlaybackPayload,
     ScoreSvg,
     Shortcuts,
-    TempoDialog,
     TempoForm,
+    TempoTarget,
     VersionLookup
   }
 
-  alias DrawMusicWeb.Editor.{SaveAsDialog, SaveMenu, SettingsDialog, TransposeDialog}
+  alias DrawMusicWeb.Editor.{SaveAsDialog, SaveMenu, SettingsDialog, TempoDialog, TransposeDialog}
 
   @draft_measures 4
   @menu_events ~w(split set_value toggle_menu_dot to_rest to_note tie_next untie add_third_above
@@ -66,13 +66,12 @@ defmodule DrawMusicWeb.EditorLive do
   @edit_events ~w(arm arm_value arm_chord single_notes arm_tie toggle_rest toggle_dot set_accidental
                   toggle_insert place move delete cut paste drop tie open_menu menu_copy menu_cut
                   insert_measure delete_measure add_measure undo redo open_settings
-                  select_all menu_tempo edit_tempo validate_tempo
-                  save_tempo delete_tempo move_tempo resize_tempo) ++ @menu_events
+                  select_all menu_tempo edit_tempo move_tempo resize_tempo) ++ @menu_events
   # The play controls; Edit mode ignores them.
   @play_events ~w(play rewind skip toggle_loop audition set_playback_instrument
                   use_playback_instrument)
   # Each dialog's Cancel, Esc and click-away; any of them closes the open one.
-  @close_events ~w(close_menu close_tempo)
+  @close_events ~w(close_menu)
 
   @impl true
   def render(assigns) do
@@ -249,6 +248,13 @@ defmodule DrawMusicWeb.EditorLive do
           version_attrs={EditorSettings.version_attrs(@session, @tempo_text, @instrument)}
         />
         <.live_component
+          :if={match?({:tempo, _target}, @dialog)}
+          module={TempoDialog}
+          id="tempo"
+          target={elem(@dialog, 1)}
+          ctx={@session.ctx}
+        />
+        <.live_component
           :if={@dialog == :settings}
           module={SettingsDialog}
           id="settings"
@@ -319,7 +325,19 @@ defmodule DrawMusicWeb.EditorLive do
     {:noreply, socket}
   end
 
+  # Play mode doesn't edit the score.
+  def handle_info({:editor, edit}, %{assigns: %{editor_mode: :play}} = socket)
+      when is_tuple(edit) and elem(edit, 0) == :edit do
+    {:noreply, socket}
+  end
+
   def handle_info({:editor, :close}, socket), do: {:noreply, assign(socket, :dialog, nil)}
+
+  def handle_info({:editor, {:edit, fun}}, socket), do: {:noreply, edit(socket, fun)}
+
+  def handle_info({:editor, {:edit, fun, :select}}, socket) do
+    {:noreply, edit_and_select(socket, fun)}
+  end
 
   def handle_info({:editor, {:flash, kind, message}}, socket) do
     {:noreply, put_flash(socket, kind, message)}
@@ -756,43 +774,6 @@ defmodule DrawMusicWeb.EditorLive do
     end
   end
 
-  def handle_event(
-        "validate_tempo",
-        %{"tempo" => params},
-        %{assigns: %{dialog: {:tempo, dialog}}} = socket
-      ) do
-    form = tempo_form(params, dialog, socket)
-    {:noreply, assign(socket, :dialog, {:tempo, %{dialog | form: form}})}
-  end
-
-  def handle_event(
-        "save_tempo",
-        %{"tempo" => params},
-        %{assigns: %{dialog: {:tempo, dialog}}} = socket
-      ) do
-    case TempoForm.validate(params, dialog, socket.assigns.session.ctx) do
-      {:ok, change} ->
-        change = %{change | id: change.id || Ecto.UUID.generate()}
-
-        {:noreply,
-         socket
-         |> assign(:dialog, nil)
-         |> edit_and_select(&with_ids(TempoEditing.put(&1, &2, change), [change.id]))}
-
-      {:error, _errors} ->
-        form = tempo_form(params, dialog, socket)
-        {:noreply, assign(socket, :dialog, {:tempo, %{dialog | form: form}})}
-    end
-  end
-
-  def handle_event("delete_tempo", _params, %{assigns: %{dialog: {:tempo, %{id: id}}}} = socket)
-      when is_binary(id) do
-    {:noreply,
-     socket
-     |> assign(:dialog, nil)
-     |> edit(EditorCommands.delete([id], socket.assigns.insert?))}
-  end
-
   def handle_event("move_tempo", %{"id" => id, "tick" => tick}, socket)
       when is_binary(id) and is_integer(tick) do
     {:noreply, edit_and_select(socket, &with_ids(TempoEditing.move(&1, &2, id, tick), [id]))}
@@ -962,24 +943,16 @@ defmodule DrawMusicWeb.EditorLive do
     %{score: score, ctx: ctx} = socket.assigns.session
     {reach, until} = TempoEditing.reach(score, ctx, tick, id)
 
-    dialog = %TempoDialog{
+    target = %TempoTarget{
       id: id,
       tick: tick,
-      form: to_form(params, as: :tempo),
+      params: params,
       reach: reach,
       until: until,
       max_beats: TempoForm.beats_text(reach - tick, ctx)
     }
 
-    assign(socket, :dialog, {:tempo, dialog})
-  end
-
-  # The form with any errors the params have, shown as they're typed.
-  defp tempo_form(params, dialog, socket) do
-    case TempoForm.validate(params, dialog, socket.assigns.session.ctx) do
-      {:ok, _change} -> to_form(params, as: :tempo)
-      {:error, errors} -> to_form(params, as: :tempo, errors: errors, action: :validate)
-    end
+    assign(socket, :dialog, {:tempo, target})
   end
 
   # `apply_edit/2` when the outcome doesn't matter beyond the socket.
