@@ -52,6 +52,15 @@ Split the file, which is over the 500-line limit, so each module is one area:
 
 Public components go first and private helpers last in each module. Each component gets `attr` declarations and an `@spec`.
 
+**As built (PR 9a, 2026-11-12):** `save_menu` had already become the `Editor.SaveMenu`
+LiveComponent. The shared shells (`tool_button/1`, `piece/1`, `piece_class/1` and the
+glyph box maths) went into `Palette.Buttons`, not `PaletteComponents`: the area modules
+import them, and `PaletteComponents` imports the area modules, so keeping them there
+would make the imports circular. The Play mode module is `Palette.PlayControls` (after
+its `palette-play-controls` id), to keep it apart from the planned `Editor.Transport`
+LiveComponent. The markup is the same, except that every tool button now has
+`transition-colors`, which before only the toggles had.
+
 ## Keep
 - Every element id (`palette-*`, `playback-instrument*`) stays the same, so the tests and JS don't change.
 - The rendered markup stays the same; this is a readability refactor only.
