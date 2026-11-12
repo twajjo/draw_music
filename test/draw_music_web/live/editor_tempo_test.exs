@@ -39,6 +39,25 @@ defmodule DrawMusicWeb.EditorTempoTest do
     view |> form("#tempo-form", tempo: params) |> render_submit()
   end
 
+  test "the opening tempo marking is drawn over the first bar and follows the settings",
+       %{view: view} do
+    assert has_element?(view, "#opening-tempo", "Moderato")
+    assert has_element?(view, "#opening-tempo", "= 100")
+
+    view |> element("#settings-button") |> render_click()
+
+    view
+    |> form("#settings-form", settings: %{"tempo_marking" => "Allegro"})
+    |> render_change()
+
+    view
+    |> form("#settings-form", settings: %{"tempo_text" => "Schnell", "tempo_bpm" => "132"})
+    |> render_submit()
+
+    assert has_element?(view, "#opening-tempo", "Schnell")
+    assert has_element?(view, "#opening-tempo", "= 132")
+  end
+
   test "a note's menu adds a tempo mark where the note starts, drawn and selected", %{view: view} do
     render_hook(view, "open_menu", %{"id" => e4_id(view), "x" => 10, "y" => 10})
     view |> element("#menu-tempo") |> render_click()

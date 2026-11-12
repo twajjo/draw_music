@@ -3,7 +3,7 @@ defmodule DrawMusic.Engraving.LayoutTest do
 
   import DrawMusic.MusicHelpers
 
-  alias DrawMusic.Engraving.{Beam, Layout, MeasureGeometry, Staff, Tie}
+  alias DrawMusic.Engraving.{Beam, Layout, MeasureGeometry, Staff, TempoMark, Tie}
   alias DrawMusic.Music.{Context, Editing, Score}
 
   @ctx %Context{}
@@ -224,6 +224,26 @@ defmodule DrawMusic.Engraving.LayoutTest do
 
       ties = for s <- layout.systems, %Tie{} <- s.items, do: s.index
       assert Enum.sort(ties) == [system_of[k], system_of[k + 1]]
+    end
+  end
+
+  describe "the opening tempo marking" do
+    test "goes over the first beat, with the starting tempo, above the staff" do
+      {score, _id} = place("G4", %{})
+      ctx = %Context{tempo_bpm: 120}
+      layout = Layout.layout(score, ctx, marking: "Allegro")
+
+      assert [%TempoMark{words: "Allegro", bpm: 120, id: nil} = mark] =
+               items(layout, &match?(%TempoMark{}, &1))
+
+      assert [%{x: note_x}] = role(layout, :notehead)
+      assert_in_delta mark.x, note_x, 1.0
+      assert mark.y < 0
+      assert mark.width > TempoMark.width(%{mark | words: nil})
+    end
+
+    test "isn't drawn without a marking" do
+      assert items(Layout.layout(Score.new(), @ctx), &match?(%TempoMark{}, &1)) == []
     end
   end
 end

@@ -8,13 +8,29 @@ defmodule DrawMusic.Engraving.TempoMark do
   crossing system breaks is drawn in pieces, one per system: only the
   first has the label (`start?`), only the last the end tempo (`end?`).
   `width` is how much room the label takes, so marks don't overlap.
+
+  The score's opening tempo is a mark too, over its first beat: the
+  marking's `words` before the note, "Moderato ♩ = 100". It comes from the
+  score's settings, not a tempo change, so it has no `id`.
   """
 
   @enforce_keys [:id, :x, :y, :bpm, :width]
-  defstruct [:id, :x, :y, :bpm, :width, :to_bpm, :ramp, :line_to, start?: true, end?: false]
+  defstruct [
+    :id,
+    :x,
+    :y,
+    :bpm,
+    :width,
+    :to_bpm,
+    :ramp,
+    :line_to,
+    :words,
+    start?: true,
+    end?: false
+  ]
 
   @type t :: %__MODULE__{
-          id: Ecto.UUID.t(),
+          id: Ecto.UUID.t() | nil,
           x: number(),
           y: number(),
           bpm: pos_integer(),
@@ -22,6 +38,7 @@ defmodule DrawMusic.Engraving.TempoMark do
           to_bpm: pos_integer() | nil,
           ramp: :rit | :accel | nil,
           line_to: number() | nil,
+          words: String.t() | nil,
           start?: boolean(),
           end?: boolean()
         }
@@ -43,4 +60,13 @@ defmodule DrawMusic.Engraving.TempoMark do
   @doc "How wide a note and `text` are, roughly."
   @spec text_width(String.t()) :: float()
   def text_width(text), do: @note_width + @char_width * String.length(text)
+
+  @doc "How much room a mark's label takes: its words (if any), its note and its tempo."
+  @spec width(t()) :: float()
+  def width(%__MODULE__{words: nil} = mark), do: text_width(label(mark))
+  def width(%__MODULE__{} = mark), do: words_width(mark.words) + text_width(label(mark))
+
+  @doc "How wide the opening marking's words are, with the space before the note."
+  @spec words_width(String.t()) :: float()
+  def words_width(words), do: @char_width * (String.length(words) + 1)
 end
