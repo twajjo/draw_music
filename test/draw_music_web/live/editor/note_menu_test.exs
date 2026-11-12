@@ -41,8 +41,8 @@ defmodule DrawMusicWeb.Editor.NoteMenuTest do
     view = host(conn, score, menu_for(e4))
     view |> element("#menu-split") |> render_click()
 
-    assert_received {:component_sent, {:editor, {:edit, fun}}}
-    assert_received {:component_sent, {:editor, :close}}
+    assert_receive {:component_sent, {:editor, {:edit, fun}}}
+    assert_receive {:component_sent, {:editor, :close}}
     assert {:ok, %Score{} = split, _halves} = fun.(score, @ctx)
     assert length(note_ids(split)) == 3
   end
@@ -52,8 +52,8 @@ defmodule DrawMusicWeb.Editor.NoteMenuTest do
     view = host(conn, score, selection_menu(ids))
     view |> element("#menu-copy") |> render_click()
 
-    assert_received {:component_sent, {:editor, {:session, fun}}}
-    assert_received {:component_sent, {:editor, :close}}
+    assert_receive {:component_sent, {:editor, {:session, fun}}}
+    assert_receive {:component_sent, {:editor, :close}}
     refute_received {:component_sent, {:editor, {:edit, _fun}}}
 
     copied = fun.(Session.new(score, @ctx))
@@ -65,9 +65,9 @@ defmodule DrawMusicWeb.Editor.NoteMenuTest do
     view = host(conn, score, selection_menu([c4.id]))
     view |> element("#menu-cut") |> render_click()
 
-    assert_received {:component_sent, {:editor, {:session, _copy}}}
-    assert_received {:component_sent, {:editor, {:edit, delete}}}
-    assert_received {:component_sent, {:editor, :close}}
+    assert_receive {:component_sent, {:editor, {:session, _copy}}}
+    assert_receive {:component_sent, {:editor, {:edit, delete}}}
+    assert_receive {:component_sent, {:editor, :close}}
     assert {:ok, cut} = delete.(score, @ctx)
     assert note_ids(cut) == [notes.e4.id]
   end
@@ -86,7 +86,7 @@ defmodule DrawMusicWeb.Editor.NoteMenuTest do
     view = host(conn, score, menu_for(e4))
     view |> element("#menu-tempo") |> render_click()
 
-    assert_received {:component_sent, {:editor, {:open, {:tempo, %TempoTarget{} = target}}}}
+    assert_receive {:component_sent, {:editor, {:open, {:tempo, %TempoTarget{} = target}}}}
     assert target.tick == 960
     assert target.id == nil
     refute_received {:component_sent, {:editor, :close}}
@@ -96,7 +96,7 @@ defmodule DrawMusicWeb.Editor.NoteMenuTest do
     view = host(conn, score, menu_for(c4))
     view |> element("#context-menu") |> render_keydown(%{"key" => "Escape"})
 
-    assert_received {:component_sent, {:editor, :close}}
+    assert_receive {:component_sent, {:editor, :close}}
   end
 
   describe "TempoTarget.at_event/3" do

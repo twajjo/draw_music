@@ -26,6 +26,11 @@ defmodule DrawMusicWeb.Editor.Intent do
       `DrawMusicWeb.Editor.SettingsDialog`). A new key is confirmed first.
     * `{:transpose, {sf, mode}, direction}`: move the notes into the key,
       `:nearest`, `:up` or `:down`.
+    * `{:palette, changes}`: the palette's new state, only what changed,
+      out of `armed`, `row_kind` and `insert?` (see
+      `DrawMusicWeb.Editor.Palette`).
+    * `{:mode, :edit | :play}`: switch the editor to that mode.
+    * `{:history, :undo | :redo}`: step back or forward through the edits.
   """
 
   alias DrawMusic.Library.Version
@@ -44,6 +49,16 @@ defmodule DrawMusicWeb.Editor.Intent do
           | {:flash, :info | :error, String.t()}
           | {:settings, key(), map()}
           | {:transpose, key(), :nearest | :up | :down}
+          | {:palette, palette_changes()}
+          | {:mode, :edit | :play}
+          | {:history, :undo | :redo}
+
+  @typedoc "Changed palette state: any of `armed`, `row_kind` and `insert?`."
+  @type palette_changes :: %{
+          optional(:armed) => DrawMusicWeb.Armed.t() | nil,
+          optional(:row_kind) => :note | :rest,
+          optional(:insert?) => boolean()
+        }
 
   @doc "Sends `intent` to the editor (the LiveView this process runs)."
   @spec notify(t()) :: {:editor, t()}

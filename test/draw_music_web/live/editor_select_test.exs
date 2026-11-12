@@ -11,7 +11,7 @@ defmodule DrawMusicWeb.EditorSelectTest do
   # A draft with C4 and E4 quarters at the start of bar 0.
   setup %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/")
-    render_hook(view, "arm", %{"kind" => "note", "value" => "quarter"})
+    view |> element("#palette") |> render_hook("arm", %{"kind" => "note", "value" => "quarter"})
     place(view, 0, 0, "C4")
     place(view, 0, 960, "E4")
     render_hook(view, "disarm", %{})
@@ -59,7 +59,7 @@ defmodule DrawMusicWeb.EditorSelectTest do
     end
 
     test "Ctrl+A selects every note and rest, on both staves", %{view: view} do
-      render_hook(view, "select_all", %{})
+      view |> element("#palette") |> render_hook("select_all", %{})
       assert all_selected?(view)
       assert count(view, "#score [id^='note-'].selected") == 2
     end
@@ -70,14 +70,14 @@ defmodule DrawMusicWeb.EditorSelectTest do
     end
 
     test "deleting after it leaves no notes", %{view: view} do
-      render_hook(view, "select_all", %{})
+      view |> element("#palette") |> render_hook("select_all", %{})
       render_hook(view, "delete", %{})
       assert notes_of(view) == []
     end
 
     test "Play mode ignores it", %{view: view} do
       view |> element("#palette-mode-play") |> render_click()
-      render_hook(view, "select_all", %{})
+      view |> element("#palette") |> render_hook("select_all", %{})
       refute has_element?(view, "#score .selected")
     end
   end
@@ -129,7 +129,7 @@ defmodule DrawMusicWeb.EditorSelectTest do
   end
 
   test "an octave move keeps a note's accidental", %{view: view} do
-    render_hook(view, "arm", %{"kind" => "note", "value" => "quarter"})
+    view |> element("#palette") |> render_hook("arm", %{"kind" => "note", "value" => "quarter"})
     place(view, 0, 1920, "F#4", alter: true)
     render_hook(view, "disarm", %{})
     select(view, [id_at(view, 1920)])
@@ -239,7 +239,7 @@ defmodule DrawMusicWeb.EditorSelectTest do
   end
 
   test "a move outside the piano's range is refused", %{view: view} do
-    render_hook(view, "arm", %{"kind" => "note", "value" => "quarter"})
+    view |> element("#palette") |> render_hook("arm", %{"kind" => "note", "value" => "quarter"})
     place(view, 0, 1920, "C8")
     render_hook(view, "disarm", %{})
     select(view, [id_at(view, 1920)])
@@ -257,7 +257,7 @@ defmodule DrawMusicWeb.EditorSelectTest do
   end
 
   test "number keys arm values in the current row", %{view: view} do
-    render_hook(view, "arm_value", %{"value" => "eighth"})
+    view |> element("#palette") |> render_hook("arm_value", %{"value" => "eighth"})
     assert has_element?(view, "#palette-eighth[aria-pressed=true][data-kind=note]")
   end
 

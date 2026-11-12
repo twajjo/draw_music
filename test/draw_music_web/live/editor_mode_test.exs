@@ -9,7 +9,7 @@ defmodule DrawMusicWeb.EditorModeTest do
   # A C4–E4 chord, then G4; the chord's E4 comes from the context menu.
   setup %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/")
-    render_hook(view, "arm", %{"kind" => "note", "value" => "quarter"})
+    view |> element("#palette") |> render_hook("arm", %{"kind" => "note", "value" => "quarter"})
     place(view, 0, 0, "C4")
     place(view, 0, 960, "G4")
     render_hook(view, "disarm", %{})
@@ -41,7 +41,7 @@ defmodule DrawMusicWeb.EditorModeTest do
     assert has_element?(view, "#score-editor[data-mode=play]")
     assert has_element?(view, "#palette-mode-play[aria-pressed=true]")
 
-    render_hook(view, "toggle_mode", %{})
+    view |> element("#palette") |> render_hook("toggle_mode", %{})
     assert has_element?(view, "#score-editor[data-mode=edit]")
   end
 
@@ -52,7 +52,7 @@ defmodule DrawMusicWeb.EditorModeTest do
     assert session_of(view).selection == MapSet.new([c, g])
 
     render_hook(view, "select", %{"ids" => [e, g], "add" => false})
-    render_hook(view, "toggle_mode", %{})
+    view |> element("#palette") |> render_hook("toggle_mode", %{})
     assert MapSet.to_list(session_of(view).selection) == [e]
   end
 

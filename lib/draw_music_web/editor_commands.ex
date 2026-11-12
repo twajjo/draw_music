@@ -104,6 +104,43 @@ defmodule DrawMusicWeb.EditorCommands do
   defp maybe_alter(score, ctx, ids, alter), do: Editing.set_alter(score, ctx, ids, alter)
 
   @doc """
+  Gives the notes among `ids` the accidental `alter`; rests among them are
+  left alone.
+  """
+  @spec set_alter([Ecto.UUID.t()], -2..2) :: edit()
+  def set_alter(ids, alter) do
+    fn score, ctx ->
+      notes = for %Note{id: id} <- events(score, ctx, ids), do: id
+      Editing.set_alter(score, ctx, notes, alter)
+    end
+  end
+
+  @doc """
+  Dots the notes and rests `ids`, or takes the dots off if they all have
+  one already.
+  """
+  @spec toggle_dots([Ecto.UUID.t()]) :: edit()
+  def toggle_dots(ids) do
+    fn score, ctx ->
+      events = events(score, ctx, ids)
+
+      dots =
+        case Enum.all?(events, &(&1.dots > 0)) do
+          true -> 0
+          false -> 1
+        end
+
+      Editing.set_dots(score, ctx, Enum.map(events, & &1.id), dots)
+    end
+  end
+
+  # The notes and rests among `ids`, in score order.
+  defp events(score, ctx, ids) do
+    wanted = MapSet.new(ids)
+    for %{event: event} <- Timeline.flatten(score, ctx), event.id in wanted, do: event
+  end
+
+  @doc """
   Moves notes up or down (`dir`) by a scale `"step"`, `"semitone"`,
   `"octave"` or a named `"interval"` (m2 … P8).
   """
