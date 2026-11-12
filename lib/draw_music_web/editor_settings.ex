@@ -64,6 +64,26 @@ defmodule DrawMusicWeb.EditorSettings do
   end
 
   @doc """
+  Keeps the settings being chosen from contradicting each other: the
+  printed word stays one of the marking's (`follow_tempo_marking/1`), and
+  the pickup stays shorter than a bar of the chosen time (`pickup_max/1`).
+  """
+  @spec follow(map()) :: map()
+  def follow(params), do: params |> follow_tempo_marking() |> keep_pickup_in_bar()
+
+  @doc """
+  The most pickup beats the params' time allows: a beat short of a full
+  bar. Nil while the time's beats per bar aren't a number.
+  """
+  @spec pickup_max(map()) :: non_neg_integer() | nil
+  def pickup_max(params) do
+    case Integer.parse(to_string(params["time_num"])) do
+      {beats_per_bar, ""} when beats_per_bar >= 1 -> beats_per_bar - 1
+      _not_a_time -> nil
+    end
+  end
+
+  @doc """
   Keeps the printed word (`"tempo_text"`) one of the chosen marking's
   (`"tempo_marking"`), in the same language where the marking has a word
   in it (see `TempoMarking.word_for/2`). The two can't contradict each
@@ -87,6 +107,18 @@ defmodule DrawMusicWeb.EditorSettings do
       {:pickup_ticks, error} -> {:pickup_beats, error}
       error -> error
     end)
+  end
+
+  # A pickup as long as a bar (or longer) comes down to the most the time
+  # allows, e.g. after choosing a shorter time.
+  defp keep_pickup_in_bar(params) do
+    with max when is_integer(max) <- pickup_max(params),
+         {beats, ""} <- Integer.parse(to_string(params["pickup_beats"])),
+         true <- beats > max do
+      Map.put(params, "pickup_beats", to_string(max))
+    else
+      _in_range -> params
+    end
   end
 
   defp pickup_ticks(params) do
