@@ -704,41 +704,28 @@ defmodule DrawMusicWeb.EditorLive do
 
   ## Context menu
 
-  def handle_event("open_menu", %{"id" => id, "x" => x, "y" => y} = params, socket)
-      when is_binary(id) and is_number(x) and is_number(y) do
+  # A right-click anywhere in the music. The selection decides which menu
+  # opens (`ContextMenu.subject/2`); `id` is what was under the pointer.
+  def handle_event("open_menu", %{"x" => x, "y" => y} = params, socket)
+      when is_number(x) and is_number(y) do
     %{session: session} = socket.assigns
 
-    case Session.find_event(session, id) do
-      nil ->
+    case ContextMenu.subject(session.selection, clicked_id(params)) do
+      :none ->
         {:noreply, socket}
 
-      event ->
-        menu = %{
-          ContextMenu.new(session.selection, event, params)
-          | tempo?: TempoEditing.changeable?(Timeline.start_of(session.score, session.ctx, id))
-        }
+      {:selection, ids} ->
+        {:noreply, assign(socket, :dialog, {:menu, ContextMenu.for_selection(ids, params)})}
 
-        {:noreply, assign(socket, :dialog, {:menu, menu})}
+      {:event, id} ->
+        {:noreply, open_event_menu(socket, id, params)}
     end
   end
 
   ## Tempo changes
 
   def handle_event("edit_tempo", %{"id" => id}, socket) when is_binary(id) do
-    %{session: session} = socket.assigns
-
-    case TempoEditing.find(session.score, id) do
-      {:ok, change} ->
-        target = TempoTarget.for_change(session.score, session.ctx, change)
-
-        {:noreply,
-         socket
-         |> update(:session, &Session.select(&1, [id], false))
-         |> assign(:dialog, {:tempo, target})}
-
-      {:error, _not_found} ->
-        {:noreply, socket}
-    end
+    {:noreply, open_tempo_change(socket, id)}
   end
 
   def handle_event("move_tempo", %{"id" => id, "tick" => tick}, socket)
@@ -1074,6 +1061,42 @@ defmodule DrawMusicWeb.EditorLive do
     do: assign(socket, :dialog, nil)
 
   defp close_menu(socket), do: socket
+
+  # What was under a right-click; the browser sends none off the notes.
+  defp clicked_id(%{"id" => id}) when is_binary(id), do: id
+  defp clicked_id(_params), do: nil
+
+  # A note or rest gets its own menu; a tempo mark opens its dialog.
+  defp open_event_menu(socket, id, params) do
+    %{session: session} = socket.assigns
+
+    case Session.find_event(session, id) do
+      nil ->
+        open_tempo_change(socket, id)
+
+      event ->
+        start = Timeline.start_of(session.score, session.ctx, id)
+        menu = %{ContextMenu.for_event(event, params) | tempo?: TempoEditing.changeable?(start)}
+        assign(socket, :dialog, {:menu, menu})
+    end
+  end
+
+  # The tempo dialog for an existing change, which becomes the selection.
+  defp open_tempo_change(socket, id) do
+    %{session: session} = socket.assigns
+
+    case TempoEditing.find(session.score, id) do
+      {:ok, change} ->
+        target = TempoTarget.for_change(session.score, session.ctx, change)
+
+        socket
+        |> update(:session, &Session.select(&1, [id], false))
+        |> assign(:dialog, {:tempo, target})
+
+      {:error, _not_found} ->
+        socket
+    end
+  end
 
   defp copy(socket), do: update(socket, :session, &Session.copy/1)
 

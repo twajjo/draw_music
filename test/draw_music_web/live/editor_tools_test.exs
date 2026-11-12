@@ -110,6 +110,34 @@ defmodule DrawMusicWeb.EditorToolsTest do
       refute has_element?(view, "#context-menu")
     end
 
+    test "one selected note: its menu, wherever the right-click lands", %{view: view} do
+      put_notes(view, [{0, "C4"}, {960, "E4"}])
+      render_hook(view, "select", %{"ids" => [id_at(view, 960)], "add" => false})
+      render_hook(view, "open_menu", %{"id" => nil, "x" => 10, "y" => 10})
+
+      view |> element("#menu-to-rest") |> render_click()
+      assert notes_of(view) == [{0, 0, "C4", :quarter, 0}]
+    end
+
+    test "two or more selected: the selection's menu, even on a note outside it",
+         %{view: view} do
+      put_notes(view, [{0, "C4"}, {960, "E4"}, {1920, "G4"}])
+      render_hook(view, "select", %{"ids" => [id_at(view, 0)], "add" => false})
+      render_hook(view, "select", %{"ids" => [id_at(view, 960)], "add" => true})
+      open_menu(view, 1920)
+
+      assert has_element?(view, "#menu-reverse")
+      refute has_element?(view, "#menu-split")
+    end
+
+    test "nothing selected and nothing under the pointer: no menu", %{view: view} do
+      put_notes(view, [{0, "C4"}])
+      render_hook(view, "clear_selection", %{})
+      render_hook(view, "open_menu", %{"id" => nil, "x" => 10, "y" => 10})
+
+      refute has_element?(view, "#context-menu")
+    end
+
     # The browser sends a button's own `value`, not phx-value-value.
     test "length buttons carry their value for the browser", %{view: view} do
       put_notes(view, [{0, "C4"}])

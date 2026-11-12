@@ -786,9 +786,10 @@ export default {
     }
   },
 
-  // Right-click: cancels placing or a drag; on a note or rest, opens its
-  // menu (or the selection's, if it is selected); on the opening tempo
-  // marking, the score's settings.
+  // Right-click: cancels placing or a drag; on the opening tempo marking,
+  // the score's settings. Anywhere else in the music it asks for the menu:
+  // the server picks it from the selection, else from what is under the
+  // pointer (`id`, null off the notes).
   contextMenu(e) {
     if (this.mode === "play") return
     if (this.armed) {
@@ -805,13 +806,18 @@ export default {
       return this.pushEvent("open_settings", {})
     }
 
-    const hit = this.el.contains(e.target) && eventTarget(e)
-    if (!hit) return
+    if (!this.el.contains(e.target)) return
     e.preventDefault()
-    if (tempoKind(hit)) return this.pushEvent("edit_tempo", {id: hit.id})
+    const hit = eventTarget(e)
     const point = this.toScore(e)
-    const at = locate(this.geometry, point.x, point.y)
-    this.pushEvent("open_menu", {id: hit.id, x: e.clientX, y: e.clientY, step: at.step, staff: at.staff})
+    const at = locate(this.geometry, point.x, point.y) || {}
+    this.pushEvent("open_menu", {
+      id: hit ? hit.id : null,
+      x: e.clientX,
+      y: e.clientY,
+      step: at.step,
+      staff: at.staff
+    })
   },
 
   // The armed piece drawn where it would land, with ledger lines and the
