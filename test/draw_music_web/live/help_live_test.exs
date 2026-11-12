@@ -19,23 +19,23 @@ defmodule DrawMusicWeb.HelpLiveTest do
   describe "in the editor" do
     setup :register_and_log_in_user
 
-    test "? opens the help dialog and Esc closes it", %{conn: conn} do
+    # Help opens and closes in the browser (JS commands), so the tests check
+    # what each control runs; the server never hears about it.
+    test "help is on the page, hidden; its button and ? show it, Esc and Close hide it",
+         %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
-      refute has_element?(view, "#help-dialog")
 
-      render_hook(view, "open_help", %{})
-      assert has_element?(view, "#help-dialog")
-
-      render_hook(view, "close_help", %{})
-      refute has_element?(view, "#help-dialog")
+      assert has_element?(view, "#help[style*='display: none'] #help-dialog")
+      assert has_element?(view, "#palette-help[phx-click*='show'][phx-click*='#help']")
+      assert has_element?(view, "#help[data-show*='show'][data-show*='#help']")
+      assert has_element?(view, "#help-dialog[phx-key='Escape'][phx-window-keydown*='hide']")
+      assert has_element?(view, "#help-close[phx-click*='hide']")
     end
 
-    test "the toolbar's help button opens it too, in either mode", %{conn: conn} do
+    test "it shows the current mode's shortcuts first", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
       view |> element("#palette-mode-play") |> render_click()
-      view |> element("#palette-help") |> render_click()
 
-      assert has_element?(view, "#help-dialog")
       assert has_element?(view, "#help-dialog section:first-of-type > h2", "Playback")
     end
 

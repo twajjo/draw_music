@@ -711,7 +711,10 @@ export default {
   key(e) {
     if (typing(e)) return
     // A dialog is open: its own keys (Esc) handle it; leave the score alone.
-    if (document.querySelector("#settings-form, #save-as-form, #transpose-dialog, #help-dialog, #tempo-dialog")) return
+    // Help is always on the page, shown and hidden in the browser.
+    if (document.querySelector("#settings-form, #save-as-form, #transpose-dialog, #tempo-dialog")) return
+    const help = document.getElementById("help")
+    if (help && help.style.display !== "none") return
     if (!KEYS.includes(keyId(e))) return
     const ctrl = e.ctrlKey || e.metaKey
     const k = e.key.toLowerCase()
@@ -722,7 +725,10 @@ export default {
 
     // Mode and help keys work in both modes.
     if (k === "p" && !ctrl && !e.altKey) return send("toggle_mode")
-    if (e.key === "?") return send("open_help")
+    if (e.key === "?" && help) {
+      e.preventDefault()
+      return this.js().exec(help.dataset.show)
+    }
     if (this.mode === "play") return this.playKey(e, send)
 
     if (e.key === "Escape") {

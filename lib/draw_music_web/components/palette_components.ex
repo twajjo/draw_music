@@ -20,7 +20,7 @@ defmodule DrawMusicWeb.PaletteComponents do
 
   alias DrawMusic.Engraving.Smufl
   alias DrawMusic.Music.Chords
-  alias DrawMusicWeb.EditorPalette
+  alias DrawMusicWeb.{EditorComponents, EditorPalette}
 
   @values [
     {:whole, "Whole", "1", :noteWhole, :restWhole},
@@ -460,7 +460,7 @@ defmodule DrawMusicWeb.PaletteComponents do
           id="palette-help"
           type="button"
           title="Keys and mouse (?)"
-          phx-click="open_help"
+          phx-click={EditorComponents.show_help()}
           class="btn btn-ghost btn-sm btn-square h-auto"
         >
           <.icon name="hero-question-mark-circle" class="size-4" />

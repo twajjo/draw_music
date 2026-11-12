@@ -51,6 +51,7 @@ defmodule DrawMusicWeb.EditorLive do
     LayoutToggle,
     PlaybackPayload,
     ScoreSvg,
+    Shortcuts,
     TempoDialog,
     TempoForm,
     VersionLookup
@@ -71,7 +72,7 @@ defmodule DrawMusicWeb.EditorLive do
   @play_events ~w(play rewind skip toggle_loop audition set_playback_instrument
                   use_playback_instrument)
   # Each dialog's Cancel, Esc and click-away; any of them closes the open one.
-  @close_events ~w(close_help close_menu close_tempo)
+  @close_events ~w(close_menu close_tempo)
 
   @impl true
   def render(assigns) do
@@ -224,7 +225,8 @@ defmodule DrawMusicWeb.EditorLive do
             score={@session.score}
           />
         </div>
-        <.editor_dialog dialog={@dialog} editor_mode={@editor_mode} />
+        <.editor_dialog dialog={@dialog} />
+        <.help_dialog shortcuts={Shortcuts.for_mode(@editor_mode)} />
         <%!-- A saved composition's details are stored at once (they aren't
              part of the score, so not of its undo or its unsaved changes); a
              draft's are kept until its first save. --%>
@@ -437,8 +439,6 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign(:session, touched(session, program, socket.assigns.instrument))
      |> assign(:instrument, program)}
   end
-
-  def handle_event("open_help", _params, socket), do: {:noreply, assign(socket, :dialog, :help)}
 
   def handle_event(event, _params, socket) when event in @close_events do
     {:noreply, assign(socket, :dialog, nil)}
