@@ -3,9 +3,21 @@ defmodule DrawMusicWeb.TempoForm do
   The tempo dialog's form: the tempo (BPM), and for a rit. or accel. the
   tempo it reaches and over how many beats (of the time signature). Params
   come from the browser as strings.
+
+  A rit. or accel. can't contradict itself or its neighbours: it reaches a
+  different tempo, and it ends at the latest where the next change starts
+  or the score ends (the dialog's `reach`, see `DrawMusicWeb.TempoDialog`).
   """
 
   alias DrawMusic.Music.{Context, TempoChange}
+  alias DrawMusicWeb.TempoDialog
+
+  @doc "How many beats of the time signature `ticks` are, as the form shows them."
+  @spec beats_text(non_neg_integer(), Context.t()) :: String.t()
+  def beats_text(ticks, ctx) do
+    beats = ticks / Context.beat_ticks(ctx)
+    if beats == trunc(beats), do: to_string(trunc(beats)), else: to_string(Float.round(beats, 2))
+  end
 
   @doc "Form params for an existing change, or a new one at `bpm`."
   @spec params(TempoChange.t() | pos_integer(), Context.t()) :: %{String.t() => String.t()}
@@ -26,70 +38,95 @@ defmodule DrawMusicWeb.TempoForm do
     %{"bpm" => to_string(bpm), "gradual" => "false", "to_bpm" => "", "beats" => "4"}
   end
 
-  defp beats_text(ticks, ctx) do
-    beats = ticks / Context.beat_ticks(ctx)
-    if beats == trunc(beats), do: to_string(trunc(beats)), else: to_string(Float.round(beats, 2))
+  @doc """
+  What a gradual change does, from the params' tempos: "rit." when it
+  slows down, "accel." when it speeds up, nil while that isn't known.
+  """
+  @spec ramp_word(map()) :: String.t() | nil
+  def ramp_word(params) do
+    with {bpm, ""} <- Integer.parse(params["bpm"] || ""),
+         {to_bpm, ""} <- Integer.parse(params["to_bpm"] || "") do
+      cond do
+        to_bpm < bpm -> "rit."
+        to_bpm > bpm -> "accel."
+        true -> nil
+      end
+    else
+      _not_numbers -> nil
+    end
   end
 
   @doc """
-  The change the params describe, starting at `tick` (keeping `id`), or
-  form errors by field.
+  The change the params describe, starting at the dialog's tick (keeping
+  its id), or form errors by field.
   """
-  @spec validate(map(), non_neg_integer(), Ecto.UUID.t() | nil, Context.t()) ::
+  @spec validate(map(), TempoDialog.t(), Context.t()) ::
           {:ok, TempoChange.t()} | {:error, keyword()}
-  def validate(params, tick, id, ctx) do
+  def validate(params, %TempoDialog{} = dialog, ctx) do
     range = Context.tempo_range()
     bpm = tempo(params["bpm"], range)
 
     {to_bpm, to_tick} =
       case params["gradual"] do
-        "true" -> {tempo(params["to_bpm"], range), span(params["beats"], tick, ctx)}
-        _steady -> {:none, :none}
+        "true" -> {other_tempo(params["to_bpm"], bpm, range), span(params["beats"], dialog, ctx)}
+        _steady -> {nil, nil}
       end
 
     errors =
-      [
-        {:bpm, bpm},
-        {:to_bpm, to_bpm},
-        {:beats, to_tick}
-      ]
-      |> Enum.flat_map(fn
-        {field, :error} -> [{field, {message(field, range), []}}]
-        _ok -> []
-      end)
+      for {field, {:error, message}} <- [bpm: bpm, to_bpm: to_bpm, beats: to_tick],
+          do: {field, {message, []}}
 
     case errors do
       [] ->
         {:ok,
-         %TempoChange{id: id, tick: tick, bpm: bpm, to_bpm: none(to_bpm), to_tick: none(to_tick)}}
+         %TempoChange{
+           id: dialog.id,
+           tick: dialog.tick,
+           bpm: bpm,
+           to_bpm: to_bpm,
+           to_tick: to_tick
+         }}
 
       errors ->
         {:error, errors}
     end
   end
 
-  defp none(:none), do: nil
-  defp none(value), do: value
+  # A gradual change's end tempo: in range, and not the tempo it starts at.
+  defp other_tempo(text, bpm, range) do
+    case tempo(text, range) do
+      ^bpm when is_integer(bpm) -> {:error, "must differ from the starting tempo"}
+      to_bpm -> to_bpm
+    end
+  end
+
+  # Beats may be fractional (a dotted beat), and run at most to the
+  # dialog's reach.
+  defp span(text, dialog, ctx) do
+    {max_beats, ""} = Float.parse(dialog.max_beats)
+
+    case Float.parse(text || "") do
+      {beats, ""} when beats > max_beats ->
+        {:error, "can be at most #{dialog.max_beats}, #{until(dialog.until)}"}
+
+      {beats, ""} when beats > 0 ->
+        ticks = round(beats * Context.beat_ticks(ctx))
+        if ticks > 0, do: min(dialog.tick + ticks, dialog.reach), else: too_short()
+
+      _other ->
+        too_short()
+    end
+  end
 
   defp tempo(text, range) do
     case Integer.parse(text || "") do
-      {bpm, ""} -> if bpm in range, do: bpm, else: :error
-      _other -> :error
+      {bpm, ""} when bpm >= range.first and bpm <= range.last -> bpm
+      _other -> {:error, "must be #{range.first}–#{range.last}"}
     end
   end
 
-  # Beats may be fractional (a dotted beat): at least a sixteenth of one.
-  defp span(text, tick, ctx) do
-    case Float.parse(text || "") do
-      {beats, ""} when beats > 0 ->
-        ticks = round(beats * Context.beat_ticks(ctx))
-        if ticks > 0, do: tick + ticks, else: :error
+  defp too_short, do: {:error, "must be more than 0"}
 
-      _other ->
-        :error
-    end
-  end
-
-  defp message(:beats, _range), do: "must be more than 0"
-  defp message(_tempo, range), do: "must be #{range.first}–#{range.last}"
+  defp until(:next_change), do: "up to the next tempo change"
+  defp until(:score_end), do: "up to the end of the score"
 end

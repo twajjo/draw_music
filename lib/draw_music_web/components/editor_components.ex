@@ -15,7 +15,8 @@ defmodule DrawMusicWeb.EditorComponents do
     BarControl,
     HelpComponents,
     ScoreComponents,
-    Shortcuts
+    Shortcuts,
+    TempoForm
   }
 
   # Bar controls sit this far above a system's top line (staff spaces).
@@ -69,7 +70,8 @@ defmodule DrawMusicWeb.EditorComponents do
 
   @doc """
   Adds or edits a tempo change: its tempo, and for a rit. or accel. the
-  tempo it reaches and over how many beats.
+  tempo it reaches (shown as rit. or accel.) and over how many beats, at
+  most up to the next change or the score's end.
   """
   attr :dialog, DrawMusicWeb.TempoDialog, required: true
 
@@ -78,7 +80,8 @@ defmodule DrawMusicWeb.EditorComponents do
     assigns =
       assign(assigns,
         form: assigns.dialog.form,
-        gradual?: assigns.dialog.form[:gradual].value == "true"
+        gradual?: assigns.dialog.form[:gradual].value == "true",
+        ramp: TempoForm.ramp_word(assigns.dialog.form.params)
       )
 
     ~H"""
@@ -111,7 +114,20 @@ defmodule DrawMusicWeb.EditorComponents do
           />
           <div :if={@gradual?} class="grid grid-cols-2 gap-x-4">
             <.input field={@form[:to_bpm]} type="number" label="Reaching (BPM)" />
-            <.input field={@form[:beats]} type="number" step="any" label="Over (beats)" />
+            <.input
+              field={@form[:beats]}
+              type="number"
+              step="any"
+              min="0"
+              max={@dialog.max_beats}
+              label="Over (beats)"
+            />
+            <p id="tempo-ramp" class="text-sm opacity-70">
+              {ramp_hint(@ramp)}
+            </p>
+            <p id="tempo-room" class="text-sm opacity-70">
+              {room_hint(@dialog.max_beats, @dialog.until)}
+            </p>
           </div>
           <div class="flex items-center gap-2 pt-2">
             <button
@@ -405,6 +421,19 @@ defmodule DrawMusicWeb.EditorComponents do
   end
 
   defp percent(part, whole), do: part / whole * 100
+
+  # What a gradual change does, once its two tempos are known.
+  defp ramp_hint(nil), do: "Set a tempo to reach"
+  defp ramp_hint("rit."), do: "rit.: slowing down"
+  defp ramp_hint("accel."), do: "accel.: speeding up"
+
+  # How long a gradual change may last, e.g. "At most 3 beats, up to the next tempo change".
+  defp room_hint(max_beats, until) do
+    "At most #{max_beats} #{if max_beats == "1", do: "beat", else: "beats"}, #{room_end(until)}"
+  end
+
+  defp room_end(:next_change), do: "up to the next tempo change"
+  defp room_end(:score_end), do: "up to the end of the score"
 
   defp filled_bars(score) do
     for {m, i} <- Enum.with_index(score.measures),

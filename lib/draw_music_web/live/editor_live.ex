@@ -763,7 +763,7 @@ defmodule DrawMusicWeb.EditorLive do
         %{"tempo" => params},
         %{assigns: %{dialog: {:tempo, dialog}}} = socket
       ) do
-    case TempoForm.validate(params, dialog.tick, dialog.id, socket.assigns.session.ctx) do
+    case TempoForm.validate(params, dialog, socket.assigns.session.ctx) do
       {:ok, change} ->
         change = %{change | id: change.id || Ecto.UUID.generate()}
 
@@ -943,14 +943,26 @@ defmodule DrawMusicWeb.EditorLive do
   defp with_ids({:ok, score}, ids), do: {:ok, score, ids}
   defp with_ids(error, _ids), do: error
 
+  # The dialog knows how far a rit. or accel. from `tick` may reach.
   defp open_tempo(socket, id, tick, params) do
-    dialog = %TempoDialog{id: id, tick: tick, form: to_form(params, as: :tempo)}
+    %{score: score, ctx: ctx} = socket.assigns.session
+    {reach, until} = TempoEditing.reach(score, ctx, tick, id)
+
+    dialog = %TempoDialog{
+      id: id,
+      tick: tick,
+      form: to_form(params, as: :tempo),
+      reach: reach,
+      until: until,
+      max_beats: TempoForm.beats_text(reach - tick, ctx)
+    }
+
     assign(socket, :dialog, {:tempo, dialog})
   end
 
   # The form with any errors the params have, shown as they're typed.
   defp tempo_form(params, dialog, socket) do
-    case TempoForm.validate(params, dialog.tick, dialog.id, socket.assigns.session.ctx) do
+    case TempoForm.validate(params, dialog, socket.assigns.session.ctx) do
       {:ok, _change} -> to_form(params, as: :tempo)
       {:error, errors} -> to_form(params, as: :tempo, errors: errors, action: :validate)
     end
@@ -996,7 +1008,8 @@ defmodule DrawMusicWeb.EditorLive do
     not_found: "That note no longer exists",
     pickup_bar: "Remove the pickup in the score settings first",
     past_end: "That's past the end of the score",
-    invalid_tempo: "A rit. or accel. has to end after it starts"
+    invalid_tempo: "A rit. or accel. has to end after it starts",
+    same_tempo: "A rit. or accel. has to reach a different tempo"
   }
 
   @doc "What to tell the user when an edit is refused for `reason`."
