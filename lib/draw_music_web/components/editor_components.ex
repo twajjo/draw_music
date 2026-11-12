@@ -9,13 +9,14 @@ defmodule DrawMusicWeb.EditorComponents do
 
   import DrawMusicWeb.CoreComponents, only: [icon: 1, input: 1]
 
+  alias Phoenix.LiveView.JS
+
   alias DrawMusic.Engraving.Smufl
 
   alias DrawMusicWeb.{
     BarControl,
     HelpComponents,
     ScoreComponents,
-    Shortcuts,
     TempoForm
   }
 
@@ -34,20 +35,30 @@ defmodule DrawMusicWeb.EditorComponents do
     {:two_hundred_fifty_sixth, :note256thUp, "256th"}
   ]
 
-  @doc "The cheat-sheet over the score, the current mode's groups first."
+  @doc """
+  The cheat-sheet over the score, the current mode's groups first. It is
+  always on the page, hidden: opening and closing it are browser-only JS
+  commands (`show_help/1`, `hide_help/1`), with no trip to the server. The
+  `?` key runs the command in `data-show`.
+  """
   attr :shortcuts, :list, required: true
 
   @spec help_dialog(map()) :: Phoenix.LiveView.Rendered.t()
   def help_dialog(assigns) do
     ~H"""
-    <div class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
+    <div
+      id="help"
+      class="fixed inset-0 z-50 place-items-center bg-black/40 p-4"
+      style="display: none"
+      data-show={show_help()}
+    >
       <div
         id="help-dialog"
         role="dialog"
         aria-label="Keys and mouse"
         class="max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-box border border-base-300 bg-base-100 p-6 shadow-2xl"
-        phx-click-away="close_help"
-        phx-window-keydown="close_help"
+        phx-click-away={hide_help()}
+        phx-window-keydown={hide_help()}
         phx-key="Escape"
       >
         <div class="mb-4 flex items-center justify-between">
@@ -55,7 +66,7 @@ defmodule DrawMusicWeb.EditorComponents do
           <button
             id="help-close"
             type="button"
-            phx-click="close_help"
+            phx-click={hide_help()}
             class="btn btn-ghost btn-sm btn-square"
             aria-label="Close"
           >
@@ -67,6 +78,14 @@ defmodule DrawMusicWeb.EditorComponents do
     </div>
     """
   end
+
+  @doc "Hides the help dialog, in the browser."
+  @spec hide_help(JS.t()) :: JS.t()
+  def hide_help(js \\ %JS{}), do: JS.hide(js, to: "#help")
+
+  @doc "Shows the help dialog, in the browser."
+  @spec show_help(JS.t()) :: JS.t()
+  def show_help(js \\ %JS{}), do: JS.show(js, to: "#help", display: "grid")
 
   @doc """
   Adds or edits a tempo change: its tempo, and for a rit. or accel. the
@@ -318,20 +337,14 @@ defmodule DrawMusicWeb.EditorComponents do
 
   @doc """
   The one dialog (or right-click menu) open over the score, if any. `dialog`
-  says which: `:help`, `{:menu, menu}` or `{:tempo, dialog}`. Anything else
-  (such as `:details`, `:save_as`, `:settings` or `{:transpose, key}`,
-  LiveComponents the editor renders itself) draws nothing here.
+  says which: `{:menu, menu}` or `{:tempo, dialog}`. Anything else (such as
+  `:details`, `:save_as`, `:settings` or `{:transpose, key}`, LiveComponents
+  the editor renders itself) draws nothing here. Help is apart: see
+  `help_dialog/1`.
   """
   attr :dialog, :any, required: true
-  attr :editor_mode, :atom, required: true, doc: "whose shortcuts help shows"
 
   @spec editor_dialog(map()) :: Phoenix.LiveView.Rendered.t()
-  def editor_dialog(%{dialog: :help} = assigns) do
-    ~H"""
-    <.help_dialog shortcuts={Shortcuts.for_mode(@editor_mode)} />
-    """
-  end
-
   def editor_dialog(%{dialog: {:menu, menu}} = assigns) do
     assigns = assign(assigns, :menu, menu)
 
