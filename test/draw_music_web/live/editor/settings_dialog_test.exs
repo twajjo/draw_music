@@ -78,6 +78,25 @@ defmodule DrawMusicWeb.Editor.SettingsDialogTest do
     assert_received {:component_sent, {:editor, {:settings, _key, %{tempo_text: "Moderato"}}}}
   end
 
+  test "the pickup is at most a beat short of a bar; a shorter time brings it within",
+       %{view: view} do
+    pickup = "#settings-form input[name='settings[pickup_beats]']"
+    assert has_element?(view, pickup <> "[max='3']")
+
+    view |> form("#settings-form", settings: %{"pickup_beats" => "3"}) |> render_change()
+
+    view
+    |> form("#settings-form", settings: %{"time_num" => "2", "time_den" => "4"})
+    |> render_change()
+
+    assert has_element?(view, pickup <> "[max='1'][value='1']")
+
+    view |> form("#settings-form") |> render_submit()
+
+    assert_received {:component_sent,
+                     {:editor, {:settings, _key, %{time_num: 2, pickup_ticks: 960}}}}
+  end
+
   test "a refused setting stays in the form and reports nothing", %{view: view} do
     apply_settings(view, %{"pickup_beats" => "4"})
 

@@ -12,6 +12,7 @@ defmodule DrawMusicWeb.LibraryComponents do
   alias DrawMusic.Library.Key
   alias DrawMusic.Music.{Context, TempoMarking}
   alias DrawMusic.Samples
+  alias DrawMusicWeb.EditorSettings
 
   @doc "Every key as select options, grouped into major and minor, valued by slug."
   @spec key_options() :: [{String.t(), [{String.t(), String.t()}]}]
@@ -89,7 +90,13 @@ defmodule DrawMusicWeb.LibraryComponents do
       <.time_numbers form={@form} max_time_num={@max_time_num} denominators={@time_denominators} />
       <.time_symbol form={@form} />
       <div class="w-28">
-        <.input field={@form[:pickup_beats]} type="number" label="Pickup beats" min="0" />
+        <.input
+          field={@form[:pickup_beats]}
+          type="number"
+          label="Pickup beats"
+          min="0"
+          max={EditorSettings.pickup_max(@form.params)}
+        />
       </div>
     </.settings_row>
     <.tempo_marking form={@form} tempo_range={@tempo_range} />

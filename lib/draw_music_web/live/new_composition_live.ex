@@ -61,7 +61,7 @@ defmodule DrawMusicWeb.NewCompositionLive do
 
   @impl true
   def handle_event("validate", %{"composition" => params}, socket) do
-    params = EditorSettings.follow_tempo_marking(params)
+    params = EditorSettings.follow(params)
     {:noreply, assign(socket, :form, form(socket, params, :validate))}
   end
 
