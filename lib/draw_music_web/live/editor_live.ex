@@ -20,7 +20,7 @@ defmodule DrawMusicWeb.EditorLive do
     ScoreComponents
   }
 
-  alias DrawMusic.Engraving.{Engraved, Layout}
+  alias DrawMusic.Engraving.Layout
   alias DrawMusic.Library
   alias DrawMusic.Library.{Composition, Key, Version}
 
@@ -31,7 +31,6 @@ defmodule DrawMusicWeb.EditorLive do
     Score,
     Session,
     TempoEditing,
-    TempoMap,
     Timeline,
     Transpose
   }
@@ -45,7 +44,6 @@ defmodule DrawMusicWeb.EditorLive do
     EditorPlacement,
     EditorSaving,
     EditorSettings,
-    InstrumentSource,
     LayoutToggle,
     PlaybackPayload,
     ScoreSvg,
@@ -61,17 +59,16 @@ defmodule DrawMusicWeb.EditorLive do
     SaveMenu,
     SettingsDialog,
     TempoDialog,
+    Transport,
     TransposeDialog
   }
 
   @draft_measures 4
   # The score's events that change it; Play mode ignores them. (The
-  # palette's are its own, in `Editor.Palette`.)
+  # palette's are its own, in `Editor.Palette`, and the play controls'
+  # in `Editor.Transport`.)
   @edit_events ~w(place move delete cut paste drop tie open_menu insert_measure delete_measure
                   add_measure open_settings edit_tempo move_tempo resize_tempo)
-  # The play controls; Edit mode ignores them.
-  @play_events ~w(play rewind skip toggle_loop audition set_playback_instrument
-                  use_playback_instrument)
 
   @impl true
   def render(assigns) do
@@ -125,14 +122,20 @@ defmodule DrawMusicWeb.EditorLive do
         can_redo?={@session.redo != []}
         mode={@session.ctx.mode}
         editor_mode={@editor_mode}
-        playback={@playback}
-        loop?={@loop?}
-        lines?={@current_scope.user.score_layout == :page}
-        instrument_name={@instrument_source.name}
-        playback_instrument={@playback_instrument}
-        version_instrument={@instrument}
-        instrument_options={@instrument_options}
       >
+        <:play_controls>
+          <.live_component
+            module={Transport}
+            id="transport"
+            score={@session.score}
+            ctx={@session.ctx}
+            selection={@session.selection}
+            engraved={@engraved}
+            editor_mode={@editor_mode}
+            instrument={@instrument}
+            lines?={@current_scope.user.score_layout == :page}
+          />
+        </:play_controls>
         <:below_mode>
           <%!-- Its buttons are cells of the palette's grid, so Page and Strip
                line up under Edit and Play, the same widths. --%>
@@ -201,7 +204,6 @@ defmodule DrawMusicWeb.EditorLive do
           data-insert={to_string(@insert?)}
           data-armed={Jason.encode!(EditorGeometry.armed(@armed, @session.ctx))}
           data-dirty={to_string(@session.dirty?)}
-          data-instrument={Jason.encode!(@instrument_source)}
           data-mode={@editor_mode}
           data-play-start={@editor_mode == :play && play_start(@session)}
           data-loading={to_string(@score_loading?)}
@@ -298,12 +300,11 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign(armed: nil, row_kind: :note, insert?: true, last_click: nil)
      # At most one dialog (or the right-click menu) is open at a time.
      |> assign(:dialog, nil)
-     |> assign(playback: :idle, loop?: false, editor_mode: :edit)
-     |> assign(:instrument_options, instrument_options())
+     |> assign(:editor_mode, :edit)
      # The tempo marking and instrument aren't part of the score's Context;
      # they're saved beside it.
      |> assign(:tempo_text, version.tempo_text)
-     |> assign_instrument(version.instrument)
+     |> assign(:instrument, version.instrument)
      |> assign_placeholder()
      |> lay_out_after_join()}
   end
@@ -366,24 +367,29 @@ defmodule DrawMusicWeb.EditorLive do
     {:noreply, assign(socket, Map.take(changes, [:armed, :row_kind, :insert?]))}
   end
 
-  # Leaving Play mode stops playback; the play controls go with it. A range
-  # selected for playback shouldn't become an edit target, so entering Edit
-  # narrows the selection to its first event; entering Play keeps it, to play.
+  # (Leaving Play mode stops playback: `Editor.Transport` sees the mode.) A
+  # range selected for playback shouldn't become an edit target, so entering
+  # Edit narrows the selection to its first event; entering Play keeps it.
   def handle_info({:editor, {:mode, mode}}, socket) when mode in [:edit, :play] do
     {:noreply,
      socket
      |> assign(editor_mode: mode, armed: nil)
      |> close_menu()
-     |> narrow_selection_for(mode)
-     |> stop_unless_playing_mode()}
+     |> narrow_selection_for(mode)}
   end
 
   def handle_info({:editor, {:history, direction}}, socket) when direction in [:undo, :redo] do
     {:noreply,
      socket
      |> update(:session, &history_step(&1, direction))
-     |> stop_playback()
      |> assign_layout()}
+  end
+
+  # The playback instrument, made the version's: unsaved work until saved.
+  def handle_info({:editor, {:instrument, program}}, socket) do
+    %{session: session, instrument: old} = socket.assigns
+
+    {:noreply, assign(socket, session: touched(session, program, old), instrument: program)}
   end
 
   # The version being edited was stored: carry on with it.
@@ -419,7 +425,6 @@ defmodule DrawMusicWeb.EditorLive do
         {:noreply,
          socket
          |> assign(:session, session)
-         |> stop_playback()
          |> in_new_key(sf, mode)}
 
       {:error, reason} ->
@@ -455,36 +460,8 @@ defmodule DrawMusicWeb.EditorLive do
     {:noreply, socket}
   end
 
-  def handle_event(event, _params, %{assigns: %{editor_mode: :edit}} = socket)
-      when event in @play_events do
-    {:noreply, socket}
-  end
-
-  # The playback instrument is for listening only; it starts as the
-  # version's and lasts until the editor is reopened.
-  def handle_event("set_playback_instrument", %{"instrument" => value}, socket) do
-    case Integer.parse(to_string(value)) do
-      {program, ""} when program in 0..127 ->
-        {:noreply,
-         socket
-         |> stop_playback()
-         |> assign_playback_instrument(program)}
-
-      _invalid ->
-        {:noreply, socket}
-    end
-  end
-
-  def handle_event("use_playback_instrument", _params, socket) do
-    %{playback_instrument: program, session: session} = socket.assigns
-
-    {:noreply,
-     socket
-     |> assign(:session, touched(session, program, socket.assigns.instrument))
-     |> assign(:instrument, program)}
-  end
-
-  # Play mode: a click on a note sounds its chord and makes it the start point.
+  # Play mode: a click on a note sounds its chord (on Editor.Transport's
+  # audio) and makes it the start point.
   def handle_event("audition", %{"id" => id}, %{assigns: %{editor_mode: :play}} = socket)
       when is_binary(id) do
     %{session: session} = socket.assigns
@@ -496,7 +473,7 @@ defmodule DrawMusicWeb.EditorLive do
       events ->
         {:noreply,
          socket
-         |> reselected(&Session.select(&1, [id], false))
+         |> update(:session, &Session.select(&1, [id], false))
          |> push_event("audition", %PlaybackPayload{
            events: events,
            span: Enum.max(Enum.map(events, & &1.duration)),
@@ -530,19 +507,19 @@ defmodule DrawMusicWeb.EditorLive do
   ## Selection
 
   def handle_event("select", %{"ids" => [id], "add" => true}, socket) when is_binary(id) do
-    {:noreply, reselected(socket, &Session.toggle(&1, id))}
+    {:noreply, update(socket, :session, &Session.toggle(&1, id))}
   end
 
   def handle_event("select", %{"ids" => ids} = params, socket) when is_list(ids) do
     ids = Enum.filter(ids, &is_binary/1)
-    {:noreply, reselected(socket, &Session.select(&1, ids, params["add"] == true))}
+    {:noreply, update(socket, :session, &Session.select(&1, ids, params["add"] == true))}
   end
 
   def handle_event("select_range", %{"from" => from, "to" => to}, socket)
       when is_integer(from) and is_integer(to) do
     %{session: session} = socket.assigns
     ids = Editing.select_range(session.score, session.ctx, min(from, to), max(from, to))
-    {:noreply, reselected(socket, &Session.select(&1, ids, false))}
+    {:noreply, update(socket, :session, &Session.select(&1, ids, false))}
   end
 
   # While a band is dragged: what letting go would select, for the hook to
@@ -555,7 +532,7 @@ defmodule DrawMusicWeb.EditorLive do
   end
 
   def handle_event("clear_selection", _params, socket) do
-    {:noreply, reselected(socket, &Session.clear_selection/1)}
+    {:noreply, update(socket, :session, &Session.clear_selection/1)}
   end
 
   def handle_event("set_last_click", %{"at" => at}, socket) when is_integer(at) and at >= 0 do
@@ -700,76 +677,6 @@ defmodule DrawMusicWeb.EditorLive do
     {:noreply, assign(socket, :dialog, :settings)}
   end
 
-  ## Playback
-
-  # The browser plays the events (smplr, see audio.js) and highlights each
-  # note as it sounds; pause, resume, rewind and loop happen there too.
-  def handle_event("play", _params, %{assigns: %{playback: :playing}} = socket) do
-    {:noreply,
-     socket
-     |> assign(:playback, :paused)
-     |> push_event("pause", %{})}
-  end
-
-  # Paused (or paused and rewound to the start point): carry on from there.
-  def handle_event("play", _params, %{assigns: %{playback: state}} = socket)
-      when state in [:paused, :rewound] do
-    {:noreply,
-     socket
-     |> assign(:playback, :playing)
-     |> push_event("resume", %{})}
-  end
-
-  def handle_event("play", _params, socket), do: {:noreply, start_playback(socket)}
-
-  # Paused, Rewind goes back to the start point and waits there: the button
-  # offers Play again, not Resume.
-  def handle_event("rewind", _params, %{assigns: %{playback: :paused}} = socket) do
-    {:noreply,
-     socket
-     |> assign(:playback, :rewound)
-     |> push_event("rewind", %{})}
-  end
-
-  def handle_event("rewind", _params, socket), do: {:noreply, push_event(socket, "rewind", %{})}
-
-  def handle_event("toggle_loop", _params, socket) do
-    loop? = !socket.assigns.loop?
-
-    {:noreply,
-     socket
-     |> assign(:loop?, loop?)
-     |> push_event("loop", %{on: loop?})}
-  end
-
-  # ⏩ the start of the next measure, ⏩⏩ of the next line of music; with
-  # dir "back", ⏪ and ⏪⏪ the start of this or the previous one. Playing or
-  # paused, the hook knows where it is and jumps; before playing, the start
-  # point moves there (the first note or rest it begins with is selected).
-  def handle_event("skip", %{"by" => by} = params, socket) when by in ~w(measure line) do
-    back? = match?(%{"dir" => "back"}, params)
-
-    case socket.assigns.playback do
-      state when state in [:idle, :loading] -> {:noreply, skip_start(socket, by, back?)}
-      _sounding -> {:noreply, push_event(socket, "skip", %{by: by, back: back?})}
-    end
-  end
-
-  def handle_event("stop", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:playback, :idle)
-     |> push_event("stop", %{})}
-  end
-
-  def handle_event("playback_state", %{"state" => state}, socket) when is_binary(state) do
-    {:noreply, playback_state(socket, state)}
-  end
-
-  def handle_event("playback_ended", _params, socket) do
-    {:noreply, assign(socket, :playback, :idle)}
-  end
-
   # Events from the browser that don't fit the current state (a menu action
   # with no menu open, malformed params) are ignored rather than crashing
   # the editor. Keep this clause last.
@@ -786,7 +693,6 @@ defmodule DrawMusicWeb.EditorLive do
          socket
          |> clear_flash()
          |> assign(:session, session)
-         |> stop_playback()
          |> assign_layout(), extra}
 
       {:error, reason} ->
@@ -861,107 +767,16 @@ defmodule DrawMusicWeb.EditorLive do
   defp history_step(session, :undo), do: Session.undo(session)
   defp history_step(session, :redo), do: Session.redo(session)
 
-  ## Playback helpers
-
-  defp start_playback(socket) do
-    %{session: session, loop?: loop?} = socket.assigns
-    {from, to} = Playback.span(session.score, session.ctx, session.selection)
-    opts = [from: from, to: to]
-
-    case Playback.events(session.score, session.ctx, opts) do
-      [] ->
-        put_flash(socket, :error, "Nothing to play here.")
-
-      events ->
-        map = TempoMap.new(session.score, session.ctx)
-
-        payload = %PlaybackPayload{
-          events: events,
-          span: TempoMap.seconds(map, from, to),
-          loop: loop?,
-          anchors: TempoMap.anchors(map, from, to)
-        }
-
-        socket
-        |> assign(:playback, :playing)
-        |> push_event("play", payload)
-    end
-  end
-
   # Where Play would start: the hook shows the playhead there in Play mode.
   defp play_start(session) do
     {from, _to} = Playback.span(session.score, session.ctx, session.selection)
     from
   end
 
-  defp skip_start(socket, by, back?) do
-    %{session: session, engraved: engraved} = socket.assigns
-    points = skip_points(engraved, by)
-
-    with tick when is_integer(tick) <- Playback.skip_target(points, play_start(session), back?),
-         id when is_binary(id) <- Playback.first_event_from(session.score, session.ctx, tick) do
-      update(socket, :session, &Session.select(&1, [id], false))
-    else
-      _none -> socket
-    end
-  end
-
-  defp skip_points(engraved, "measure"), do: Engraved.measure_starts(engraved)
-  defp skip_points(engraved, "line"), do: Engraved.line_starts(engraved)
-
-  # What the hook reports; names are only matched, never made atoms.
-  defp playback_state(socket, "loading"), do: assign(socket, :playback, :loading)
-  defp playback_state(socket, "playing"), do: assign(socket, :playback, :playing)
-  defp playback_state(%{assigns: %{playback: :rewound}} = socket, "paused"), do: socket
-  defp playback_state(socket, "paused"), do: assign(socket, :playback, :paused)
-  defp playback_state(socket, "idle"), do: assign(socket, :playback, :idle)
-  defp playback_state(socket, "ready"), do: loaded(socket)
-
-  defp playback_state(socket, "fallback") do
-    name = socket.assigns.instrument_source.name
-
-    socket
-    |> loaded()
-    |> put_flash(:info, "#{name} isn't available; playing with the built-in synth.")
-  end
-
-  defp playback_state(socket, _unknown), do: socket
-
-  defp loaded(%{assigns: %{playback: :loading}} = socket), do: assign(socket, :playback, :idle)
-  defp loaded(socket), do: socket
-
-  # Any change to the score stops playback: the browser's events are stale.
-  defp stop_playback(%{assigns: %{playback: state}} = socket) when state in [:idle, :loading] do
-    socket
-  end
-
-  defp stop_playback(socket) do
-    socket
-    |> assign(:playback, :idle)
-    |> push_event("stop", %{})
-  end
-
-  # A new selection is what the next Play plays: a paused span is dropped,
-  # so Play starts the new one instead of resuming the old.
-  defp reselected(socket, fun) do
-    socket
-    |> update(:session, fun)
-    |> drop_paused()
-  end
-
-  defp drop_paused(%{assigns: %{playback: state}} = socket) when state in [:paused, :rewound] do
-    stop_playback(socket)
-  end
-
-  defp drop_paused(socket), do: socket
-
   defp narrow_selection_for(socket, :edit),
     do: update(socket, :session, &Session.collapse_selection/1)
 
   defp narrow_selection_for(socket, :play), do: socket
-
-  defp stop_unless_playing_mode(%{assigns: %{editor_mode: :play}} = socket), do: socket
-  defp stop_unless_playing_mode(socket), do: stop_playback(socket)
 
   # Switching modes closes a right-click menu, but not a dialog.
   defp close_menu(%{assigns: %{dialog: {:menu, _menu}}} = socket),
@@ -1022,8 +837,7 @@ defmodule DrawMusicWeb.EditorLive do
         socket
         |> assign(session: session, dialog: transpose_prompt(key, session.ctx))
         |> assign(:tempo_text, fields.tempo_text)
-        |> assign_instrument(fields.instrument)
-        |> stop_playback()
+        |> assign(:instrument, fields.instrument)
         |> assign_layout()
 
       {:error, reason} ->
@@ -1035,26 +849,6 @@ defmodule DrawMusicWeb.EditorLive do
   # still unsaved work.
   defp touched(session, same, same), do: session
   defp touched(session, _new, _old), do: %{session | dirty?: true}
-
-  # A new version instrument (from the settings) is also what playback uses next.
-  defp assign_instrument(%{assigns: %{instrument: program}} = socket, program), do: socket
-
-  defp assign_instrument(socket, program) do
-    socket
-    |> assign(:instrument, program)
-    |> assign_playback_instrument(program)
-  end
-
-  defp assign_playback_instrument(%{assigns: %{playback_instrument: program}} = socket, program) do
-    socket
-  end
-
-  defp assign_playback_instrument(socket, program) do
-    assign(socket,
-      playback_instrument: program,
-      instrument_source: InstrumentSource.for_program(program)
-    )
-  end
 
   # A key other than the current one waits for the transpose dialog; the
   # same key closes the settings with nothing more to ask.

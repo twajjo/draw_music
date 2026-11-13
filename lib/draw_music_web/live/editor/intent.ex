@@ -31,6 +31,9 @@ defmodule DrawMusicWeb.Editor.Intent do
       `DrawMusicWeb.Editor.Palette`).
     * `{:mode, :edit | :play}`: switch the editor to that mode.
     * `{:history, :undo | :redo}`: step back or forward through the edits.
+    * `{:instrument, program}`: make this GM program the version's
+      instrument (unsaved until the version is saved; see
+      `DrawMusicWeb.Editor.Transport`).
   """
 
   alias DrawMusic.Library.Version
@@ -52,6 +55,7 @@ defmodule DrawMusicWeb.Editor.Intent do
           | {:palette, palette_changes()}
           | {:mode, :edit | :play}
           | {:history, :undo | :redo}
+          | {:instrument, 0..127}
 
   @typedoc "Changed palette state: any of `armed`, `row_kind` and `insert?`."
   @type palette_changes :: %{

@@ -97,13 +97,14 @@ defmodule DrawMusicWeb.EditorModeTest do
   test "Play, Rewind, Loop and Stop still work in play mode", %{view: view} do
     play_mode(view)
 
-    render_hook(view, "play", %{})
+    transport = element(view, "#transport")
+    render_hook(transport, "play", %{})
     assert_push_event(view, "play", %{events: [_, _, _]})
-    render_hook(view, "rewind", %{})
+    render_hook(transport, "rewind", %{})
     assert_push_event(view, "rewind", %{})
-    render_hook(view, "toggle_loop", %{})
+    render_hook(transport, "toggle_loop", %{})
     assert_push_event(view, "loop", %{on: true})
-    render_hook(view, "stop", %{})
+    render_hook(transport, "stop", %{})
     assert_push_event(view, "stop", %{})
   end
 

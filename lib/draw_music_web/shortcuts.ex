@@ -284,7 +284,8 @@ defmodule DrawMusicWeb.Shortcuts do
       keys: ["Home"],
       mouse: "⏮ (bar and arrow) button",
       modes: @play,
-      action: "Back to the start point"
+      action:
+        "Back to the start point; before playing, back to the beginning of the score (the selection is cleared)"
     },
     %Shortcut{
       group: "Playback",
@@ -311,7 +312,8 @@ defmodule DrawMusicWeb.Shortcuts do
       group: "Playback",
       keys: ["Escape"],
       modes: @play,
-      action: "Stop, while playing: back to the start point (also the ⏹ button)"
+      action:
+        "Stop, while playing or paused: back to the start point; before playing, back to the beginning of the score, the selection cleared (also the ⏹ button)"
     },
     %Shortcut{
       group: "Playback",

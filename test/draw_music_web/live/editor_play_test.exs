@@ -35,6 +35,11 @@ defmodule DrawMusicWeb.EditorPlayTest do
 
   defp play(view), do: view |> element("#palette-play") |> render_click()
 
+  # What the transport's hook sends: its keys, and the audio engine's reports.
+  defp transport(view, event, params \\ %{}) do
+    view |> element("#transport") |> render_hook(event, params)
+  end
+
   test "Play sends the score's notes to the browser and shows Pause", %{view: view} do
     play(view)
 
@@ -60,7 +65,7 @@ defmodule DrawMusicWeb.EditorPlayTest do
     assert_push_event(view, "play", %{span: span})
     assert_in_delta span, 1.2, 1.0e-9
 
-    render_hook(view, "stop", %{})
+    transport(view, "stop")
     render_hook(view, "clear_selection", %{})
     play(view)
     # Four empty-ending bars of 4/4: the whole score, not just to the G4.
@@ -84,7 +89,7 @@ defmodule DrawMusicWeb.EditorPlayTest do
     assert {first.seconds, first.tick, last.tick} == {0.0, 0, 15_360}
     assert_in_delta last.seconds, 9.6, 1.0e-9
 
-    render_hook(view, "stop", %{})
+    transport(view, "stop")
     select(view, [960])
     play(view)
     assert_push_event(view, "play", %{anchors: [%{tick: 960} | _rest]})
@@ -183,7 +188,7 @@ defmodule DrawMusicWeb.EditorPlayTest do
     refute has_element?(view, "#palette-play", "Resume")
 
     # The hook stays paused at the start; Play carries on from there.
-    render_hook(view, "playback_state", %{"state" => "paused"})
+    transport(view, "playback_state", %{"state" => "paused"})
     assert has_element?(view, "#palette-play", "Play")
 
     play(view)
@@ -212,9 +217,11 @@ defmodule DrawMusicWeb.EditorPlayTest do
     assert has_element?(view, "#settings-instrument option.text-warning", "(not installed)")
   end
 
-  test "Rewind pushes rewind; Loop toggles and pushes loop", %{view: view} do
+  test "Rewind while playing pushes rewind; Loop toggles and pushes loop", %{view: view} do
+    play(view)
     view |> element("#palette-rewind") |> render_click()
     assert_push_event(view, "rewind", %{})
+    transport(view, "stop")
 
     view |> element("#palette-loop") |> render_click()
     assert_push_event(view, "loop", %{on: true})
@@ -226,12 +233,12 @@ defmodule DrawMusicWeb.EditorPlayTest do
 
   test "Stop, and the end of playback, reset the button", %{view: view} do
     play(view)
-    render_hook(view, "stop", %{})
+    transport(view, "stop")
     assert_push_event(view, "stop", %{})
     refute has_element?(view, "#palette-play[aria-pressed=true]")
 
     play(view)
-    render_hook(view, "playback_ended", %{})
+    transport(view, "playback_ended")
     assert has_element?(view, "#palette-play", "Play")
   end
 
@@ -249,19 +256,47 @@ defmodule DrawMusicWeb.EditorPlayTest do
     assert has_element?(view, "#palette-play", "Play")
   end
 
+  # The transport stays mounted in Edit mode, with no controls, for the
+  # playback instrument (the drag tones use it).
   test "in Edit mode the play events are ignored", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/")
     refute has_element?(view, "#palette-play")
+    assert has_element?(view, ~s(#transport[data-instrument*='"program":0']))
 
     for event <- ~w(play rewind toggle_loop use_playback_instrument) do
-      render_hook(view, event, %{})
+      transport(view, event)
     end
 
-    render_hook(view, "set_playback_instrument", %{"instrument" => "73"})
+    transport(view, "set_playback_instrument", %{"instrument" => "73"})
     refute_push_event(view, "play", _payload)
     refute_push_event(view, "rewind", _payload)
     refute_push_event(view, "loop", _payload)
-    assert :sys.get_state(view.pid).socket.assigns.playback_instrument == 0
+    assert has_element?(view, ~s(#transport[data-instrument*='"program":0']))
+  end
+
+  # A skip before playing moves the start point; Stop (and Esc) or Rewind
+  # then take it back to the beginning of the score.
+  test "before playing, Stop and Rewind go back to the beginning", %{view: view} do
+    view |> element("#palette-skip-measure") |> render_click()
+    assert has_element?(view, "#score-editor[data-play-start='3840']")
+
+    view |> element("#palette-stop") |> render_click()
+    assert has_element?(view, "#score-editor[data-play-start='0']")
+    assert session_of(view).selection == MapSet.new()
+
+    select(view, [960])
+    view |> element("#palette-rewind") |> render_click()
+    assert has_element?(view, "#score-editor[data-play-start='0']")
+    refute_push_event(view, "rewind", _payload)
+  end
+
+  test "playing, Stop goes back to the start point and keeps the selection", %{view: view} do
+    select(view, [960])
+    play(view)
+    view |> element("#palette-stop") |> render_click()
+
+    assert_push_event(view, "stop", %{})
+    assert has_element?(view, "#score-editor[data-play-start='960']")
   end
 
   test "nothing to play stays idle with a message", %{conn: conn} do
@@ -275,10 +310,10 @@ defmodule DrawMusicWeb.EditorPlayTest do
   end
 
   test "while the instrument loads, the button says so", %{view: view} do
-    render_hook(view, "playback_state", %{"state" => "loading"})
+    transport(view, "playback_state", %{"state" => "loading"})
     assert has_element?(view, "#palette-play", "Loading Acoustic Grand Piano…")
 
-    render_hook(view, "playback_state", %{"state" => "ready"})
+    transport(view, "playback_state", %{"state" => "ready"})
     assert has_element?(view, "#palette-play", "Play")
   end
 
@@ -306,7 +341,7 @@ defmodule DrawMusicWeb.EditorPlayTest do
 
       hear_as(view, 73)
 
-      assert has_element?(view, ~s(#score-editor[data-instrument*='"program":73']))
+      assert has_element?(view, ~s(#transport[data-instrument*='"program":73']))
       assert assigns(view).instrument == 0
       refute has_element?(view, "#dirty-marker")
       refute has_element?(view, "#use-playback-instrument[disabled]")
@@ -332,13 +367,13 @@ defmodule DrawMusicWeb.EditorPlayTest do
     end
 
     test "an out-of-range program is ignored", %{view: view} do
-      render_hook(view, "set_playback_instrument", %{"instrument" => "128"})
-      assert assigns(view).playback_instrument == 0
+      transport(view, "set_playback_instrument", %{"instrument" => "128"})
+      assert has_element?(view, "#playback-instrument option[value='0'][selected]")
     end
   end
 
   test "a fallback from the hook shows a notice naming the instrument", %{view: view} do
-    render_hook(view, "playback_state", %{"state" => "fallback"})
+    transport(view, "playback_state", %{"state" => "fallback"})
 
     assert has_element?(
              view,

@@ -18,6 +18,7 @@ defmodule DrawMusicWeb.Palette.PlayControls do
   attr :playback_instrument, :integer, default: 0, doc: "GM program playback uses"
   attr :version_instrument, :integer, default: 0, doc: "GM program saved with the version"
   attr :instrument_options, :list, default: [], doc: "grouped select options (LibraryComponents)"
+  attr :target, :any, default: nil, doc: "the component the controls' events go to"
 
   @spec play_controls(map()) :: Phoenix.LiveView.Rendered.t()
   def play_controls(assigns) do
@@ -28,12 +29,14 @@ defmodule DrawMusicWeb.Palette.PlayControls do
         loop?={@loop?}
         lines?={@lines?}
         instrument_name={@instrument_name}
+        target={@target}
       />
       <.instrument_picker
         instrument_name={@instrument_name}
         playback_instrument={@playback_instrument}
         version_instrument={@version_instrument}
         instrument_options={@instrument_options}
+        target={@target}
       />
     </div>
     """
@@ -67,6 +70,7 @@ defmodule DrawMusicWeb.Palette.PlayControls do
   attr :playback_instrument, :integer, required: true
   attr :version_instrument, :integer, required: true
   attr :instrument_options, :list, required: true
+  attr :target, :any, required: true
 
   # The picker and its button stay together on one line, the same height.
   defp instrument_picker(assigns) do
@@ -75,6 +79,7 @@ defmodule DrawMusicWeb.Palette.PlayControls do
       <form
         id="playback-instrument-form"
         phx-change="set_playback_instrument"
+        phx-target={@target}
         class="w-60 [&_.fieldset]:m-0 [&_.fieldset]:p-0"
       >
         <.input
@@ -91,6 +96,7 @@ defmodule DrawMusicWeb.Palette.PlayControls do
         id="use-playback-instrument"
         title="Save this instrument with the version"
         click="use_playback_instrument"
+        target={@target}
         data-confirm={"Use #{@instrument_name} for this version? It's saved with the version when you save."}
         disabled={@playback_instrument == @version_instrument}
         off="btn-outline"
@@ -129,6 +135,7 @@ defmodule DrawMusicWeb.Palette.PlayControls do
   attr :by, :string, required: true, values: ["measure", "line"]
   attr :back, :boolean, default: false
   attr :disabled, :boolean, default: false
+  attr :target, :any, required: true
 
   # Skips back or forward by a measure (two arrowheads) or a line of
   # music (three).
@@ -139,6 +146,7 @@ defmodule DrawMusicWeb.Palette.PlayControls do
       title={@title}
       aria-label={@label}
       click="skip"
+      target={@target}
       phx-value-by={@by}
       phx-value-dir={@back && "back"}
       disabled={@disabled}
@@ -153,6 +161,7 @@ defmodule DrawMusicWeb.Palette.PlayControls do
   attr :loop?, :boolean, required: true
   attr :lines?, :boolean, required: true
   attr :instrument_name, :string, required: true
+  attr :target, :any, required: true
 
   defp transport(assigns) do
     ~H"""
@@ -163,8 +172,9 @@ defmodule DrawMusicWeb.Palette.PlayControls do
     >
       <.tool_button
         id="palette-rewind"
-        title="Back to the start point (Home)"
+        title="Back to the start point; before playing, to the beginning (Home)"
         click="rewind"
+        target={@target}
         class="join-item"
       >
         <.arrows count={1} back bar />
@@ -176,6 +186,7 @@ defmodule DrawMusicWeb.Palette.PlayControls do
         by="line"
         back
         disabled={!@lines?}
+        target={@target}
       />
       <.skip_button
         id="palette-back-measure"
@@ -183,11 +194,13 @@ defmodule DrawMusicWeb.Palette.PlayControls do
         label="Back a measure"
         by="measure"
         back
+        target={@target}
       />
       <.tool_button
         id="palette-stop"
-        title="Stop, back to the start point (Esc)"
+        title="Stop, back to the start point; before playing, to the beginning (Esc)"
         click="stop"
+        target={@target}
         class="join-item"
       >
         <.icon name="hero-stop-solid" class="size-4" />
@@ -196,6 +209,7 @@ defmodule DrawMusicWeb.Palette.PlayControls do
         id="palette-play"
         title={play_title(@playback)}
         click="play"
+        target={@target}
         pressed={@playback == :playing}
         on="btn-warning"
         square={false}
@@ -209,6 +223,7 @@ defmodule DrawMusicWeb.Palette.PlayControls do
         title="Skip to the next measure"
         label="Skip to the next measure"
         by="measure"
+        target={@target}
       />
       <.skip_button
         id="palette-skip-line"
@@ -216,11 +231,13 @@ defmodule DrawMusicWeb.Palette.PlayControls do
         label="Skip to the next line of music"
         by="line"
         disabled={!@lines?}
+        target={@target}
       />
       <.tool_button
         id="palette-loop"
         title="Repeat the selection, or the whole piece (L)"
         click="toggle_loop"
+        target={@target}
         pressed={@loop?}
         class="join-item"
       >

@@ -11,18 +11,19 @@
 //
 // Server state arrives as data attributes on the hook element:
 // data-geometry (EditorGeometry.encode), data-armed (EditorGeometry.armed),
-// data-insert (Insert mode)
-// and data-instrument (InstrumentSource). Playback lives in audio.js; the
-// hook draws its playhead and keeps it in view.
+// and data-insert (Insert mode). Playback is Editor.Transport's (its
+// .Transport hook); it says where it is with "score:playhead" window events,
+// and this hook draws the playhead there and keeps it in view.
 
 import {locate, snap, xAt, columnAt, insertColumn, pitchOf, keyAlter, stepY, ledgerSteps, stepOnStaff, staffStepAt, stepAtY} from "./geometry"
 import {chordAt} from "./chord"
 import {cursorFor} from "./cursor"
-import {playheadAt, playheadSpan, secondsAt, tickAt} from "./playhead"
-import {Audio} from "./audio"
+import {playheadAt, playheadSpan} from "./playhead"
+import {sharedAudio} from "./audio"
 import {dialogOpen, keyId, typing} from "./keyboard"
-// The editor's keys, this hook's and the palette's (Editor.Palette's
-// .PaletteKeys); the cheat-sheet (DrawMusicWeb.Shortcuts) lists the same ones.
+// The editor's keys, this hook's, the palette's (Editor.Palette's
+// .PaletteKeys) and the transport's (Editor.Transport's .Transport); the
+// cheat-sheet (DrawMusicWeb.Shortcuts) lists the same ones.
 import KEYS from "./keys.json"
 
 const SVG = "http://www.w3.org/2000/svg"
@@ -50,9 +51,6 @@ const TURN_TO = 0.2
 const TURN_RETRY = 600
 // While playing, whether to scroll is checked this often (ms).
 const FOLLOW_EVERY = 100
-// Skipping back within this long (s) of a measure's or line's start goes to
-// the one before.
-const BACK_GRACE = 0.75
 // A band's highlight reaches this far (staff spaces) above and below the
 // grand staff; a staff is four spaces tall.
 const BAND_PAD = 1.5
@@ -125,13 +123,6 @@ export default {
       const hit = eventTarget(e)
       if (tempoKind(hit)) this.pushEvent("edit_tempo", {id: hit.id})
     }
-    // Browsers allow audio only after a gesture: the first press, of a
-    // pointer or a key, starts the audio clocks.
-    this.onFirstGesture = () => {
-      window.removeEventListener("pointerdown", this.onFirstGesture)
-      window.removeEventListener("keydown", this.onFirstGesture)
-      this.audio.unlock()
-    }
 
     this.el.addEventListener("pointermove", this.onMove)
     this.el.addEventListener("pointerleave", this.onLeave)
@@ -143,16 +134,7 @@ export default {
     this.el.addEventListener("pointercancel", this.onCancel)
     this.el.addEventListener("dblclick", this.onDoubleClick)
     window.addEventListener("keydown", this.onKey)
-    // The palette's Pause and Stop buttons, before their click reaches the server.
-    this.onTransport = (e) => {
-      const button = e.target.closest && e.target.closest("#palette-play, #palette-stop")
-      if (button?.id === "palette-play") this.pauseNow()
-      if (button?.id === "palette-stop" && this.audio.state !== "idle") this.audio.stop(true)
-    }
-    document.addEventListener("click", this.onTransport, true)
     window.addEventListener("contextmenu", this.onContext)
-    window.addEventListener("pointerdown", this.onFirstGesture)
-    window.addEventListener("keydown", this.onFirstGesture)
 
     // Unsaved changes: confirm before leaving, by closing/reloading the tab
     // or by following an in-app link.
@@ -173,24 +155,11 @@ export default {
     window.addEventListener("popstate", this.onPopState)
     this.syncGuard()
 
-    // Playback: the server sends timed events; audio.js sounds and highlights them.
-    this.audio = new Audio({
-      onState: (state, source) => this.pushEvent("playback_state", {state, name: source && source.name}),
-      onEnded: () => this.pushEvent("playback_ended", {}),
-      onTick: (seconds) => this.showPlayhead(seconds),
-    })
-    this.loadInstrument()
-    this.handleEvent("play", ({events, span, loop, anchors}) => {
-      this.anchors = anchors
-      this.audio.play(events, span, Boolean(loop))
-    })
-    this.handleEvent("pause", () => this.audio.pause())
-    this.handleEvent("resume", () => this.audio.resume())
-    this.handleEvent("rewind", () => this.audio.rewind())
-    this.handleEvent("skip", ({by, back}) => this.skip(by, back))
-    this.handleEvent("loop", ({on}) => this.audio.setLoop(on))
-    this.handleEvent("stop", () => this.audio.stop())
-    this.handleEvent("audition", ({events}) => this.audio.audition(events))
+    // Where playback is (Editor.Transport): the playhead follows it.
+    this.onPlayhead = (e) => {
+      this.showPlayhead(e.detail)
+    }
+    window.addEventListener("score:playhead", this.onPlayhead)
     this.onLinkClick = (e) => {
       const link = e.target.closest && e.target.closest("a[href]")
       if (!link || !this.dirty() || link.hasAttribute("download")) return
@@ -225,23 +194,15 @@ export default {
     this.score = this.el.querySelector("#score")
     this.readState()
     this.syncGuard()
-    this.loadInstrument()
-  },
-
-  loadInstrument() {
-    this.audio.load(JSON.parse(this.el.dataset.instrument))
   },
 
   destroyed() {
     window.removeEventListener("keydown", this.onKey)
-    document.removeEventListener("click", this.onTransport, true)
     window.removeEventListener("contextmenu", this.onContext)
-    window.removeEventListener("pointerdown", this.onFirstGesture)
-    window.removeEventListener("keydown", this.onFirstGesture)
     this.paper.removeEventListener("pointerdown", this.onDown)
     window.removeEventListener("beforeunload", this.onBeforeUnload)
     window.removeEventListener("popstate", this.onPopState)
-    this.audio.destroy()
+    window.removeEventListener("score:playhead", this.onPlayhead)
     document.removeEventListener("click", this.onLinkClick, true)
     window.removeEventListener("score:redraw", this.onRedraw)
     this.setPageCursor(null)
@@ -698,8 +659,9 @@ export default {
     this.pushEvent("place", params)
   },
 
-  // The score's keys. The palette's (P, the lengths, R, ., T, Insert, undo,
-  // redo and select all) are its own hook's, Editor.Palette's .PaletteKeys.
+  // The score's keys, in Edit mode. The palette's (P, the lengths, R, ., T,
+  // Insert, undo, redo and select all) are Editor.Palette's .PaletteKeys;
+  // Play mode's (Space, Home, L, Esc) are Editor.Transport's .Transport.
   key(e) {
     if (typing(e) || dialogOpen()) return
     if (!KEYS.includes(keyId(e))) return
@@ -716,7 +678,7 @@ export default {
       e.preventDefault()
       return this.js().exec(help.dataset.show)
     }
-    if (this.mode === "play") return this.playKey(e, send)
+    if (this.mode === "play") return
 
     if (e.key === "Escape") {
       if (this.drag || this.pending) {
@@ -739,29 +701,6 @@ export default {
     if (ctrl && k === "v") return send("paste")
     if (ctrl || e.altKey) return
     if (e.key === "Delete" || e.key === "Backspace") return send("delete")
-  },
-
-  // Pausing and stopping happen here at once, not after the round trip to
-  // the server; the server, told by the same key or click, then updates the
-  // controls (and its own "pause" or "stop" finds nothing left to do).
-  pauseNow() {
-    if (this.audio.state === "playing") this.audio.pause(true)
-  },
-
-  // Play mode's keys: the play controls, and Esc to stop (or clear the selection).
-  playKey(e, send) {
-    if (e.ctrlKey || e.metaKey || e.altKey) return
-    if (e.key === " ") {
-      this.pauseNow()
-      return send("play")
-    }
-    if (e.key === "Home") return send("rewind")
-    if (e.key.toLowerCase() === "l") return send("toggle_loop")
-    if (e.key === "Escape") {
-      const sounding = this.audio.state === "playing" || this.audio.state === "paused"
-      if (sounding) this.audio.stop(true)
-      return send(sounding ? "stop" : "clear_selection")
-    }
   },
 
   // Right-click: cancels placing or a drag; on the opening tempo marking,
@@ -903,44 +842,21 @@ export default {
     for (const child of [...this.overlay.children]) if (child !== this.playhead) child.remove()
   },
 
-  // The playhead `seconds` into the span being played (null: none), kept
-  // in view.
-  showPlayhead(seconds) {
-    if (seconds === null) {
+  // The playhead at the `tick` playback has reached (null: it has stopped),
+  // kept in view; after a skip (`jump`), scrolled to at once.
+  showPlayhead({tick, jump}) {
+    this.sounding = tick !== null
+    if (tick === null) {
       this.idleAt = null
       return this.showIdlePlayhead()
     }
-    if (!this.anchors?.length) return
+    if (jump) this.followedAt = null
     // Whether to scroll is checked every FOLLOW_EVERY ms, not every frame:
     // measuring the line makes the browser lay out the whole score.
     const now = performance.now()
     const follow = now - (this.followedAt ?? -Infinity) >= FOLLOW_EVERY
     if (follow) this.followedAt = now
-    this.drawPlayhead(tickAt(this.anchors, seconds), follow)
-  },
-
-  // Playing or paused: on to the start of the next measure ("measure") or
-  // line of music ("line") inside the span being played, if there is one.
-  // Going `back`: to the start of this one, or, just after it starts
-  // (BACK_GRACE seconds), of the one before, like a CD player; never
-  // before the span's start.
-  skip(by, back) {
-    const state = this.audio.state
-    if ((state !== "playing" && state !== "paused") || !this.anchors?.length) return
-    const position = this.audio.position()
-    const now = tickAt(this.anchors, position)
-    const starts =
-      by === "line"
-        ? this.geometry.systems.map((s) => s.measures[0].start_tick)
-        : this.geometry.systems.flatMap((s) => s.measures.map((m) => m.start_tick))
-    const first = this.anchors[0].tick
-    const target = back
-      ? (starts.filter((tick) => tick > first && secondsAt(this.anchors, tick) < position - BACK_GRACE).pop() ?? first)
-      : starts.find((tick) => tick > now + 0.5)
-    if (target === undefined || target >= this.anchors[this.anchors.length - 1].tick) return
-    // Scroll to it straight away.
-    this.followedAt = null
-    this.audio.seek(secondsAt(this.anchors, target))
+    this.drawPlayhead(tick, follow)
   },
 
   // In Play mode, with nothing playing or paused, the playhead waits where
@@ -953,8 +869,7 @@ export default {
       this.idleAt = null
       return this.playhead?.remove()
     }
-    const state = this.audio?.state
-    if (state === "playing" || state === "paused" || this.playStart === null) return
+    if (this.sounding || this.playStart === null) return
     const moved = this.idleAt !== this.playStart
     this.idleAt = this.playStart
     this.drawPlayhead(this.playStart, moved)
@@ -1034,6 +949,6 @@ export default {
   // The tone for placing and dragging, on the playback instrument: one
   // MIDI number, or a chord's, sounded together.
   play(midis) {
-    this.audio.preview([midis].flat(), PLACEMENT_TONE)
+    sharedAudio().preview([midis].flat(), PLACEMENT_TONE)
   },
 }
