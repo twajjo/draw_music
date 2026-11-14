@@ -205,7 +205,6 @@ defmodule DrawMusicWeb.EditorLive do
           data-armed={Jason.encode!(EditorGeometry.armed(@armed, @session.ctx))}
           data-dirty={to_string(@session.dirty?)}
           data-mode={@editor_mode}
-          data-play-start={@editor_mode == :play && play_start(@session)}
           data-loading={to_string(@score_loading?)}
           data-layout={@current_scope.user.score_layout}
         >
@@ -766,12 +765,6 @@ defmodule DrawMusicWeb.EditorLive do
 
   defp history_step(session, :undo), do: Session.undo(session)
   defp history_step(session, :redo), do: Session.redo(session)
-
-  # Where Play would start: the hook shows the playhead there in Play mode.
-  defp play_start(session) do
-    {from, _to} = Playback.span(session.score, session.ctx, session.selection)
-    from
-  end
 
   defp narrow_selection_for(socket, :edit),
     do: update(socket, :session, &Session.collapse_selection/1)

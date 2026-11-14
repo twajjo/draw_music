@@ -285,7 +285,28 @@ defmodule DrawMusicWeb.Shortcuts do
       mouse: "⏮ (bar and arrow) button",
       modes: @play,
       action:
-        "Back to the start point; before playing, back to the beginning of the score (the selection is cleared)"
+        "Back to the start of what's being played (the chosen measures, the selection, or the whole piece); playing, it carries on from there"
+    },
+    %Shortcut{
+      group: "Playback",
+      keys: ["End"],
+      mouse: "⏭ (arrow and bar) button",
+      modes: @play,
+      action:
+        "To the end of what's being played: the playhead waits there, so ⏪ or ⏪⏪ can go back a measure or line from the end. Playing with Loop on, back to its start instead. At the end, Play says there's nothing to play, or with Loop on starts again from the start"
+    },
+    %Shortcut{
+      group: "Playback",
+      mouse: "Measures [from] to [to]",
+      modes: @play,
+      action:
+        "Play just these measures (both included; one measure when they're the same): they're selected, and Play, Loop, the skips and ⏭ stay inside them. Changed only while not playing; press Play to play them"
+    },
+    %Shortcut{
+      group: "Playback",
+      mouse: "Whole piece button",
+      modes: @play,
+      action: "Play the whole piece again, measures 1 to the end (clears the selection)"
     },
     %Shortcut{
       group: "Playback",
@@ -312,8 +333,7 @@ defmodule DrawMusicWeb.Shortcuts do
       group: "Playback",
       keys: ["Escape"],
       modes: @play,
-      action:
-        "Stop, while playing or paused: back to the start point; before playing, back to the beginning of the score, the selection cleared (also the ⏹ button)"
+      action: "Stop, back to the start of what's being played (also the ⏹ button)"
     },
     %Shortcut{
       group: "Playback",
@@ -334,7 +354,7 @@ defmodule DrawMusicWeb.Shortcuts do
       mouse: "Play mode",
       modes: @play,
       action:
-        "A red line marks the point being played, and the score follows it: in Strip layout it turns sideways when the line nears the right edge, in Page layout it scrolls down to each new line of music. Before you play, it waits where Play will start (the start of the selection, or the beginning) and the score scrolls to it. Pausing leaves the line where it is; Rewind takes it back to the start",
+        "A red line marks the point being played, and the score follows it: in Strip layout it turns sideways when the line nears the right edge, in Page layout it scrolls down to each new line of music. Before you play, it waits where Play will start (where the skips or ⏭ moved it, else the start of the chosen measures, the selection, or the piece) and the score scrolls to it. Pausing leaves the line where it is; Rewind takes it back to the start",
       diagram: :playhead
     },
     %Shortcut{
@@ -345,7 +365,7 @@ defmodule DrawMusicWeb.Shortcuts do
     },
     %Shortcut{
       group: "Playback",
-      mouse: "Set selection to version Instrument",
+      mouse: "Set as version Instrument",
       modes: @play,
       action: "Make the version's instrument the one you're hearing (after you confirm)"
     },

@@ -99,6 +99,7 @@ export default {
     this.score = this.el.querySelector("#score")
     this.overlay = this.el.querySelector("#score-overlay")
     this.lastSound = null
+    this.playStart = null
     this.readState()
 
     this.onMove = (e) => {
@@ -160,6 +161,12 @@ export default {
       this.showPlayhead(e.detail)
     }
     window.addEventListener("score:playhead", this.onPlayhead)
+    // Where Play would start (Editor.Transport): the idle playhead waits there.
+    this.onPlayStart = (e) => {
+      this.playStart = e.detail.tick
+      this.showIdlePlayhead()
+    }
+    window.addEventListener("score:play-start", this.onPlayStart)
     this.onLinkClick = (e) => {
       const link = e.target.closest && e.target.closest("a[href]")
       if (!link || !this.dirty() || link.hasAttribute("download")) return
@@ -203,6 +210,7 @@ export default {
     window.removeEventListener("beforeunload", this.onBeforeUnload)
     window.removeEventListener("popstate", this.onPopState)
     window.removeEventListener("score:playhead", this.onPlayhead)
+    window.removeEventListener("score:play-start", this.onPlayStart)
     document.removeEventListener("click", this.onLinkClick, true)
     window.removeEventListener("score:redraw", this.onRedraw)
     this.setPageCursor(null)
@@ -217,7 +225,6 @@ export default {
     this.overlay.setAttribute("viewBox", this.score.dataset.viewBox)
     this.setPageCursor(this.armed && this.armed.glyph)
     if (!this.armed && !this.drag) this.clearGhost()
-    this.playStart = this.el.dataset.playStart ? Number(this.el.dataset.playStart) : null
     this.showIdlePlayhead()
     this.showLoading(this.el.dataset.loading === "true")
     this.showRedrawing()
@@ -860,10 +867,10 @@ export default {
   },
 
   // In Play mode, with nothing playing or paused, the playhead waits where
-  // Play would start (data-play-start: the selection's start, or the
-  // beginning). It is scrolled to only when that place changes, so redraws
-  // don't pull the score back from wherever it was scrolled. Edit mode has
-  // no playhead.
+  // Play would start (the transport's "score:play-start": its cursor, or
+  // the start of its bounds). It is scrolled to only when that place
+  // changes, so redraws don't pull the score back from wherever it was
+  // scrolled. Edit mode has no playhead.
   showIdlePlayhead() {
     if (this.mode !== "play") {
       this.idleAt = null

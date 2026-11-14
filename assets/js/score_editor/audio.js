@@ -177,8 +177,9 @@ export class Audio {
   }
 
   // `span` is the span's length in seconds (rests included), so a loop
-  // comes round in time.
-  async play(events, span, loop) {
+  // comes round in time; playing starts `at` seconds in, and a loop goes
+  // round the whole span.
+  async play(events, span, loop, at = 0) {
     this.stop()
     const generation = ++this.generation
     this.events = [...events].sort((a, b) => a.start - b.start)
@@ -187,7 +188,7 @@ export class Audio {
     const player = this.nextPlayer()
     await player.unlock()
     if (generation !== this.generation) return
-    this.startSpan(player, 0)
+    this.startSpan(player, at)
   }
 
   // `quiet`: the page paused it at once, and the server, told by the same
