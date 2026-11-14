@@ -86,17 +86,53 @@ defmodule DrawMusicWeb.Editor.TransportTest do
     assert_push_event(view, "play", %{loop: true})
   end
 
-  test "before playing, a skip moves the start point by selecting", %{
+  test "before playing, a skip moves the playhead, not the selection", %{
+    conn: conn,
+    attrs: attrs
+  } do
+    view = host(conn, attrs)
+    click(view, "#palette-skip-measure")
+
+    assert has_element?(view, "#transport[data-play-start='3840']")
+    refute_receive {:component_sent, _anything}
+
+    click(view, "#palette-play")
+    assert_push_event(view, "play", %{at: at, anchors: [%{tick: 0} | _rest]})
+    assert_in_delta at, 2.4, 1.0e-9
+  end
+
+  test "choosing measures selects them; they're locked while playing", %{
     conn: conn,
     attrs: attrs,
     notes: [_c, second]
   } do
     view = host(conn, attrs)
-    click(view, "#palette-skip-measure")
+    view |> element("#play-measures-form") |> render_change(%{"first" => "2", "last" => "2"})
 
     assert_receive {:component_sent, {:editor, {:session, select}}}
-    session = select.(Session.new(attrs.score, attrs.ctx))
-    assert MapSet.to_list(session.selection) == [second.id]
+    selection = select.(Session.new(attrs.score, attrs.ctx)).selection
+    assert second.id in selection
+
+    click(view, "#palette-play")
+    assert has_element?(view, "#play-from[disabled]")
+    assert has_element?(view, "#play-whole-piece[disabled]")
+  end
+
+  test "⏭ while playing: with Loop, back to the start; without, stop at the end", %{
+    conn: conn,
+    attrs: attrs
+  } do
+    view = host(conn, attrs)
+    click(view, "#palette-loop")
+    click(view, "#palette-play")
+    click(view, "#palette-to-end")
+    assert_push_event(view, "rewind", %{})
+    assert has_element?(view, "#palette-play[aria-pressed=true]")
+
+    click(view, "#palette-loop")
+    click(view, "#palette-to-end")
+    assert_push_event(view, "stop", %{})
+    assert has_element?(view, "#transport[data-play-start='7680']")
   end
 
   test "while playing, a skip goes to the browser with where measures start", %{
@@ -170,7 +206,7 @@ defmodule DrawMusicWeb.Editor.TransportTest do
     assert has_element?(view, ~s(#transport[data-instrument*='"program":73']))
   end
 
-  test "Set … version Instrument reports the playback instrument", %{conn: conn, attrs: attrs} do
+  test "Set as version Instrument reports the playback instrument", %{conn: conn, attrs: attrs} do
     view = host(conn, attrs)
     view |> element("#playback-instrument-form") |> render_change(%{"instrument" => "73"})
     assert has_element?(view, ~s(#transport[data-instrument*='"program":73']))
@@ -186,19 +222,29 @@ defmodule DrawMusicWeb.Editor.TransportTest do
     assert message =~ "Acoustic Grand Piano isn't available"
   end
 
-  test "before playing, Stop and Rewind clear the selection: back to the beginning", %{
+  test "before playing, Stop and Rewind take the playhead back to the start", %{
     conn: conn,
     attrs: attrs
   } do
     view = host(conn, attrs)
 
     for button <- ~w(#palette-stop #palette-rewind) do
+      click(view, "#palette-skip-measure")
+      assert has_element?(view, "#transport[data-play-start='3840']")
       click(view, button)
-      assert_receive {:component_sent, {:editor, {:session, clear}}}
-      assert clear.(Session.new(attrs.score, attrs.ctx)).selection == MapSet.new()
+      assert has_element?(view, "#transport[data-play-start='0']")
     end
 
     refute_push_event(view, "stop", _payload)
     refute_push_event(view, "rewind", _payload)
+    refute_receive {:component_sent, _anything}
+  end
+
+  test "Whole piece clears the selection", %{conn: conn, attrs: attrs, notes: [c, _second]} do
+    view = host(conn, %{attrs | selection: MapSet.new([c.id])})
+    click(view, "#play-whole-piece")
+
+    assert_receive {:component_sent, {:editor, {:session, clear}}}
+    assert clear.(Session.new(attrs.score, attrs.ctx)).selection == MapSet.new()
   end
 end

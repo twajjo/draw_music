@@ -1,8 +1,9 @@
 defmodule DrawMusicWeb.Palette.PlayControls do
   @moduledoc """
   The palette's two rows in Play mode: the transport (rewind, skip back
-  and forward by a line of music or a measure, stop, play/pause, loop),
-  then the playback instrument and a button to save it with the version.
+  and forward by a line of music or a measure, stop, play/pause, skip to
+  the end, loop), then the playback instrument with a button to save it
+  with the version, and the measures to play.
   """
 
   use Phoenix.Component
@@ -10,7 +11,9 @@ defmodule DrawMusicWeb.Palette.PlayControls do
   import DrawMusicWeb.CoreComponents, only: [icon: 1, input: 1]
   import DrawMusicWeb.Palette.Buttons
 
-  @doc "Play mode's two rows: the transport, then the instrument."
+  alias DrawMusic.Music.PlayRange
+
+  @doc "Play mode's two rows: the transport, then the instrument and the measures."
   attr :playback, :atom, default: :idle, values: [:idle, :loading, :playing, :paused, :rewound]
   attr :loop?, :boolean, default: false
   attr :lines?, :boolean, default: true, doc: "whether the score has lines of music to skip by"
@@ -18,6 +21,7 @@ defmodule DrawMusicWeb.Palette.PlayControls do
   attr :playback_instrument, :integer, default: 0, doc: "GM program playback uses"
   attr :version_instrument, :integer, default: 0, doc: "GM program saved with the version"
   attr :instrument_options, :list, default: [], doc: "grouped select options (LibraryComponents)"
+  attr :range, PlayRange, default: nil, doc: "the bounds being played (none: no measure lists)"
   attr :target, :any, default: nil, doc: "the component the controls' events go to"
 
   @spec play_controls(map()) :: Phoenix.LiveView.Rendered.t()
@@ -31,13 +35,23 @@ defmodule DrawMusicWeb.Palette.PlayControls do
         instrument_name={@instrument_name}
         target={@target}
       />
-      <.instrument_picker
-        instrument_name={@instrument_name}
-        playback_instrument={@playback_instrument}
-        version_instrument={@version_instrument}
-        instrument_options={@instrument_options}
-        target={@target}
-      />
+      <%!-- Under the transport and on under help and Save, so its right
+           edge lines up with theirs and the score's. --%>
+      <div class="col-start-3 col-end-5 row-start-2 ml-3 flex min-w-0 flex-nowrap items-center justify-between gap-3">
+        <.instrument_picker
+          instrument_name={@instrument_name}
+          playback_instrument={@playback_instrument}
+          version_instrument={@version_instrument}
+          instrument_options={@instrument_options}
+          target={@target}
+        />
+        <.measure_range
+          :if={@range}
+          range={@range}
+          locked?={@playback == :playing}
+          target={@target}
+        />
+      </div>
     </div>
     """
   end
@@ -75,12 +89,14 @@ defmodule DrawMusicWeb.Palette.PlayControls do
   # The picker and its button stay together on one line, the same height.
   defp instrument_picker(assigns) do
     ~H"""
-    <div class="col-start-3 row-start-2 ml-3 flex min-w-0 flex-nowrap items-center gap-2">
+    <%!-- The picker gives way first when the row is short of room, so the
+         row never runs past the palette's right edge. --%>
+    <div class="flex min-w-0 shrink flex-nowrap items-center gap-2">
       <form
         id="playback-instrument-form"
         phx-change="set_playback_instrument"
         phx-target={@target}
-        class="w-60 [&_.fieldset]:m-0 [&_.fieldset]:p-0"
+        class="w-52 min-w-28 shrink [&_.fieldset]:m-0 [&_.fieldset]:p-0"
       >
         <.input
           id="playback-instrument"
@@ -101,14 +117,69 @@ defmodule DrawMusicWeb.Palette.PlayControls do
         disabled={@playback_instrument == @version_instrument}
         off="btn-outline"
         square={false}
-        class="h-8 min-h-8 px-3 py-0 text-xs leading-tight whitespace-nowrap"
+        class="h-8 min-h-8 shrink-0 px-3 py-0 text-xs leading-tight whitespace-nowrap"
       >
         <span class="flex flex-col items-start">
-          <span>Set selection to</span>
-          <span>version Instrument</span>
+          <span>Set as version</span>
+          <span>Instrument</span>
         </span>
       </.tool_button>
     </div>
+    """
+  end
+
+  attr :range, PlayRange, required: true
+  attr :locked?, :boolean, required: true, doc: "while playing, the measures can't change"
+  attr :target, :any, required: true
+
+  # Measures From and To (To can't be before From; both included), and
+  # Whole piece to play everything again.
+  defp measure_range(assigns) do
+    ~H"""
+    <form
+      id="play-measures-form"
+      phx-change="set_measures"
+      phx-target={@target}
+      class="flex shrink-0 flex-nowrap items-center gap-1 text-sm whitespace-nowrap [&_.fieldset]:m-0 [&_.fieldset]:p-0"
+    >
+      <span>Measures</span>
+      <.input
+        id="play-from"
+        type="select"
+        name="first"
+        value={@range.first}
+        options={Enum.to_list(1..@range.count)}
+        disabled={@locked?}
+        aria-label="From measure"
+        class="select select-sm w-[4.5rem]"
+      />
+      <span>to</span>
+      <.input
+        id="play-to"
+        type="select"
+        name="last"
+        value={@range.last}
+        options={Enum.to_list(@range.first..@range.count)}
+        disabled={@locked?}
+        aria-label="To measure"
+        class="select select-sm w-[4.5rem]"
+      />
+      <.tool_button
+        id="play-whole-piece"
+        title="Play the whole piece again: measures 1 to the end (clears the selection)"
+        click="whole_piece"
+        target={@target}
+        disabled={@locked?}
+        off="btn-outline"
+        square={false}
+        class="ml-1 h-8 min-h-8 px-3 py-0 text-xs leading-tight whitespace-nowrap"
+      >
+        <span class="flex flex-col items-start">
+          <span>Whole</span>
+          <span>piece</span>
+        </span>
+      </.tool_button>
+    </form>
     """
   end
 
@@ -123,10 +194,10 @@ defmodule DrawMusicWeb.Palette.PlayControls do
 
   defp play_title(:playing), do: "Pause (Space)"
   defp play_title(:paused), do: "Resume (Space)"
-  defp play_title(:rewound), do: "Play from the start point (Space)"
+  defp play_title(:rewound), do: "Play from the start (Space)"
 
   defp play_title(_state) do
-    "Play the selection, from the selected note, or from the start (Space)"
+    "Play the chosen measures, the selection, or the whole piece, from the playhead (Space)"
   end
 
   attr :id, :string, required: true
@@ -172,7 +243,7 @@ defmodule DrawMusicWeb.Palette.PlayControls do
     >
       <.tool_button
         id="palette-rewind"
-        title="Back to the start point; before playing, to the beginning (Home)"
+        title="Back to the start of what's being played (Home)"
         click="rewind"
         target={@target}
         class="join-item"
@@ -198,7 +269,7 @@ defmodule DrawMusicWeb.Palette.PlayControls do
       />
       <.tool_button
         id="palette-stop"
-        title="Stop, back to the start point; before playing, to the beginning (Esc)"
+        title="Stop, back to the start of what's being played (Esc)"
         click="stop"
         target={@target}
         class="join-item"
@@ -234,8 +305,18 @@ defmodule DrawMusicWeb.Palette.PlayControls do
         target={@target}
       />
       <.tool_button
+        id="palette-to-end"
+        title="To the end of what's being played; playing with Loop on, back to its start (End)"
+        aria-label="To the end"
+        click="to_end"
+        target={@target}
+        class="join-item"
+      >
+        <.arrows count={1} bar />
+      </.tool_button>
+      <.tool_button
         id="palette-loop"
-        title="Repeat the selection, or the whole piece (L)"
+        title="Repeat the chosen measures, the selection, or the whole piece (L)"
         click="toggle_loop"
         target={@target}
         pressed={@loop?}
