@@ -95,7 +95,6 @@ defmodule DrawMusicWeb.Editor.PaletteTest do
     view = host(conn, %{editor_mode: :play})
 
     refute has_element?(view, "#palette-edit")
-    assert has_element?(view, "#palette-play-controls")
 
     key_event(view, "select_all")
     key_event(view, "undo")

@@ -139,11 +139,11 @@ defmodule DrawMusicWeb.EditorSettingsTest do
       assert :sys.get_state(view.pid).socket.assigns.instrument == 0
     end
 
-    test "the hook is told the instrument", %{conn: conn} do
+    test "playback follows the version's new instrument", %{conn: conn} do
       view = draft(conn)
       apply_settings(view, %{"instrument" => "73"})
 
-      assert has_element?(view, ~s(#score-editor[data-instrument*='"program":73']))
+      assert has_element?(view, ~s(#transport[data-instrument*='"program":73']))
     end
   end
 

@@ -1,17 +1,17 @@
 defmodule DrawMusicWeb.Editor.Palette do
   @moduledoc """
   The editor's toolbar, two rows tall, as a standalone LiveComponent: the
-  Edit/Play switch, the current mode's controls
-  (`DrawMusicWeb.Palette.EditTools` or `DrawMusicWeb.Palette.PlayControls`),
-  help and the `:trailing` slot (save). It handles its buttons and its
-  keyboard shortcuts (the colocated `.PaletteKeys` hook) and reports the
-  results.
+  Edit/Play switch, Edit mode's tools (`DrawMusicWeb.Palette.EditTools`),
+  the `:play_controls` slot, help and the `:trailing` slot (save). It
+  handles its buttons and its keyboard shortcuts (the colocated
+  `.PaletteKeys` hook) and reports the results.
 
   The palette's state (what is armed, notes or rests, Insert or Overlay)
   is the editor's, because the score uses it too; the palette receives it,
   works out the next state with `DrawMusicWeb.EditorPalette`, and reports
-  it. The play controls' own events still go to the editor (they move to
-  `Editor.Transport` later).
+  it. Playback isn't the palette's: the `:play_controls` slot is rendered
+  in both modes, so what fills it (`DrawMusicWeb.Editor.Transport`) stays
+  mounted and shows its controls in Play mode only.
 
   ## Inputs
     * `:id`: the component's id (required by LiveView).
@@ -19,10 +19,8 @@ defmodule DrawMusicWeb.Editor.Palette do
     * `:selection`: the selected ids, which the dot, the accidentals and
       the chords change when nothing is armed.
     * `:can_undo?`, `:can_redo?`, `:mode` (the key's), `:editor_mode`.
-    * The play controls' attrs (`:playback`, `:loop?`, `:lines?`,
-      `:instrument_name`, `:playback_instrument`, `:version_instrument`,
-      `:instrument_options`), passed on to them.
-    * The `:below_mode` and `:trailing` slots, passed on to the toolbar.
+    * The `:below_mode`, `:play_controls` and `:trailing` slots, placed in
+      the toolbar.
 
   ## Intents
     * `{:palette, changes}`: the palette's new state, what changed of
@@ -38,7 +36,7 @@ defmodule DrawMusicWeb.Editor.Palette do
   use DrawMusicWeb, :live_component
 
   import DrawMusicWeb.PaletteComponents
-  import DrawMusicWeb.Palette.{EditTools, PlayControls}
+  import DrawMusicWeb.Palette.EditTools
 
   alias DrawMusic.Music.{Session, TempoEditing, Timeline}
   alias DrawMusicWeb.Editor.Intent
@@ -54,14 +52,8 @@ defmodule DrawMusicWeb.Editor.Palette do
     can_redo?: false,
     mode: :major,
     editor_mode: :edit,
-    playback: :idle,
-    loop?: false,
-    lines?: true,
-    instrument_name: "the instrument",
-    playback_instrument: 0,
-    version_instrument: 0,
-    instrument_options: [],
     below_mode: [],
+    play_controls: [],
     trailing: []
   }
 
@@ -230,16 +222,7 @@ defmodule DrawMusicWeb.Editor.Palette do
         mode={@mode}
         target={@myself}
       />
-      <.play_controls
-        :if={@editor_mode == :play}
-        playback={@playback}
-        loop?={@loop?}
-        lines?={@lines?}
-        instrument_name={@instrument_name}
-        playback_instrument={@playback_instrument}
-        version_instrument={@version_instrument}
-        instrument_options={@instrument_options}
-      />
+      {render_slot(@play_controls)}
       <div class="col-start-4 row-start-1 ml-3 flex items-stretch gap-1">
         <.help_button />
         {render_slot(@trailing)}

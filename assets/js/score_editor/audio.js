@@ -1,5 +1,6 @@
-// Playback for the ScoreEditor hook: loads the playback instrument (smplr,
-// from the server's /samples) and plays the timed events EditorLive sends.
+// The editor's audio engine (one, `sharedAudio()`): loads the playback
+// instrument (smplr, from the server's /samples) and plays the timed events
+// Editor.Transport sends; the score's hook sounds its drag tones on it.
 // Pause, resume, rewind and loop happen here, on the audio clock. Notes
 // light up (`.playing`) while they sound.
 //
@@ -91,14 +92,29 @@ async function loadSmplr(context, source) {
 
 const sameSource = (a, b) => a && b && a.kind === b.kind && a.url === b.url && a.program === b.program
 
+// Until someone listens, the engine's reports go nowhere.
+const ignore = () => {
+  return undefined
+}
+
+// The editor's one engine, shared by the transport (playback, audition) and
+// the score (drag tones), so both sound on the playback instrument.
+let shared = null
+
+export function sharedAudio() {
+  if (!shared) shared = new Audio()
+  return shared
+}
+
+// Leaving the editor: stop, and free the audio objects.
+export function releaseSharedAudio() {
+  if (shared) shared.destroy()
+  shared = null
+}
+
 export class Audio {
-  // onState(state, source): "loading" | "ready" | "fallback" | "playing" | "paused" | "idle".
-  // onTick(seconds): how far into the span playback is, each frame; null
-  // once it stops (a pause leaves the last position).
-  constructor({onState, onEnded, onTick}) {
-    this.onState = onState
-    this.onEnded = onEnded
-    this.onTick = onTick
+  constructor() {
+    this.listen({})
     this.context = null
     this.source = null
     this.loaded = null // the player for `source`, once ready
@@ -108,6 +124,16 @@ export class Audio {
     this.state = "idle"
     this.frame = null
     this.generation = 0
+  }
+
+  // onState(state, source): "loading" | "ready" | "fallback" | "playing" | "paused" | "idle".
+  // onEnded(): the span played to its end.
+  // onTick(seconds): how far into the span playback is, each frame; null
+  // once it stops (a pause leaves the last position).
+  listen({onState = ignore, onEnded = ignore, onTick = ignore}) {
+    this.onState = onState
+    this.onEnded = onEnded
+    this.onTick = onTick
   }
 
   // Browsers only allow audio after a user gesture: the hook calls this on
