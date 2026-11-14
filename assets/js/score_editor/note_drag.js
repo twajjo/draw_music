@@ -2,7 +2,7 @@
 // other staff) and tempo marks along the music. Plain functions over a
 // drag's state; the hook draws and sends what they give.
 
-import {keyAlter, locate, stepAtY, stepOnStaff, staffStepAt} from "./geometry"
+import {keyAlter, locate, staffFor, stepAtY, stepOnStaff, staffStepAt} from "./geometry"
 import {nearestColumn} from "./hits"
 
 // A moved note keeps its accidental (as Editing.move_steps): the key's
@@ -51,13 +51,14 @@ export function aimNoteDrag(drag, geometry, point, modifier) {
 }
 
 // Each dragged note's landing place: its staff (the pointer's, for one
-// note alone), step and alteration (a held key's, else its own kept).
+// note alone; for several, the other staff for any taken past middle
+// C), step and alteration (a held key's, else its own kept).
 export function dragTargets(drag) {
   const {notes, single, staff, delta, modifier, sf} = drag
   return notes.map((note) => {
     const step = note.step + delta
     const alter = modifier ?? keptAlter(sf, note, step)
-    return {...note, staff: single ? staff : note.staff, step, alter}
+    return {...note, staff: single ? staff : staffFor(note.staff, step), step, alter}
   })
 }
 

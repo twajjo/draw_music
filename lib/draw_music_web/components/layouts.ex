@@ -82,7 +82,7 @@ defmodule DrawMusicWeb.Layouts do
   end
 
   @doc """
-  The signed-in user's menu: the display theme, Settings and Log out,
+  The signed-in user's menu: the display theme, Preferences and Log out,
   behind a button showing the user's email. Clicking elsewhere closes it.
   """
   attr :user, :map, required: true
@@ -132,7 +132,7 @@ defmodule DrawMusicWeb.Layouts do
           role="menuitem"
           class="flex items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors hover:bg-base-200"
         >
-          <.icon name="hero-cog-6-tooth" class="size-4" /> Settings
+          <.icon name="hero-cog-6-tooth" class="size-4" /> Preferences
         </.link>
         <.link
           id="account-menu-log-out"

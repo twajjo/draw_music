@@ -207,6 +207,7 @@ defmodule DrawMusicWeb.EditorLive do
           data-mode={@editor_mode}
           data-loading={to_string(@score_loading?)}
           data-layout={@current_scope.user.score_layout}
+          data-name-notes={to_string(@current_scope.user.name_notes)}
         >
           <.score
             id="score"

@@ -23,6 +23,16 @@ defmodule DrawMusicWeb.EditorLiveTest do
   defp path(version),
     do: LibraryComponents.version_path(version.key.composition.id, version.key, version.number)
 
+  test "the score hook is told whether to name the note being placed or dragged",
+       %{conn: conn, scope: scope} do
+    {:ok, view, _html} = live(conn, ~p"/")
+    assert has_element?(view, "#score-editor[data-name-notes='true']")
+
+    {:ok, _user} = Accounts.update_user_preferences(scope, %{name_notes: false})
+    {:ok, view, _html} = live(conn, ~p"/")
+    assert has_element?(view, "#score-editor[data-name-notes='false']")
+  end
+
   # A long score would otherwise be engraved and sent twice; the first,
   # static page only stands in until the LiveView connects.
   test "the static page says the score is loading; the live one draws it",

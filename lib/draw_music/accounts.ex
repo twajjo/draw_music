@@ -195,8 +195,9 @@ defmodule DrawMusic.Accounts do
   end
 
   @doc """
-  Updates the user's score display preferences: `score_layout` (`:strip` or
-  `:page`) and `score_ink_dark` (a `#rrggbb` color readable on black).
+  Updates the user's preferences: `score_layout` (`:strip` or `:page`),
+  `score_ink_dark` (a `#rrggbb` color readable on black) and `name_notes`
+  (name the note being placed or dragged).
   """
   @spec update_user_preferences(Scope.t(), map()) ::
           {:ok, User.t()} | {:error, Ecto.Changeset.t()}

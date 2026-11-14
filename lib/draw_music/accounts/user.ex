@@ -15,6 +15,8 @@ defmodule DrawMusic.Accounts.User do
     # the notation color in dark mode (nil: white).
     field :score_layout, Ecto.Enum, values: [:strip, :page], default: :strip
     field :score_ink_dark, :string
+    # Reading aids: name the note being placed or dragged.
+    field :name_notes, :boolean, default: true
 
     timestamps(type: :utc_datetime)
   end
@@ -28,19 +30,21 @@ defmodule DrawMusic.Accounts.User do
           authenticated_at: DateTime.t() | nil,
           score_layout: :strip | :page,
           score_ink_dark: String.t() | nil,
+          name_notes: boolean(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
 
   @doc """
-  A changeset for the score display preferences. The dark-mode ink must be
-  a `#rrggbb` color readable on black: a WCAG contrast ratio of at least 7:1.
+  A changeset for the user's preferences: the score's layout and dark-mode
+  ink, and the reading aids. The dark-mode ink must be a `#rrggbb` color
+  readable on black: a WCAG contrast ratio of at least 7:1.
   """
   @spec preferences_changeset(t(), map()) :: Ecto.Changeset.t()
   def preferences_changeset(user, attrs) do
     user
-    |> cast(attrs, [:score_layout, :score_ink_dark])
-    |> validate_required([:score_layout])
+    |> cast(attrs, [:score_layout, :score_ink_dark, :name_notes])
+    |> validate_required([:score_layout, :name_notes])
     |> update_change(:score_ink_dark, &String.downcase/1)
     |> validate_format(:score_ink_dark, ~r/^#[0-9a-f]{6}$/,
       message: "must be a color like #ffcc66"
