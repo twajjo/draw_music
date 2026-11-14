@@ -25,8 +25,10 @@ Three small PRs, each merged before the next.
 - **A new preference, "Name the note being placed or dragged"** (on or off,
   **on** by default), on the Preferences page. Stored on the user, like the
   layout; the editor passes it to the score hook as a data attribute.
-- **When on**, a small label names the note ("G♯4": letter, accidental,
-  octave) on the ghost:
+- **When on**, a small label names the note on the ghost: its letter and
+  accidental, no octave ("G♯"). A natural shows ("F♮") only when the note
+  would otherwise read sharp or flat, by the key or an earlier accidental
+  in the measure (as `Accidentals`). Labels appear:
   - while hovering with a note armed;
   - while pressing to place;
   - while dragging. With several notes dragged, the one under the pointer is

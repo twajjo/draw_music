@@ -23,7 +23,8 @@ function systemAt(geometry, y) {
   return best && best.system
 }
 
-function measureAt(system, x) {
+// The measure of a system that x falls in (the first or last beyond them).
+export function measureAt(system, x) {
   const measures = system.measures
   return (
     measures.find((m) => x >= m.x && x < m.x + m.width) ||
