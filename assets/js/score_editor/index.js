@@ -183,11 +183,14 @@ export default {
   },
 
   // Double-clicking a tempo mark opens its dialog; the opening marking,
-  // the score's settings.
+  // the score's settings. The press before it captured the pointer (for a
+  // drag or a band), which sends the double-click to this element, not to
+  // the mark: what was double-clicked is what lies under the pointer.
   doubleClick(e) {
     if (this.mode !== "edit") return
-    if (onOpeningTempo(e)) return this.pushEvent("open_settings", {})
-    const hit = eventTarget(e)
+    const under = {target: document.elementFromPoint(e.clientX, e.clientY) || e.target}
+    if (onOpeningTempo(under)) return this.pushEvent("open_settings", {})
+    const hit = eventTarget(under)
     if (tempoKind(hit)) this.pushEvent("edit_tempo", {id: hit.id})
   },
 
