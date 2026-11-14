@@ -36,6 +36,7 @@ defmodule DrawMusic.Music.Editing do
     Placement,
     Rest,
     Score,
+    StaffCrossing,
     TempoChange,
     Timeline
   }
@@ -292,64 +293,49 @@ defmodule DrawMusic.Music.Editing do
 
   @doc """
   Moves the given notes `delta` steps up (positive) or down the scale of the
-  key: each lands on the key's own version of its new letter.
+  key. Each keeps its accidental: the key's version of its new letter,
+  sharpened or flattened as much as it was (F♯ up a step in C major is G♯;
+  the key's own F♯ in G major goes to G). A note taken past middle C moves
+  to the other staff (`DrawMusic.Music.StaffCrossing`).
   """
   @spec move_steps(Score.t(), Context.t(), [id()], integer()) :: result()
   def move_steps(%Score{} = score, %Context{} = ctx, ids, delta) when is_integer(delta) do
-    map_selected(score, ctx, ids, fn entry ->
-      note_only(entry, fn note ->
-        step = note.step + delta
-        %{note | step: step, alter: Pitch.key_alter(ctx.sf, Pitch.letter(step))}
-      end)
+    move_pitches(score, ctx, ids, fn note ->
+      step = note.step + delta
+      %{note | step: step, alter: kept_alter(ctx.sf, note, step)}
     end)
   end
 
   @doc """
-  Moves note `id` onto `step` of `staff`, keeping its time, value and dots;
-  it lands on the key's version of the new letter. On another staff it
-  leaves its chord and voice and goes in the lowest voice it fits there.
-  Returns the moved note's id, which is new when the staff changes.
+  Moves note `id` onto `step` of `staff` (where a single dragged note was
+  let go), keeping its time, value, dots and accidental (as
+  `move_steps/4`). Past middle C it goes to the staff on that side. On
+  another staff it leaves its chord and voice, and joins a note there that
+  starts and ends with it as a chord, or else goes in the lowest voice with
+  room. Returns its id.
   """
   @spec move_to_staff(Score.t(), Context.t(), id(), Note.staff(), integer()) ::
           {:ok, Score.t(), id()} | {:error, reason()}
   def move_to_staff(%Score{} = score, %Context{} = ctx, id, staff, step) do
-    case find_entry(Timeline.flatten(score, ctx), id) do
-      {:ok, %{kind: :note, event: %{staff: ^staff} = note}} ->
-        with {:ok, score} <- move_steps(score, ctx, [id], step - note.step) do
+    entries = Timeline.flatten(score, ctx)
+
+    case find_entry(entries, id) do
+      {:ok, %{kind: :note, event: note} = entry} ->
+        moved = %{entry | event: %{note | step: step, alter: kept_alter(ctx.sf, note, step)}}
+
+        with {:ok, entries} <-
+               entries
+               |> replace_entry(id, [moved])
+               |> StaffCrossing.restaff(id, StaffCrossing.staff_for(staff, step)),
+             {:ok, score} <- rebuild(score, ctx, entries) do
           {:ok, score, id}
         end
-
-      {:ok, %{kind: :note} = entry} ->
-        restaff(score, ctx, entry, staff, step)
 
       {:ok, _rest} ->
         {:error, :not_found}
 
       error ->
         error
-    end
-  end
-
-  defp restaff(score, ctx, %{event: note} = entry, staff, step) do
-    {index, {bar_start, _capacity}} =
-      score
-      |> Timeline.bars(ctx)
-      |> Enum.with_index()
-      |> Enum.find_value(fn {{start, capacity} = bar, index} ->
-        entry.start >= start and entry.start < start + capacity and {index, bar}
-      end)
-
-    placement = %Placement{
-      staff: staff,
-      offset: entry.start - bar_start,
-      value: note.value,
-      dots: note.dots,
-      step: step,
-      alter: Pitch.key_alter(ctx.sf, Pitch.letter(step))
-    }
-
-    with {:ok, score} <- remove(score, ctx, [note.id]) do
-      place_note(score, ctx, index, placement)
     end
   end
 
@@ -503,11 +489,9 @@ defmodule DrawMusic.Music.Editing do
   @spec transpose_chromatic(Score.t(), Context.t(), [id()], integer()) :: result()
   def transpose_chromatic(%Score{} = score, %Context{} = ctx, ids, semitones)
       when is_integer(semitones) do
-    map_selected(score, ctx, ids, fn entry ->
-      note_only(entry, fn note ->
-        {step, alter} = Pitch.spell(Note.midi(note) + semitones, ctx.sf)
-        %{note | step: step, alter: alter}
-      end)
+    move_pitches(score, ctx, ids, fn note ->
+      {step, alter} = Pitch.spell(Note.midi(note) + semitones, ctx.sf)
+      %{note | step: step, alter: alter}
     end)
   end
 
@@ -520,11 +504,9 @@ defmodule DrawMusic.Music.Editing do
   @spec transpose_interval(Score.t(), Context.t(), [id()], integer(), integer()) :: result()
   def transpose_interval(%Score{} = score, %Context{} = ctx, ids, steps, semitones)
       when is_integer(steps) and is_integer(semitones) do
-    map_selected(score, ctx, ids, fn entry ->
-      note_only(entry, fn note ->
-        {step, alter} = Pitch.transpose(note.step, note.alter, steps, semitones, ctx.sf)
-        %{note | step: step, alter: alter}
-      end)
+    move_pitches(score, ctx, ids, fn note ->
+      {step, alter} = Pitch.transpose(note.step, note.alter, steps, semitones, ctx.sf)
+      %{note | step: step, alter: alter}
     end)
   end
 
@@ -925,6 +907,25 @@ defmodule DrawMusic.Music.Editing do
 
   defp note_only(%{kind: :note} = entry, fun), do: {:ok, %{entry | event: fun.(entry.event)}}
   defp note_only(entry, _fun), do: {:ok, entry}
+
+  # A moved note's new alteration: the key's version of letter `step`,
+  # sharpened or flattened as much as the note was from its own key letter.
+  defp kept_alter(sf, note, step) do
+    accidental = note.alter - Pitch.key_alter(sf, Pitch.letter(note.step))
+
+    (Pitch.key_alter(sf, Pitch.letter(step)) + accidental)
+    |> max(-2)
+    |> min(2)
+  end
+
+  # Changes the pitch of the notes among `ids` (`fun`, note to note); any
+  # taken past middle C move to the other staff.
+  defp move_pitches(score, ctx, ids, fun) do
+    with {:ok, entries} <- map_entries(score, ctx, ids, &note_only(&1, fun)),
+         {:ok, entries} <- StaffCrossing.settle(entries, ids) do
+      rebuild(score, ctx, entries)
+    end
+  end
 
   defp map_selected(score, ctx, ids, fun) do
     with {:ok, entries} <- map_entries(score, ctx, ids, fun), do: rebuild(score, ctx, entries)

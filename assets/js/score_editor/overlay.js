@@ -100,15 +100,15 @@ export class Overlay {
   }
 
   // Dragged notes' heads where they would land (`targets`, in `system`),
-  // with their ledger lines and the accidental a modifier adds.
-  draggedNotes(geometry, system, targets, modifier) {
+  // with their ledger lines and any accidental they'd have against the key.
+  draggedNotes(geometry, system, targets) {
     this.clear()
     const g = ghostGroup(system.y)
 
     for (const t of targets) {
       const y = stepY(geometry, t.staff, t.step)
       ledgerLines(g, geometry, t.staff, t.step, t.x)
-      if (modifier !== null) g.appendChild(glyph(ACCIDENTALS[modifier], t.x - 1.3, y))
+      if (t.alter !== keyAlter(geometry.sf, t.step)) g.appendChild(glyph(ACCIDENTALS[t.alter], t.x - 1.3, y))
       g.appendChild(glyph(t.el.textContent, t.x, y))
     }
     this.svg.appendChild(g)
