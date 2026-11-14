@@ -97,7 +97,7 @@ defmodule DrawMusicWeb.Shortcuts do
       mouse: "drag note",
       modes: @edit,
       action:
-        "Move it up or down, hearing each step; it lands when you let go. Alone it can move to the other staff; a selected note brings the selection"
+        "Move it up or down, hearing each step; it lands when you let go, keeping its sharp or flat (hold Shift for a sharp, Ctrl or Alt for a flat). Alone it can move to the other staff; a selected note brings the selection. Past middle C a note goes to the other staff"
     },
     %Shortcut{
       group: "Selecting and moving",
@@ -117,7 +117,8 @@ defmodule DrawMusicWeb.Shortcuts do
       group: "Selecting and moving",
       keys: ["ArrowUp", "ArrowDown"],
       modes: @edit,
-      action: "Move the selection a scale step"
+      action:
+        "Move the selection a scale step; each note keeps its sharp or flat. A note taken past middle C moves to the other staff (joining a note of the same length there as a chord)"
     },
     %Shortcut{
       group: "Selecting and moving",

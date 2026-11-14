@@ -202,6 +202,7 @@ defmodule DrawMusicWeb.ScoreSvg do
       attr("id", dom_id(glyph)),
       attr("class", MapSet.member?(selection, glyph.id) && "selected"),
       attr("data-staff", glyph.staff),
+      attr("data-alter", glyph.alter),
       attr("x", n(glyph.x)),
       attr("y", n(glyph.y)),
       ">",

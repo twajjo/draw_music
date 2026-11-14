@@ -252,8 +252,8 @@ export default {
     const modifier = modifierOf(e)
     if (!aimNoteDrag(this.drag, this.geometry, this.overlay.toScore(e), modifier)) return
     const targets = dragTargets(this.drag)
-    this.overlay.draggedNotes(this.geometry, this.drag.anchor.system, targets, modifier)
-    this.play(targets.map((t) => pitchOf(t.step, modifier, this.geometry.sf)))
+    this.overlay.draggedNotes(this.geometry, this.drag.anchor.system, targets)
+    this.play(targets.map((t) => pitchOf(t.step, t.alter, this.geometry.sf)))
   },
 
   // Lands the dragged notes. Let go where it started, the drag is a click.

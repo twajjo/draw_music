@@ -2,8 +2,15 @@
 // other staff) and tempo marks along the music. Plain functions over a
 // drag's state; the hook draws and sends what they give.
 
-import {locate, stepAtY, stepOnStaff, staffStepAt} from "./geometry"
+import {keyAlter, locate, stepAtY, stepOnStaff, staffStepAt} from "./geometry"
 import {nearestColumn} from "./hits"
+
+// A moved note keeps its accidental (as Editing.move_steps): the key's
+// version of its new letter, sharpened or flattened as much as it was.
+function keptAlter(sf, note, step) {
+  const accidental = note.alter - keyAlter(sf, note.step)
+  return Math.max(-2, Math.min(2, keyAlter(sf, step) + accidental))
+}
 
 // The pressed note drags alone, or with the selection if it is selected.
 // One note on its own may move to the other staff; several keep their
@@ -18,13 +25,15 @@ export function startNoteDrag(scoreEl, geometry, hit) {
     const staff = el.dataset.staff
     const y = Number(el.getAttribute("y"))
     const system = geometry.systems[Number(el.closest("[data-system]").dataset.system)]
-    return {el, id: el.id.slice(5), staff, step: stepAtY(geometry, staff, y), x: Number(el.getAttribute("x")), system}
+    const step = stepAtY(geometry, staff, y)
+    const alter = el.dataset.alter === undefined ? keyAlter(geometry.sf, step) : Number(el.dataset.alter)
+    return {el, id: el.id.slice(5), staff, step, alter, x: Number(el.getAttribute("x")), system}
   })
 
   const anchor = notes.find((note) => note.id === hit.id)
   elements.forEach((el) => el.classList.add("dragging"))
   // delta starts unset, so the first move draws and sounds the preview.
-  return {notes, anchor, single: notes.length === 1, delta: null, staff: anchor.staff, modifier: null}
+  return {notes, anchor, single: notes.length === 1, delta: null, staff: anchor.staff, modifier: null, sf: geometry.sf}
 }
 
 // Follows the pointer (`point`, in staff spaces). True when where the notes
@@ -42,10 +51,14 @@ export function aimNoteDrag(drag, geometry, point, modifier) {
 }
 
 // Each dragged note's landing place: its staff (the pointer's, for one
-// note alone) and step.
+// note alone), step and alteration (a held key's, else its own kept).
 export function dragTargets(drag) {
-  const {notes, single, staff, delta} = drag
-  return notes.map((note) => ({...note, staff: single ? staff : note.staff, step: note.step + delta}))
+  const {notes, single, staff, delta, modifier, sf} = drag
+  return notes.map((note) => {
+    const step = note.step + delta
+    const alter = modifier ?? keptAlter(sf, note, step)
+    return {...note, staff: single ? staff : note.staff, step, alter}
+  })
 }
 
 // The `drop` event's params, or null when the drag ended where it started
