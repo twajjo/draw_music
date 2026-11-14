@@ -26,6 +26,8 @@ import {keyAlter, locate, pitchOf} from "./geometry"
 import {eventTarget, onOpeningTempo, tempoKind} from "./hits"
 import {dialogOpen, keyId, typing} from "./keyboard"
 import {aimNoteDrag, dragTargets, dropParams, endNoteDrag, startNoteDrag, tempoDropAt} from "./note_drag"
+import {alterInEffect} from "./in_effect"
+import {movedNotes} from "./moved_notes"
 import {noteName} from "./note_name"
 import {Overlay} from "./overlay"
 import {PageGuard} from "./page_guard"
@@ -67,6 +69,7 @@ export default {
   updated() {
     this.readState()
     this.guard.sync()
+    if (this.announceMove) this.announceMoved()
   },
 
   destroyed() {
@@ -134,8 +137,7 @@ export default {
     const t = this.target(e)
     if (!t) return this.overlay.clear()
     const alter = t.modifier ?? this.armed.alter
-    const name = this.nameNotes ? noteName(t.step, alter ?? keyAlter(this.geometry.sf, t.step)) : null
-    this.overlay.ghost(this.geometry, this.armed, t, name)
+    this.overlay.ghost(this.geometry, this.armed, t, this.ghostName(t, alter))
 
     if (!this.pressing || this.armed.kind === "rest") return
     const sound = `${t.staff}:${t.step}:${alter}`
@@ -264,7 +266,17 @@ export default {
   namedTarget(targets) {
     if (!this.nameNotes) return null
     const t = targets.find((target) => target.id === this.drag.anchor.id)
-    return {id: t.id, name: noteName(t.step, t.alter)}
+    const at = {system: this.drag.anchor.system, staff: t.staff, step: t.step, x: t.x}
+    const skip = targets.map((target) => target.id)
+    return {id: t.id, name: noteName(t.step, t.alter, alterInEffect(this.score, this.geometry, at, skip))}
+  },
+
+  // With the preference on, the name of the note about to be placed.
+  ghostName(t, alter) {
+    if (!this.nameNotes) return null
+    const at = {system: t.system, staff: t.staff, step: t.step, x: t.ghostX}
+    const inEffect = alterInEffect(this.score, this.geometry, at)
+    return noteName(t.step, alter ?? keyAlter(this.geometry.sf, t.step), inEffect)
   },
 
   // Lands the dragged notes. Let go where it started, the drag is a click.
@@ -337,6 +349,7 @@ export default {
   key(e) {
     if (typing(e) || dialogOpen()) return
     if (!KEYS.includes(keyId(e))) return
+    this.announceMove = false
     const ctrl = e.ctrlKey || e.metaKey
     const k = e.key.toLowerCase()
     const send = (event, payload = {}) => {
@@ -363,6 +376,8 @@ export default {
 
     if (ARROWS[e.key]) {
       const by = e.shiftKey ? "octave" : ctrl ? "semitone" : "step"
+      // Moved up or down, the notes sound (and are named) once redrawn.
+      this.announceMove = e.key === "ArrowUp" || e.key === "ArrowDown"
       return send("move", {dir: ARROWS[e.key], by})
     }
 
@@ -400,6 +415,14 @@ export default {
 
   // The tone for placing and dragging, on the playback instrument: one
   // MIDI number, or a chord's, sounded together.
+  // The selection was just moved up or down: sound it, and name its notes.
+  announceMoved() {
+    this.announceMove = false
+    const {midis, labels} = movedNotes(this.score, this.geometry, this.nameNotes)
+    if (midis.length > 0) this.play(midis)
+    if (labels.length > 0) this.overlay.names(labels)
+  },
+
   play(midis) {
     sharedAudio().preview([midis].flat(), PLACEMENT_TONE)
   },
