@@ -4,7 +4,7 @@ defmodule DrawMusicWeb.UserLive.Settings do
   on_mount {DrawMusicWeb.UserAuth, :require_sudo_mode}
 
   alias DrawMusic.Accounts
-  alias DrawMusicWeb.{InkPicker, LayoutToggle}
+  alias DrawMusicWeb.{InkPicker, LayoutToggle, PreferenceSwitch}
 
   @impl true
   def render(assigns) do
@@ -12,8 +12,10 @@ defmodule DrawMusicWeb.UserLive.Settings do
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="text-center">
         <.header>
-          Account Settings
-          <:subtitle>Manage your account email address and password settings</:subtitle>
+          Preferences
+          <:subtitle>
+            Your account, and how the editor looks and helps you (a piece's own settings are in the editor)
+          </:subtitle>
         </.header>
       </div>
 
@@ -94,6 +96,23 @@ defmodule DrawMusicWeb.UserLive.Settings do
           <p class="text-sm font-medium">Dark mode ink</p>
           <.live_component module={InkPicker} id="settings-ink" scope={@current_scope} />
         </div>
+      </section>
+
+      <div class="divider" />
+
+      <section id="reading-aids" class="space-y-4">
+        <.header>
+          Reading aids
+          <:subtitle>Help with reading music, for when the notes aren't second nature yet</:subtitle>
+        </.header>
+        <.live_component
+          module={PreferenceSwitch}
+          id="settings-name-notes"
+          scope={@current_scope}
+          field={:name_notes}
+          label="Name the note being placed or dragged"
+          hint="Shows its name, like G♯4, beside the note while you place it or drag it"
+        />
       </section>
     </Layouts.app>
     """
@@ -188,10 +207,10 @@ defmodule DrawMusicWeb.UserLive.Settings do
     end
   end
 
-  # A saved score preference: the page (and its ink) follows the new user.
+  # A saved preference: the page (and its ink) follows the new user.
   @impl true
   def handle_info({component, {:updated, user}}, socket)
-      when component in [InkPicker, LayoutToggle] do
+      when component in [InkPicker, LayoutToggle, PreferenceSwitch] do
     {:noreply, assign(socket, :current_scope, %{socket.assigns.current_scope | user: user})}
   end
 

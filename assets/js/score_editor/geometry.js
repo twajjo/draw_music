@@ -83,13 +83,27 @@ export function insertColumn(measure, staff, x, head) {
   return measure.columns.find((c) => c.staves.includes(staff) && x < c.x + head) || null
 }
 
-// The staff and step at y in a given system; between the staves, the
-// closer staff.
+// Middle C, the boundary between the staves for a moved note.
+const MIDDLE_C = 28
+
+// The staff a moved note at `step` belongs on (as StaffCrossing.staff_for):
+// past middle C, the other one; middle C stays where it is.
+export function staffFor(staff, step) {
+  if (staff === "bass" && step > MIDDLE_C) return "treble"
+  if (staff === "treble" && step < MIDDLE_C) return "bass"
+  return staff
+}
+
+// The staff and step at y in a given system, for one dragged note: between
+// the staves, the closer staff, but no further into the gap than middle C,
+// so the note is shown where it will land (past middle C it would belong to
+// the other staff).
 export function staffStepAt(geometry, system, y) {
   const top = geometry.staff_top
   const gapMiddle = (top.treble + 4 + top.bass) / 2
   const staff = y - system.y < gapMiddle ? "treble" : "bass"
-  return {staff, step: stepOnStaff(geometry, system, staff, y)}
+  const step = stepOnStaff(geometry, system, staff, y)
+  return {staff, step: staff === "treble" ? Math.max(step, MIDDLE_C) : Math.min(step, MIDDLE_C)}
 }
 
 // The step at y on a given staff of a system (no switching staves), for

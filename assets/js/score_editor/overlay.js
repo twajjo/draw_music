@@ -15,6 +15,9 @@ const ACCIDENTALS = {"-2": "", "-1": "", 0: "", 1: "", 2: ""}
 const SECOND_OFFSET = 1.2
 const CHORD_LABEL_GAP = 2
 const CHORD_LABEL_SIZE = 1.6
+// A note's name (a reading aid) sits this far right of its head, at this size.
+const NAME_GAP = 2.2
+const NAME_SIZE = 1.6
 // A band's highlight reaches this far (staff spaces) above and below the
 // grand staff; a staff is four spaces tall.
 const BAND_PAD = 1.5
@@ -37,6 +40,13 @@ function ledgerLines(g, geometry, staff, step, x) {
     const ly = stepY(geometry, staff, ledger)
     g.appendChild(element("line", {x1: x - 0.4, x2: x + 1.6, y1: ly, y2: ly, stroke: "currentColor", "stroke-width": 0.16}))
   }
+}
+
+// A note's name ("G♯4") beside its head at (x, y).
+function nameLabel(x, y, name) {
+  const text = element("text", {x: x + NAME_GAP, y: y + NAME_SIZE / 3, "font-family": "sans-serif", "font-size": NAME_SIZE})
+  text.textContent = name
+  return text
 }
 
 // A group in a system's coordinates, drawn faded in the score's ink.
@@ -74,9 +84,9 @@ export class Overlay {
   }
 
   // The armed piece drawn where it would land (`t`, from placementAt), with
-  // ledger lines and the accidental a modifier adds; a chord's notes, if
-  // one is armed.
-  ghost(geometry, armed, t) {
+  // ledger lines and the accidental a modifier adds, and `name` beside a
+  // note if given; a chord's notes (and its name), if one is armed.
+  ghost(geometry, armed, t, name = null) {
     this.clear()
     const g = ghostGroup(t.system.y)
     const x = t.ghostX
@@ -96,12 +106,14 @@ export class Overlay {
     }
 
     g.appendChild(glyph(armed.glyph, x, y))
+    if (name && !rest) g.appendChild(nameLabel(x, y, name))
     this.svg.appendChild(g)
   }
 
   // Dragged notes' heads where they would land (`targets`, in `system`),
-  // with their ledger lines and any accidental they'd have against the key.
-  draggedNotes(geometry, system, targets) {
+  // with their ledger lines and any accidental they'd have against the key;
+  // `named` (a target) gets its name beside it.
+  draggedNotes(geometry, system, targets, named = null) {
     this.clear()
     const g = ghostGroup(system.y)
 
@@ -110,6 +122,7 @@ export class Overlay {
       ledgerLines(g, geometry, t.staff, t.step, t.x)
       if (t.alter !== keyAlter(geometry.sf, t.step)) g.appendChild(glyph(ACCIDENTALS[t.alter], t.x - 1.3, y))
       g.appendChild(glyph(t.el.textContent, t.x, y))
+      if (named && t.id === named.id) g.appendChild(nameLabel(t.x, y, named.name))
     }
     this.svg.appendChild(g)
   }

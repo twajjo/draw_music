@@ -60,6 +60,13 @@ defmodule DrawMusicWeb.Shortcuts do
     },
     %Shortcut{
       group: "Placing",
+      mouse: "hover or drag a note",
+      modes: @edit,
+      action:
+        "Its name shows beside it, like G♯4 (middle C is C4), while you place it or drag it. Turn this off in Preferences › Reading aids"
+    },
+    %Shortcut{
+      group: "Placing",
       mouse: "click in the gap before a note or rest",
       modes: @edit,
       action:

@@ -12,8 +12,9 @@
 //
 // Server state arrives as data attributes on the hook element:
 // data-geometry (EditorGeometry.encode), data-armed (EditorGeometry.armed),
-// data-insert (Insert mode), data-mode, data-dirty, data-loading and
-// data-layout. Playback is Editor.Transport's: it says where it is with
+// data-insert (Insert mode), data-mode, data-dirty, data-loading,
+// data-layout and data-name-notes (the user's preference: name the note
+// being placed or dragged). Playback is Editor.Transport's: it says where it is with
 // "score:playhead" and "score:play-start" window events, and the playhead
 // is drawn here (playhead_view.js).
 
@@ -21,10 +22,11 @@ import {sharedAudio} from "./audio"
 import {Band} from "./band"
 import {chordAt} from "./chord"
 import {setPageCursor} from "./cursor"
-import {locate, pitchOf} from "./geometry"
+import {keyAlter, locate, pitchOf} from "./geometry"
 import {eventTarget, onOpeningTempo, tempoKind} from "./hits"
 import {dialogOpen, keyId, typing} from "./keyboard"
 import {aimNoteDrag, dragTargets, dropParams, endNoteDrag, startNoteDrag, tempoDropAt} from "./note_drag"
+import {noteName} from "./note_name"
 import {Overlay} from "./overlay"
 import {PageGuard} from "./page_guard"
 import {modifierOf, placeParams, placementAt, tickAt} from "./placing"
@@ -99,6 +101,7 @@ export default {
     this.armed = JSON.parse(this.el.dataset.armed || "null")
     this.mode = this.el.dataset.mode || "edit"
     this.insert = this.el.dataset.insert === "true"
+    this.nameNotes = this.el.dataset.nameNotes === "true"
     this.el.classList.toggle("play-mode", this.mode === "play")
     this.overlay.setViewBox(this.score.dataset.viewBox)
     setPageCursor(this.el, this.armed && this.armed.glyph)
@@ -130,10 +133,11 @@ export default {
   hover(e) {
     const t = this.target(e)
     if (!t) return this.overlay.clear()
-    this.overlay.ghost(this.geometry, this.armed, t)
+    const alter = t.modifier ?? this.armed.alter
+    const name = this.nameNotes ? noteName(t.step, alter ?? keyAlter(this.geometry.sf, t.step)) : null
+    this.overlay.ghost(this.geometry, this.armed, t, name)
 
     if (!this.pressing || this.armed.kind === "rest") return
-    const alter = t.modifier ?? this.armed.alter
     const sound = `${t.staff}:${t.step}:${alter}`
     if (sound !== this.lastSound) {
       this.lastSound = sound
@@ -252,8 +256,15 @@ export default {
     const modifier = modifierOf(e)
     if (!aimNoteDrag(this.drag, this.geometry, this.overlay.toScore(e), modifier)) return
     const targets = dragTargets(this.drag)
-    this.overlay.draggedNotes(this.geometry, this.drag.anchor.system, targets)
+    this.overlay.draggedNotes(this.geometry, this.drag.anchor.system, targets, this.namedTarget(targets))
     this.play(targets.map((t) => pitchOf(t.step, t.alter, this.geometry.sf)))
+  },
+
+  // With the preference on, the dragged note under the pointer is named.
+  namedTarget(targets) {
+    if (!this.nameNotes) return null
+    const t = targets.find((target) => target.id === this.drag.anchor.id)
+    return {id: t.id, name: noteName(t.step, t.alter)}
   },
 
   // Lands the dragged notes. Let go where it started, the drag is a click.

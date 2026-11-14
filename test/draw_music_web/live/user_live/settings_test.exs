@@ -228,6 +228,23 @@ defmodule DrawMusicWeb.UserLive.SettingsTest do
       assert user.score_layout == :page
     end
 
+    test "naming the note being placed or dragged is on until turned off",
+         %{conn: conn, user: user} do
+      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+      assert has_element?(lv, "#settings-name-notes-input[checked]")
+
+      lv |> element("#settings-name-notes") |> render_change(%{"value" => "false"})
+
+      assert Accounts.get_user!(user.id).name_notes == false
+      refute has_element?(lv, "#settings-name-notes-input[checked]")
+    end
+
+    test "the page and the account menu call it Preferences", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+      assert has_element?(lv, "h1", "Preferences")
+      assert has_element?(lv, "#account-menu-settings", "Preferences")
+    end
+
     test "a custom color too dark to read on black is refused", %{conn: conn, user: user} do
       {:ok, lv, _html} = live(conn, ~p"/users/settings")
 
