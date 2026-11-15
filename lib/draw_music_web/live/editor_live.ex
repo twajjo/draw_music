@@ -50,6 +50,7 @@ defmodule DrawMusicWeb.EditorLive do
     LayoutToggle,
     PlaybackPayload,
     PreferenceSwitch,
+    ReadingAids,
     ScoreSvg,
     Shortcuts,
     TempoTarget,
@@ -462,11 +463,18 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign_layout()}
   end
 
-  # Another preference, from the Preferences panel: the editor follows it
-  # (the ink and the reading aids are read from the user when drawn).
-  def handle_info({component, {:updated, user}}, socket)
-      when component in [InkPicker, PreferenceSwitch] do
+  # Another preference, from the Preferences panel: the editor follows it.
+  # The ink and the placing aid are read from the user when drawn; the staff
+  # letters are part of the pieces, so those are drawn again (not engraved).
+  def handle_info({InkPicker, {:updated, user}}, socket) do
     {:noreply, assign(socket, :current_scope, %{socket.assigns.current_scope | user: user})}
+  end
+
+  def handle_info({PreferenceSwitch, {:updated, user}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:current_scope, %{socket.assigns.current_scope | user: user})
+     |> assign_pieces()}
   end
 
   defp load(:new, _scope, _params) do
@@ -931,9 +939,16 @@ defmodule DrawMusicWeb.EditorLive do
     # and only the pieces an edit changes are sent again.
     socket
     |> assign(:engraved, engraved)
-    |> assign(:pieces, ScoreSvg.pieces(engraved, socket.assigns.current_scope.user.score_layout))
+    |> assign_pieces()
     |> assign(:geometry_json, Jason.encode!(EditorGeometry.encode(engraved, ctx)))
     |> assign(:score_loading?, loading?)
+  end
+
+  # The pieces drawn from the engraving, with the user's reading aids (only
+  # here: the export draws the engraving without them).
+  defp assign_pieces(socket) do
+    %{engraved: engraved, current_scope: %{user: user}} = socket.assigns
+    assign(socket, :pieces, ScoreSvg.pieces(ReadingAids.add(engraved, user), user.score_layout))
   end
 
   defp export_path(version, extension) do

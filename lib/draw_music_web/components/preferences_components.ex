@@ -102,6 +102,14 @@ defmodule DrawMusicWeb.PreferencesComponents do
         label="Name the note being placed or moved"
         hint="Shows its name, like G♯, beside the note while you place it, drag it or move it with ↑/↓"
       />
+      <.live_component
+        module={PreferenceSwitch}
+        id="settings-letter-staves"
+        scope={@scope}
+        field={:letter_staves}
+        label="Letter the staff lines and spaces"
+        hint="Tiny letters at the start of each line of music: E G B D F and F A C E on the treble staff, G B D F A and A C E G on the bass, and middle C. Never in downloads"
+      />
     </section>
     """
   end

@@ -46,7 +46,11 @@ Three small PRs, each merged before the next.
   `/help`, and tests.
 
 ## R2: two more preferences, both **off** by default
-Two separate preferences on the Preferences page, each on or off on its own:
+Two separate preferences on the Preferences page, each on or off on its own.
+Built as two PRs: **R2a**, the staff letters (drawn by `ReadingAids` as
+`ReadingAid` labels in the editor's pieces, in a margin widened from 1 to 3
+staff spaces; the export has its own margins and never gets them), and
+**R2b**, every note named.
 - **"Letter the staff lines and spaces"**: tiny letters at the start of each
   line of music:
   - each staff's spaces (treble F A C E, bass A C E G);

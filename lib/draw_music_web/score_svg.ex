@@ -11,7 +11,7 @@ defmodule DrawMusicWeb.ScoreSvg do
   """
 
   alias DrawMusic.Engraving.{Beam, Brace, Engraved, Glyph, Line, Smufl, System, TempoMark, Tie}
-  alias DrawMusicWeb.ScorePiece
+  alias DrawMusicWeb.{ReadingAid, ScorePiece}
 
   # SMuFL fonts are scaled so that one em is four staff spaces.
   @font_size 4
@@ -28,8 +28,12 @@ defmodule DrawMusicWeb.ScoreSvg do
   @tie_rise 0.2
   @tie_min_height 0.6
   @tie_max_height 1.8
-  # Space left and right of the systems, in staff spaces.
-  @padding 1
+  # Space left and right of the systems in the editor, in staff spaces: room
+  # on the left for the staff letters (a reading aid) before the brace. The
+  # export sets its own margins.
+  @padding 3
+  # Reading aids' letters (staff spaces).
+  @aid_font_size 0.8
   # Strip layout is cut into pieces of this many bars.
   @strip_bars 16
   # Decimal places kept in SVG numbers.
@@ -137,6 +141,7 @@ defmodule DrawMusicWeb.ScoreSvg do
   # (and clipping) its part.
   defp x_span(%Glyph{x: x}), do: {x, x}
   defp x_span(%Brace{x: x}), do: {x, x}
+  defp x_span(%ReadingAid{x: x}), do: {x, x}
 
   defp x_span(%TempoMark{} = mark) do
     {mark.x, (mark.line_to || mark.x + mark.width) + @tempo_end_room}
@@ -207,6 +212,23 @@ defmodule DrawMusicWeb.ScoreSvg do
       attr("y", n(glyph.y)),
       ">",
       Smufl.char(glyph.glyph),
+      "</text>"
+    ]
+  end
+
+  # A reading aid's letter (editor only), centred on its point.
+  defp item(%ReadingAid{} = aid, _selection, _range) do
+    [
+      "<text",
+      attr("class", "reading-aid"),
+      attr("data-aid", aid.kind),
+      attr("x", n(aid.x)),
+      attr("y", n(aid.y + @aid_font_size / 3)),
+      attr("font-family", "sans-serif"),
+      attr("font-size", @aid_font_size),
+      attr("text-anchor", "middle"),
+      ">",
+      aid.text,
       "</text>"
     ]
   end
