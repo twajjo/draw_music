@@ -67,6 +67,13 @@ defmodule DrawMusicWeb.Shortcuts do
     },
     %Shortcut{
       group: "Placing",
+      mouse: "the letters left of the staves",
+      modes: @edit,
+      action:
+        "Name each staff's lines (treble E G B D F, bass G B D F A) and spaces (F A C E, A C E G), and middle C, at the start of each line of music. Turn them on in Preferences › Reading aids; they never appear in downloads"
+    },
+    %Shortcut{
+      group: "Placing",
       mouse: "click in the gap before a note or rest",
       modes: @edit,
       action:

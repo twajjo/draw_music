@@ -150,6 +150,13 @@
   fill: var(--score-selection);
 }
 
+/* Reading aids' letters (the editor only): in the selection color, like the
+   name beside a note being placed, and never picked up by the pointer. */
+#score .reading-aid {
+  fill: var(--score-selection);
+  pointer-events: none;
+}
+
 /* What a rubber band being dragged would select. */
 #score .banded {
   fill: var(--score-selection);
