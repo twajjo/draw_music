@@ -316,7 +316,10 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
      - **not recommended:** nested LiveViews, because everything shares one `Session`.
    - **Reviewable PRs** (from the Phase 5 review, added 2026-11-04): Phase 5's PR had 104 files, and Phases 6 and 7 had 53 and 57. All of these are too many. From Phase 8 on, each PR is one piece of functionality of about 10 files at most, merged before the next is opened. Phase 8 is 24 such PRs; the list is in `plans/phase-8-midi-input.md`.
    - **Fix: dropdowns that won't close** (reported 2026-11-05): the Save menu stays open when you click away, so you can't leave it without saving. The Chords menu and the library dropdown have the same problem, because all three are bare `<details>` elements. A shared `<.dropdown>` component will close them on a click outside, on Escape and on choosing an item. It's the first Phase 8 PR (8.1).
-   - **Settings in the top bar, Account in the menu** (requested 2026-11-06): a prominent **Settings** button next to New and Compositions opens a new `/settings` page for the score display preferences. The account menu's "Settings" becomes **Account** (email and password only). The interface theme toggle stays in the account menu. It's PR 8.2.
+   - **Preferences and Manage account** (requested 2026-11-06 as "Settings in the top bar"; **done differently, #31 and #35–#37, 2026-11-14**). "Settings" are a piece's own (in the editor); "Preferences" are the user's. The account menu holds both, and there is no top-bar button:
+     - **Preferences:** in the editor, a panel over the score (`?panel=preferences`, read in `handle_params`), so unsaved work stays; elsewhere, its own page, `/users/preferences`, needing no recent log-in. Appearance, score display and reading aids.
+     - **Manage account:** `/users/settings`, "Manage Account Login": email and password only, behind re-authentication.
+     - Leaving the editor with unsaved changes asks in a dialog that says they will be lost.
    - **Score paper separate from the interface theme** (requested 2026-11-06): the score paper (black on white, or colour on black) and the interface theme are two unrelated settings, with no "Follow theme" option. The user sets a default (`users.score_paper`, Light by default) on the Settings page, and a composition can override it in Details (`compositions.score_paper`, nil = the user's default). The selection and playhead colours go with the paper; exports stay black on white. These are PRs 8.3 (the default) and 8.4 (the override); the details are in `plans/phase-8-midi-input.md`.
    - **Save in the top bar** (requested 2026-11-06): Save and its dropdown move from the palette to the header's menu bar, through a `:menu_bar` slot in `Layouts.app`. It's PR 8.5, after the dropdown fix.
    - **Import from the top bar** (requested 2026-11-06): Import .mid is reachable from everywhere through an **Import** link in the header, which opens the existing dialog at `/compositions/import`. It's PR 8.6.
@@ -336,12 +339,11 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
     - rendering: the chord lane and fret diagrams in `ScoreComponents` and the SVG export, plus the layout's headroom;
     - editor: catalog auto-symbol toggle, Name chord, typed entry, voicing stepper, and the display setting;
     - MIDI text-event export and import.
-11. **Scoped insert** (added 2026-10-25; not started):
+11. **Scoped insert** (added 2026-10-25; **mostly replaced by measure locks**, planned 2026-11-14 in `plans/measure-locks.md`, to be built in Phase 8 after 11b):
     - An insert normally pushes everything after it, through to the end of the piece.
-    - With a scope chosen (a rubber-band range or a measure), an insert inside it shifts only the items within that block or section. Music outside the scope stays put.
-    - Still to decide:
-      - what happens to items pushed past the scope's end: dropped, or refused;
-      - whether a scope's trailing rests absorb the push, the way the piece's trailing filler rests do.
+    - **Measure locks** give the scope as a run of locked measures (a lock beside each measure's + and −). Inside the run, time-shifting edits move only that staff's music, and only within the run; music outside stays put. The lock lasts for the editing session only.
+    - **Decided:** music pushed past the run's end is **refused** (the default) or **dropped**, chosen by right-clicking a lock.
+    - **What's left of this phase:** a scope made from a rubber-band range rather than whole measures, if still wanted once locks are in use.
 12. **User guide** (added 2026-10-23; the final phase, after every other phase and feature):
     - An in-app `/guide` of task-based pages, written in Markdown (`priv/guide/*.md`) and rendered with an off-the-shelf library (Earmark or MDEx).
     - Linked from the footer, and from each cheat-sheet entry and the editor's **?** dialog ("more").
