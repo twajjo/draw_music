@@ -16,6 +16,14 @@ defmodule DrawMusicWeb.CreditsLiveTest do
            )
   end
 
+  test "names the author, with their email, and the help of Claude" do
+    {:ok, view, _html} = live(build_conn(), ~p"/credits")
+
+    assert has_element?(view, "#authorship", "Jeff Osborn")
+    assert has_element?(view, "#author-email[href='mailto:twajjo@geekware.com']")
+    assert has_element?(view, "#built-with", "Claude Opus 5.5")
+  end
+
   describe "signed in" do
     setup :register_and_log_in_user
 
