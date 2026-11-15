@@ -11,13 +11,18 @@ defmodule DrawMusicWeb.ReadingAids do
     staff's lines (treble E G B D F, bass G B D F A) and spaces (treble F A C
     E, bass A C E G) in two small columns left of the staves, and middle C on
     its ledger line below the treble and above the bass.
+  - `name_notes`: each selected note's name beside its head: its letter and
+    accidental (G♯, B♭), with ♮ only where the score writes a natural. Every
+    note is named, but drawn only while it is selected (`ReadingAid` `shown:
+    :when_selected`), so selecting needs no new aids.
   """
 
   alias DrawMusic.Accounts.User
-  alias DrawMusic.Engraving.{Engraved, Staff, System}
+  alias DrawMusic.Engraving.{Engraved, Glyph, Staff, System}
   alias DrawMusicWeb.ReadingAid
 
   @letters ~w(C D E F G A B)
+  @signs %{-2 => "𝄫", -1 => "♭", 1 => "♯", 2 => "𝄪"}
   # Middle C's step.
   @middle_c 28
   # The columns' x, left of the brace (at 0), within the editor's margin:
@@ -25,20 +30,54 @@ defmodule DrawMusicWeb.ReadingAids do
   @line_x -2.3
   @space_x -1.3
   @middle_c_x -1.8
+  # A note's name is centred this far right of its head's left edge (staff
+  # spaces), clear of the head.
+  @name_x 1.9
 
   @doc "The engraving with the user's reading aids added to its systems."
   @spec add(Engraved.t(), User.t()) :: Engraved.t()
-  def add(%Engraved{systems: systems} = engraved, %User{letter_staves: true}) do
-    %{engraved | systems: Enum.map(systems, &with_staff_letters/1)}
+  def add(%Engraved{systems: systems} = engraved, %User{} = user) do
+    %{engraved | systems: Enum.map(systems, &with_aids(&1, user))}
   end
 
-  def add(%Engraved{} = engraved, _user), do: engraved
+  @doc """
+  The names of the notes among a system's `items`, beside their heads, in the
+  system's coordinates, each drawn when `shown` says.
+  """
+  @spec note_names([struct()], :always | :when_selected) :: [ReadingAid.t()]
+  def note_names(items, shown) do
+    for %Glyph{role: :notehead, staff: staff} = head <- items, staff != nil do
+      step = Staff.top_step(staff) - round((head.y - Staff.top(staff)) * 2)
+
+      %ReadingAid{
+        x: head.x + @name_x,
+        y: head.y,
+        text: name(step, head),
+        kind: :note,
+        note_id: head.id,
+        shown: shown
+      }
+    end
+  end
 
   @doc "The staff letters for one line of music, in its system's coordinates."
   @spec staff_letters() :: [ReadingAid.t()]
   def staff_letters do
     Enum.flat_map([:treble, :bass], &letters_of/1) ++ middle_c()
   end
+
+  defp aids(%System{items: items}, user) do
+    letters(user.letter_staves) ++ names(user.name_notes, items)
+  end
+
+  # Steps an even distance from the top line are lines; the others, spaces.
+  defp column(0), do: {:line, @line_x}
+  defp column(1), do: {:space, @space_x}
+
+  defp letter(step), do: Enum.at(@letters, Integer.mod(step, 7))
+
+  defp letters(true = _letter_staves?), do: staff_letters()
+  defp letters(false), do: []
 
   # A staff's five lines and four spaces: from its top line down, a line on
   # every other step.
@@ -51,10 +90,6 @@ defmodule DrawMusicWeb.ReadingAids do
     end
   end
 
-  # Steps an even distance from the top line are lines; the others, spaces.
-  defp column(0), do: {:line, @line_x}
-  defp column(1), do: {:space, @space_x}
-
   # Middle C as each staff writes it: a ledger line below the treble, one
   # above the bass.
   defp middle_c do
@@ -63,9 +98,15 @@ defmodule DrawMusicWeb.ReadingAids do
     end
   end
 
-  defp letter(step), do: Enum.at(@letters, Integer.mod(step, 7))
+  # Sharp or flat as it sounds; a natural only where the score writes one.
+  defp name(step, %Glyph{alter: 0, sign: 0}), do: letter(step) <> "♮"
+  defp name(step, %Glyph{alter: alter}) when alter in [nil, 0], do: letter(step)
+  defp name(step, %Glyph{alter: alter}), do: letter(step) <> Map.fetch!(@signs, alter)
 
-  defp with_staff_letters(%System{items: items} = system) do
-    %{system | items: items ++ staff_letters()}
+  defp names(true = _name_notes?, items), do: note_names(items, :when_selected)
+  defp names(false, _items), do: []
+
+  defp with_aids(%System{items: items} = system, user) do
+    %{system | items: items ++ aids(system, user)}
   end
 end

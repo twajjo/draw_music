@@ -50,17 +50,24 @@ Two separate preferences on the Preferences page, each on or off on its own.
 Built as two PRs: **R2a**, the staff letters (drawn by `ReadingAids` as
 `ReadingAid` labels in the editor's pieces, in a margin widened from 1 to 3
 staff spaces; the export has its own margins and never gets them), and
-**R2b**, every note named.
+note names in two more PRs (changed after review: names belong to the
+existing "name notes" preference, with a second toggle for when they show):
+- **R2b**, selected notes named: with "name notes" on, each selected note
+  (one, a chord or a range) is named beside its head, whether just selected
+  or moved with ↑/↓. The server draws them (`ReadingAid` `shown:
+  :when_selected`, drawn only while the note is selected), so the arrow
+  keys' JS labels went; ♮ follows the engraving's written `sign`.
+- **R2c**, when the names appear: a second toggle under "name notes",
+  "While editing and placing" or "At all times" (`users.name_notes_always`),
+  locked while "name notes" is off. At all times, every note is named.
 - **"Letter the staff lines and spaces"**: tiny letters at the start of each
   line of music:
   - each staff's spaces (treble F A C E, bass A C E G);
   - its lines (treble E G B D F, bass G B D F A);
   - middle C marked between the staves.
-- **"Name every note"**: a tiny letter name beside each notehead (with its
-  accidental).
 - **What it isn't part of:** the downloaded SVG, the MIDI or the score itself.
   It's a way of viewing, not part of the music.
-- Files: migration (`users.letter_staves`, `users.name_all_notes`),
+- Files: migrations (`users.letter_staves`, `users.name_notes_always`),
   `Accounts.User`, the Preferences page, the engraving or `ScoreSvg` (the
   letters, drawn only in the editor), `/help`, tests.
 

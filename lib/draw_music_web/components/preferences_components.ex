@@ -99,8 +99,8 @@ defmodule DrawMusicWeb.PreferencesComponents do
         id="settings-name-notes"
         scope={@scope}
         field={:name_notes}
-        label="Name the note being placed or moved"
-        hint="Shows its name, like G♯, beside the note while you place it, drag it or move it with ↑/↓"
+        label="Name the notes being placed, moved or selected"
+        hint="Shows a note's name, like G♯, beside it while you place it, drag it or have it selected (a range too). Never in downloads"
       />
       <.live_component
         module={PreferenceSwitch}

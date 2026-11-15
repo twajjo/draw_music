@@ -27,7 +27,7 @@ import {eventTarget, onOpeningTempo, tempoKind} from "./hits"
 import {dialogOpen, keyId, typing} from "./keyboard"
 import {aimNoteDrag, dragTargets, dropParams, endNoteDrag, startNoteDrag, tempoDropAt} from "./note_drag"
 import {alterInEffect} from "./in_effect"
-import {movedNotes} from "./moved_notes"
+import {movedMidis} from "./moved_notes"
 import {noteName} from "./note_name"
 import {Overlay} from "./overlay"
 import {PageGuard} from "./page_guard"
@@ -376,7 +376,7 @@ export default {
 
     if (ARROWS[e.key]) {
       const by = e.shiftKey ? "octave" : ctrl ? "semitone" : "step"
-      // Moved up or down, the notes sound (and are named) once redrawn.
+      // Moved up or down, the notes sound once redrawn.
       this.announceMove = e.key === "ArrowUp" || e.key === "ArrowDown"
       return send("move", {dir: ARROWS[e.key], by})
     }
@@ -415,12 +415,11 @@ export default {
 
   // The tone for placing and dragging, on the playback instrument: one
   // MIDI number, or a chord's, sounded together.
-  // The selection was just moved up or down: sound it, and name its notes.
+  // The selection was just moved up or down: sound it.
   announceMoved() {
     this.announceMove = false
-    const {midis, labels} = movedNotes(this.score, this.geometry, this.nameNotes)
+    const midis = movedMidis(this.score, this.geometry)
     if (midis.length > 0) this.play(midis)
-    if (labels.length > 0) this.overlay.names(labels)
   },
 
   play(midis) {

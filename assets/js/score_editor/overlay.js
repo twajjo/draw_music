@@ -144,13 +144,6 @@ export class Overlay {
     if (label) this.svg.appendChild(label)
   }
 
-  // Names beside notes on the score (`labels`: {system, x, y, name} each),
-  // until the next drawing or clear.
-  names(labels) {
-    this.clear()
-    for (const label of labels) this.svg.appendChild(nameLabel(label.system.y, label.x, label.y, label.name))
-  }
-
   // A dashed guide line, from a tie's start to the pointer.
   guide(x1, y1, x2, y2) {
     this.clear()
