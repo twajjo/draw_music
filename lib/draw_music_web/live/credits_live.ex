@@ -69,6 +69,22 @@ defmodule DrawMusicWeb.CreditsLive do
     }
   ]
 
+  @doc "Who made DrawMusic, and with what help."
+  @spec authorship(map()) :: Phoenix.LiveView.Rendered.t()
+  def authorship(assigns) do
+    ~H"""
+    <section id="authorship" class="space-y-1 rounded-box border border-base-300 p-4">
+      <p class="font-semibold">DrawMusic by Jeff Osborn</p>
+      <p class="text-sm">
+        <a id="author-email" href="mailto:twajjo@geekware.com" class="link">twajjo@geekware.com</a>
+      </p>
+      <p id="built-with" class="text-sm opacity-80">
+        Built with the assistance of Claude (Claude Opus 5.5, by Anthropic)
+      </p>
+    </section>
+    """
+  end
+
   @doc "Every credit, in the order the page lists them."
   @spec credits() :: [Credit.t()]
   def credits, do: @credits
@@ -78,8 +94,11 @@ defmodule DrawMusicWeb.CreditsLive do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <h1 class="text-2xl font-semibold">Credits</h1>
+      <.authorship />
       <p class="opacity-80">
-        DrawMusic is built on the work of these people and projects. Thank you.
+        DrawMusic is built on the work of these people and projects. Without their
+        generous contributions and the power of the open source community, works like
+        this would be impossible. I stand on the shoulders of giants. Thank you.
       </p>
 
       <ul class="divide-y divide-base-300">
