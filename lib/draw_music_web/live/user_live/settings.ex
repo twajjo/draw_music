@@ -4,6 +4,8 @@ defmodule DrawMusicWeb.UserLive.Settings do
   on_mount {DrawMusicWeb.UserAuth, :require_sudo_mode}
 
   alias DrawMusic.Accounts
+  import DrawMusicWeb.PreferencesComponents, only: [preference_sections: 1]
+
   alias DrawMusicWeb.{InkPicker, LayoutToggle, PreferenceSwitch}
 
   @impl true
@@ -71,49 +73,7 @@ defmodule DrawMusicWeb.UserLive.Settings do
 
       <div class="divider" />
 
-      <section id="appearance" class="space-y-4">
-        <.header>
-          Appearance
-          <:subtitle>
-            Follow your system, or always use light or dark (saved in this browser)
-          </:subtitle>
-        </.header>
-        <Layouts.theme_toggle />
-      </section>
-
-      <div class="divider" />
-
-      <section id="score-display" class="space-y-4">
-        <.header>
-          Score display
-          <:subtitle>How scores are laid out, and the notation color in dark mode</:subtitle>
-        </.header>
-        <div class="space-y-2">
-          <p class="text-sm font-medium">Layout</p>
-          <.live_component module={LayoutToggle} id="settings-layout" scope={@current_scope} />
-        </div>
-        <div class="space-y-2">
-          <p class="text-sm font-medium">Dark mode ink</p>
-          <.live_component module={InkPicker} id="settings-ink" scope={@current_scope} />
-        </div>
-      </section>
-
-      <div class="divider" />
-
-      <section id="reading-aids" class="space-y-4">
-        <.header>
-          Reading aids
-          <:subtitle>Help with reading music, for when the notes aren't second nature yet</:subtitle>
-        </.header>
-        <.live_component
-          module={PreferenceSwitch}
-          id="settings-name-notes"
-          scope={@current_scope}
-          field={:name_notes}
-          label="Name the note being placed or dragged"
-          hint="Shows its name, like G♯4, beside the note while you place it or drag it"
-        />
-      </section>
+      <.preference_sections scope={@current_scope} />
     </Layouts.app>
     """
   end

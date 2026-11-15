@@ -27,6 +27,8 @@ export class PageGuard {
     this.onLinkClick = (e) => {
       const link = e.target.closest && e.target.closest("a[href]")
       if (!link || !this.dirty() || link.hasAttribute("download")) return
+      // A patch stays in the editor (e.g. closing the Preferences panel).
+      if (link.dataset.phxLink === "patch") return
       if (!confirm(QUESTION)) {
         e.preventDefault()
         e.stopImmediatePropagation()
