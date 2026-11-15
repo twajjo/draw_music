@@ -12,10 +12,10 @@ defmodule DrawMusicWeb.EditorModeTest do
     view |> element("#palette") |> render_hook("arm", %{"kind" => "note", "value" => "quarter"})
     place(view, 0, 0, "C4")
     place(view, 0, 960, "G4")
-    render_hook(view, "disarm", %{})
+    canvas_hook(view, "disarm", %{})
 
     [c | _] = hd(session_of(view).score.measures).notes
-    render_hook(view, "open_menu", %{"id" => c.id, "x" => 0, "y" => 0})
+    canvas_hook(view, "open_menu", %{"id" => c.id, "x" => 0, "y" => 0})
     view |> element("#menu-add-third-above") |> render_click()
 
     [c, e, g] =
@@ -33,7 +33,7 @@ defmodule DrawMusicWeb.EditorModeTest do
   defp play_mode(view), do: view |> element("#palette-mode-play") |> render_click()
 
   test "toggle_mode switches, disarms, and keeps the selection", %{view: view, g: g} do
-    render_hook(view, "select", %{"ids" => [g], "add" => false})
+    canvas_hook(view, "select", %{"ids" => [g], "add" => false})
     play_mode(view)
 
     assert assigns(view).armed == nil
@@ -47,17 +47,17 @@ defmodule DrawMusicWeb.EditorModeTest do
 
   test "entering Play keeps a range to play; entering Edit narrows it to its first note",
        %{view: view, c: c, e: e, g: g} do
-    render_hook(view, "select", %{"ids" => [c, g], "add" => false})
+    canvas_hook(view, "select", %{"ids" => [c, g], "add" => false})
     play_mode(view)
     assert session_of(view).selection == MapSet.new([c, g])
 
-    render_hook(view, "select", %{"ids" => [e, g], "add" => false})
+    canvas_hook(view, "select", %{"ids" => [e, g], "add" => false})
     view |> element("#palette") |> render_hook("toggle_mode", %{})
     assert MapSet.to_list(session_of(view).selection) == [e]
   end
 
   test "editing events change nothing in play mode", %{view: view, c: c, g: g} do
-    render_hook(view, "select", %{"ids" => [g], "add" => false})
+    canvas_hook(view, "select", %{"ids" => [g], "add" => false})
     render_hook(view, "copy", %{})
     play_mode(view)
     before = {notes_of(view), session_of(view).undo, assigns(view).armed, assigns(view).insert?}
@@ -110,7 +110,7 @@ defmodule DrawMusicWeb.EditorModeTest do
 
   test "audition pushes the chord and selects the note", %{view: view, e: e} do
     play_mode(view)
-    render_hook(view, "audition", %{"id" => e})
+    canvas_hook(view, "audition", %{"id" => e})
 
     assert_push_event(view, "audition", %{events: events})
     assert events |> Enum.map(& &1.midi) |> Enum.sort() == [60, 64]
@@ -118,7 +118,7 @@ defmodule DrawMusicWeb.EditorModeTest do
   end
 
   test "audition does nothing in edit mode", %{view: view, e: e} do
-    render_hook(view, "audition", %{"id" => e})
+    canvas_hook(view, "audition", %{"id" => e})
     refute_push_event(view, "audition", _payload)
   end
 
@@ -137,7 +137,7 @@ defmodule DrawMusicWeb.EditorModeTest do
 
   test "score settings can't be changed in play mode", %{view: view} do
     play_mode(view)
-    render_hook(view, "open_settings", %{})
+    canvas_hook(view, "open_settings", %{})
     refute has_element?(view, "#settings-form")
 
     # As if a settings dialog opened in Edit mode reported after the switch.

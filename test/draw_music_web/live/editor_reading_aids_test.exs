@@ -42,14 +42,14 @@ defmodule DrawMusicWeb.EditorReadingAidsTest do
     place(view, 0, 960, "E4")
     [c, e] = note_ids(view)
 
-    render_hook(view, "clear_selection", %{})
+    canvas_hook(view, "clear_selection", %{})
     refute has_element?(view, "#score .reading-aid[data-aid=note]")
 
-    render_hook(view, "select", %{"ids" => [c, e], "add" => false})
+    canvas_hook(view, "select", %{"ids" => [c, e], "add" => false})
     assert count(view, "#score .reading-aid[data-aid=note]") == 2
     assert has_element?(view, "#score .reading-aid[data-aid=note]", "E")
 
-    render_hook(view, "select", %{"ids" => [c], "add" => false})
+    canvas_hook(view, "select", %{"ids" => [c], "add" => false})
     assert count(view, "#score .reading-aid[data-aid=note]") == 1
   end
 
@@ -61,7 +61,7 @@ defmodule DrawMusicWeb.EditorReadingAidsTest do
 
     view |> element("#account-menu-settings") |> render_click()
     view |> element("#settings-show-note-names") |> render_change(%{"value" => "false"})
-    render_hook(view, "select", %{"ids" => note_ids(view), "add" => false})
+    canvas_hook(view, "select", %{"ids" => note_ids(view), "add" => false})
 
     refute has_element?(view, "#score .reading-aid[data-aid=note]")
   end
@@ -72,7 +72,7 @@ defmodule DrawMusicWeb.EditorReadingAidsTest do
     view |> element("#palette-quarter") |> render_click()
     place(view, 0, 0, "C4")
     place(view, 0, 960, "E4")
-    render_hook(view, "clear_selection", %{})
+    canvas_hook(view, "clear_selection", %{})
 
     view |> element("#account-menu-settings") |> render_click()
     view |> element("#settings-note-names-in-edit-only") |> render_change(%{"value" => "false"})

@@ -28,6 +28,14 @@ defmodule DrawMusicWeb.EditorHelpers do
   end
 
   @doc """
+  Sends `event` from the score's hook to `Editor.ScoreCanvas`, which handles
+  selecting, the tempo marks, the right-click menu, audition and disarm.
+  """
+  def canvas_hook(view, event, params \\ %{}) do
+    view |> element("#score-editor") |> render_hook(event, params)
+  end
+
+  @doc """
   Places with the `place` hook event; `spn` like \"C4\".
   """
   def place(view, measure, offset, spn, opts \\ []) do

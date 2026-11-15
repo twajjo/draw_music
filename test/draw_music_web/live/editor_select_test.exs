@@ -14,7 +14,7 @@ defmodule DrawMusicWeb.EditorSelectTest do
     view |> element("#palette") |> render_hook("arm", %{"kind" => "note", "value" => "quarter"})
     place(view, 0, 0, "C4")
     place(view, 0, 960, "E4")
-    render_hook(view, "disarm", %{})
+    canvas_hook(view, "disarm", %{})
     %{view: view}
   end
 
@@ -27,10 +27,10 @@ defmodule DrawMusicWeb.EditorSelectTest do
   end
 
   defp select(view, ids, add \\ false),
-    do: render_hook(view, "select", %{"ids" => ids, "add" => add})
+    do: canvas_hook(view, "select", %{"ids" => ids, "add" => add})
 
   test "a time range selects everything in it, rests included", %{view: view} do
-    render_hook(view, "select_range", %{"from" => 0, "to" => 3840})
+    canvas_hook(view, "select_range", %{"from" => 0, "to" => 3840})
     assert count(view, "#score [id^='note-'].selected") == 2
     # The treble's half rest after the notes, and the bass's whole-bar rest.
     assert count(view, "#score [id^='rest-'].selected") == 2
@@ -40,10 +40,10 @@ defmodule DrawMusicWeb.EditorSelectTest do
        %{view: view} do
     ids = Enum.sort([id_at(view, 0), id_at(view, 960)])
 
-    render_hook(view, "preview_range", %{"from" => 0, "to" => 1920})
+    canvas_hook(view, "preview_range", %{"from" => 0, "to" => 1920})
     assert_reply(view, %{ids: forwards})
     # Backwards, from after the E4 to before the C4: the same notes.
-    render_hook(view, "preview_range", %{"from" => 1920, "to" => 0})
+    canvas_hook(view, "preview_range", %{"from" => 1920, "to" => 0})
     assert_reply(view, %{ids: backwards})
 
     assert Enum.sort(forwards) == ids
@@ -83,7 +83,7 @@ defmodule DrawMusicWeb.EditorSelectTest do
   end
 
   test "a range takes in a filler rest only if the rest ends inside it", %{view: view} do
-    render_hook(view, "select_range", %{"from" => 0, "to" => 1920})
+    canvas_hook(view, "select_range", %{"from" => 0, "to" => 1920})
     assert count(view, "#score [id^='note-'].selected") == 2
     refute has_element?(view, "#score [id^='rest-'].selected")
   end
@@ -131,7 +131,7 @@ defmodule DrawMusicWeb.EditorSelectTest do
   test "an octave move keeps a note's accidental", %{view: view} do
     view |> element("#palette") |> render_hook("arm", %{"kind" => "note", "value" => "quarter"})
     place(view, 0, 1920, "F#4", alter: true)
-    render_hook(view, "disarm", %{})
+    canvas_hook(view, "disarm", %{})
     select(view, [id_at(view, 1920)])
 
     render_hook(view, "move", %{"dir" => "up", "by" => "octave"})
@@ -149,10 +149,10 @@ defmodule DrawMusicWeb.EditorSelectTest do
 
   describe "selection menu" do
     setup %{view: view} do
-      render_hook(view, "select_range", %{"from" => 0, "to" => 3840})
+      canvas_hook(view, "select_range", %{"from" => 0, "to" => 3840})
       id = id_at(view, 0)
 
-      render_hook(view, "open_menu", %{
+      canvas_hook(view, "open_menu", %{
         "id" => id,
         "x" => 10,
         "y" => 10,
@@ -191,7 +191,7 @@ defmodule DrawMusicWeb.EditorSelectTest do
   end
 
   test "copy and paste duplicate at the given tick", %{view: view} do
-    render_hook(view, "select_range", %{"from" => 0, "to" => 3840})
+    canvas_hook(view, "select_range", %{"from" => 0, "to" => 3840})
     render_hook(view, "copy", %{})
     render_hook(view, "paste", %{"at" => 3840})
 
@@ -241,7 +241,7 @@ defmodule DrawMusicWeb.EditorSelectTest do
   test "a move outside the piano's range is refused", %{view: view} do
     view |> element("#palette") |> render_hook("arm", %{"kind" => "note", "value" => "quarter"})
     place(view, 0, 1920, "C8")
-    render_hook(view, "disarm", %{})
+    canvas_hook(view, "disarm", %{})
     select(view, [id_at(view, 1920)])
 
     render_hook(view, "move", %{"dir" => "up"})
