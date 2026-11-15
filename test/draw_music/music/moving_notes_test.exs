@@ -3,6 +3,7 @@ defmodule DrawMusic.Music.MovingNotesTest do
 
   import DrawMusic.MusicHelpers
 
+  alias DrawMusic.Engraving.Staff
   alias DrawMusic.Music.{Context, Duration, Editing, Score, StaffCrossing}
   alias DrawMusicWeb.EditorCommands
 
@@ -31,11 +32,21 @@ defmodule DrawMusic.Music.MovingNotesTest do
   end
 
   describe "StaffCrossing.staff_for/2" do
-    test "middle C (step 28) is the boundary, and stays where it is" do
-      assert StaffCrossing.staff_for(:bass, 29) == :treble
-      assert StaffCrossing.staff_for(:bass, 28) == :bass
-      assert StaffCrossing.staff_for(:treble, 27) == :bass
-      assert StaffCrossing.staff_for(:treble, 28) == :treble
+    test "each staff keeps its half of the gap: the bass up to B4, the treble down to D3" do
+      assert StaffCrossing.staff_for(:bass, 34) == :bass
+      assert StaffCrossing.staff_for(:bass, 35) == :treble
+      assert StaffCrossing.staff_for(:treble, 22) == :treble
+      assert StaffCrossing.staff_for(:treble, 21) == :bass
+    end
+
+    test "those are the steps at the middle of the engraved gap" do
+      half_gap = Staff.top(:bass) - Staff.height()
+      treble_bottom = Staff.top_step(:treble) - 2 * Staff.height()
+
+      assert StaffCrossing.staff_for(:treble, treble_bottom - half_gap) == :treble
+      assert StaffCrossing.staff_for(:treble, treble_bottom - half_gap - 1) == :bass
+      assert StaffCrossing.staff_for(:bass, Staff.top_step(:bass) + half_gap) == :bass
+      assert StaffCrossing.staff_for(:bass, Staff.top_step(:bass) + half_gap + 1) == :treble
     end
   end
 
@@ -73,7 +84,8 @@ defmodule DrawMusic.Music.MovingNotesTest do
     end
   end
 
-  describe "a note moved past middle C changes staff" do
+  describe "a note moved past its staff's half of the gap changes staff" do
+    # G3, a left-hand note on the bass staff (step 25).
     setup do
       {score, id} =
         note!(Score.new(), @ctx, 0, "G3", %{staff: :bass, offset: 0, value: :quarter, dots: 1})
@@ -81,23 +93,24 @@ defmodule DrawMusic.Music.MovingNotesTest do
       %{score: score, id: id}
     end
 
-    test "a bass note stays on the bass staff up to middle C", %{score: score, id: id} do
-      score = up(score, id, 3)
-      assert %{staff: :bass, step: 28} = note_of(score, id)
+    test "a left-hand note stays on the bass staff past middle C, up to B4",
+         %{score: score, id: id} do
+      assert %{staff: :bass, step: 29} = score |> up(id, 4) |> note_of(id)
+      assert %{staff: :bass, step: 34} = score |> up(id, 9) |> note_of(id)
     end
 
-    test "above middle C it is a treble note, and both staves' rests are redone",
+    test "past B4 it is a treble note, and both staves' rests are redone",
          %{score: score, id: id} do
-      score = up(score, id, 4)
+      score = up(score, id, 10)
 
-      assert %{staff: :treble, step: 29, dots: 1, offset: 0} = note_of(score, id)
+      assert %{staff: :treble, step: 35, dots: 1, offset: 0} = note_of(score, id)
       assert rests_on(score, :bass) == [{0, :whole}]
       assert rest_ticks(score, :treble) == @bar - 1440
     end
 
     test "a quarter then placed after it on the treble staff follows it",
          %{score: score, id: id} do
-      score = up(score, id, 4)
+      score = up(score, id, 10)
 
       {score, _quarter} =
         note!(score, @ctx, 0, "E4", %{staff: :treble, offset: 1440, value: :quarter})
@@ -107,21 +120,37 @@ defmodule DrawMusic.Music.MovingNotesTest do
       assert rest_ticks(score, :treble) == @bar - 1440 - 960
     end
 
-    test "a treble note moved below middle C goes to the bass staff" do
-      {score, id} = note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :half})
+    test "a right-hand note stays on the treble staff down to D3, then goes to the bass" do
+      {score, id} = note!(Score.new(), @ctx, 0, "F3", %{staff: :treble, offset: 0, value: :half})
 
-      {:ok, score} = Editing.move_steps(score, @ctx, [id], -1)
-      assert %{staff: :bass, step: 27} = note_of(score, id)
-      assert rests_on(score, :treble) == [{0, :whole}]
+      {:ok, kept} = Editing.move_steps(score, @ctx, [id], -2)
+      assert %{staff: :treble, step: 22} = note_of(kept, id)
+
+      {:ok, crossed} = Editing.move_steps(score, @ctx, [id], -3)
+      assert %{staff: :bass, step: 21} = note_of(crossed, id)
+      assert rests_on(crossed, :treble) == [{0, :whole}]
     end
 
-    test "by octave (Shift+↑) as well", %{score: score, id: id} do
-      {:ok, score} = Editing.transpose_interval(score, @ctx, [id], 7, 12)
-      assert %{staff: :treble} = note_of(score, id)
+    test "by octave (Shift+↑) as well: one octave stays, two cross", %{score: score, id: id} do
+      {:ok, one} = Editing.transpose_interval(score, @ctx, [id], 7, 12)
+      assert %{staff: :bass} = note_of(one, id)
+
+      {:ok, two} = Editing.transpose_interval(one, @ctx, [id], 7, 12)
+      assert %{staff: :treble} = note_of(two, id)
+    end
+
+    test "a chord moved together stays a chord" do
+      {score, g} = note!(Score.new(), @ctx, 0, "G3", %{staff: :bass, offset: 0, value: :quarter})
+      {score, b} = note!(score, @ctx, 0, "B3", %{staff: :bass, offset: 0, value: :quarter})
+
+      {:ok, score} = Editing.transpose_interval(score, @ctx, [g, b], 14, 24)
+
+      assert %{staff: :treble, voice: voice} = note_of(score, g)
+      assert %{staff: :treble, voice: ^voice} = note_of(score, b)
     end
   end
 
-  describe "on the other staff" do
+  describe "put on a staff on purpose (the menu)" do
     setup do
       {score, bass} =
         note!(Score.new(), @ctx, 0, "C3", %{staff: :bass, offset: 0, value: :quarter})
@@ -130,11 +159,11 @@ defmodule DrawMusic.Music.MovingNotesTest do
       %{score: score, bass: bass, treble: treble}
     end
 
-    test "it joins a note of the same length there as a chord",
+    test "a note keeps its pitch and joins a note of the same length there as a chord",
          %{score: score, bass: bass, treble: treble} do
-      {:ok, score} = Editing.move_steps(score, @ctx, [treble], -1)
+      {:ok, score} = Editing.put_on_staff(score, @ctx, [treble], :bass)
 
-      assert %{staff: :bass, voice: voice} = note_of(score, treble)
+      assert %{staff: :bass, step: 28, voice: voice} = note_of(score, treble)
       assert note_of(score, bass).voice == voice
     end
 
@@ -142,27 +171,27 @@ defmodule DrawMusic.Music.MovingNotesTest do
       {score, bass} = note!(Score.new(), @ctx, 0, "C3", %{staff: :bass, offset: 0, value: :half})
       {score, treble} = note!(score, @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
 
-      {:ok, score} = Editing.move_steps(score, @ctx, [treble], -1)
+      {:ok, score} = Editing.put_on_staff(score, @ctx, [treble], :bass)
 
       assert %{staff: :bass, voice: 1} = note_of(score, bass)
       assert %{staff: :bass, voice: 2} = note_of(score, treble)
     end
 
-    test "a chord moved together stays a chord" do
-      {score, g} = note!(Score.new(), @ctx, 0, "G3", %{staff: :bass, offset: 0, value: :quarter})
-      {score, b} = note!(score, @ctx, 0, "B3", %{staff: :bass, offset: 0, value: :quarter})
+    test "however far from it, until the next move takes it back", %{score: score} do
+      {score, e5} = note!(score, @ctx, 0, "E5", %{staff: :treble, offset: 960, value: :quarter})
 
-      {:ok, score} = Editing.transpose_interval(score, @ctx, [g, b], 7, 12)
+      {:ok, score} = Editing.put_on_staff(score, @ctx, [e5], :bass)
+      assert %{staff: :bass, step: 37} = note_of(score, e5)
 
-      assert %{staff: :treble, voice: voice} = note_of(score, g)
-      assert %{staff: :treble, voice: ^voice} = note_of(score, b)
+      {:ok, score} = Editing.move_steps(score, @ctx, [e5], 1)
+      assert %{staff: :treble, step: 38} = note_of(score, e5)
     end
 
     test "the same pitch already in the chord there is refused" do
       {score, _b} = note!(Score.new(), @ctx, 0, "B3", %{staff: :bass, offset: 0, value: :quarter})
-      {score, d} = note!(score, @ctx, 0, "D4", %{staff: :treble, offset: 0, value: :quarter})
+      {score, b} = note!(score, @ctx, 0, "B3", %{staff: :treble, offset: 0, value: :quarter})
 
-      assert Editing.move_steps(score, @ctx, [d], -2) == {:error, :duplicate}
+      assert Editing.put_on_staff(score, @ctx, [b], :bass) == {:error, :duplicate}
     end
   end
 end

@@ -33,7 +33,7 @@ export function startNoteDrag(scoreEl, geometry, hit) {
   const anchor = notes.find((note) => note.id === hit.id)
   elements.forEach((el) => el.classList.add("dragging"))
   // delta starts unset, so the first move draws and sounds the preview.
-  return {notes, anchor, single: notes.length === 1, delta: null, staff: anchor.staff, modifier: null, sf: geometry.sf}
+  return {notes, anchor, single: notes.length === 1, delta: null, staff: anchor.staff, modifier: null, geometry}
 }
 
 // Follows the pointer (`point`, in staff spaces). True when where the notes
@@ -51,14 +51,15 @@ export function aimNoteDrag(drag, geometry, point, modifier) {
 }
 
 // Each dragged note's landing place: its staff (the pointer's, for one
-// note alone; for several, the other staff for any taken past middle
-// C), step and alteration (a held key's, else its own kept).
+// note alone; for several, the other staff for any taken past their
+// staff's half of the gap), step and alteration (a held key's, else its
+// own kept).
 export function dragTargets(drag) {
-  const {notes, single, staff, delta, modifier, sf} = drag
+  const {notes, single, staff, delta, modifier, geometry} = drag
   return notes.map((note) => {
     const step = note.step + delta
-    const alter = modifier ?? keptAlter(sf, note, step)
-    return {...note, staff: single ? staff : staffFor(note.staff, step), step, alter}
+    const alter = modifier ?? keptAlter(geometry.sf, note, step)
+    return {...note, staff: single ? staff : staffFor(geometry, note.staff, step), step, alter}
   })
 }
 

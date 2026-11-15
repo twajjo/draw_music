@@ -2,9 +2,17 @@ defmodule DrawMusic.Music.StaffCrossing do
   @moduledoc """
   Which staff a moved note belongs on, and moving it there.
 
-  Middle C (step 28) is the boundary between the staves: a bass note moved
-  above it belongs on the treble staff, a treble note moved below it on the
-  bass staff, and middle C itself stays on whichever staff it is on.
+  Each staff keeps the notes on its own half of the gap between the staves,
+  so a left-hand or right-hand part can reach a few ledger lines past middle
+  C without changing staff. The gap is 8 staff spaces (`Staff`), so its
+  middle is 4 spaces, 8 steps, from each staff: the treble staff keeps notes
+  down to D3 (step 22), the bass staff up to B4 (step 34), each on its fourth
+  ledger line. A note moved past
+  that belongs on the other staff. (The editor's drag preview splits the gap
+  the same way, so a dragged note lands where it is shown.)
+
+  A note can also be put on either staff on purpose (`restaff_all/3`, the
+  menu's "Put on the treble staff"), at any pitch.
 
   A note moved to the other staff keeps its time, length, dots and pitch.
   There it joins a note that starts and ends with it as a chord (in that
@@ -16,15 +24,20 @@ defmodule DrawMusic.Music.StaffCrossing do
 
   alias DrawMusic.Music.{Entry, Note}
 
-  @middle_c 28
+  # The lowest step the treble staff keeps (D3) and the highest the bass
+  # staff keeps (B4): the middle of the gap, as above.
+  @treble_lowest 22
+  @bass_highest 34
+
+  @typedoc "Why a note can't go to the other staff."
+  @type error :: {:error, :duplicate | :overlap}
 
   @doc """
   Moves the note `id` among `entries` to `staff` (nothing changes if it is
   already there). `{:error, :duplicate}` if the chord it would join already
   has its pitch; `{:error, :overlap}` if no voice has room for it.
   """
-  @spec restaff([Entry.t()], Ecto.UUID.t(), Note.staff()) ::
-          {:ok, [Entry.t()]} | {:error, :duplicate | :overlap}
+  @spec restaff([Entry.t()], Ecto.UUID.t(), Note.staff()) :: {:ok, [Entry.t()]} | error()
   def restaff(entries, id, staff) do
     case Enum.split_with(entries, &(&1.event.id == id)) do
       {[%Entry{kind: :note, event: %{staff: ^staff}}], _others} -> {:ok, entries}
@@ -34,25 +47,26 @@ defmodule DrawMusic.Music.StaffCrossing do
   end
 
   @doc """
-  Moves each note among `ids` that has left its staff's side of middle C
-  (`staff_for/2`) to the other staff, in turn, so the notes of a chord
-  moved together stay together.
+  Puts each note among `ids` on `staff`, at its own pitch, in turn (rests
+  among them are left alone).
   """
-  @spec settle([Entry.t()], [Ecto.UUID.t()]) ::
-          {:ok, [Entry.t()]} | {:error, :duplicate | :overlap}
-  def settle(entries, ids) do
-    Enum.reduce_while(ids, {:ok, entries}, fn id, {:ok, entries} ->
-      case crossing(entries, id) do
-        nil -> {:cont, {:ok, entries}}
-        staff -> entries |> restaff(id, staff) |> continue_if_ok()
-      end
-    end)
+  @spec restaff_all([Entry.t()], [Ecto.UUID.t()], Note.staff()) :: {:ok, [Entry.t()]} | error()
+  def restaff_all(entries, ids, staff) do
+    each_moved(entries, ids, fn _entries, _id -> staff end)
   end
+
+  @doc """
+  Moves each note among `ids` that has left its staff's half of the gap
+  (`staff_for/2`) to the other staff, in turn, so the notes of a chord moved
+  together stay together.
+  """
+  @spec settle([Entry.t()], [Ecto.UUID.t()]) :: {:ok, [Entry.t()]} | error()
+  def settle(entries, ids), do: each_moved(entries, ids, &crossing/2)
 
   @doc "The staff a note on `staff` at `step` belongs on."
   @spec staff_for(Note.staff(), integer()) :: Note.staff()
-  def staff_for(:bass, step) when step > @middle_c, do: :treble
-  def staff_for(:treble, step) when step < @middle_c, do: :bass
+  def staff_for(:bass, step) when step > @bass_highest, do: :treble
+  def staff_for(:treble, step) when step < @treble_lowest, do: :bass
   def staff_for(staff, _step), do: staff
 
   defp continue_if_ok({:ok, _entries} = ok), do: {:cont, ok}
@@ -64,6 +78,17 @@ defmodule DrawMusic.Music.StaffCrossing do
       %Entry{kind: :note, event: %{staff: staff, step: step}} -> other_staff(staff, step)
       _rest_or_missing -> nil
     end
+  end
+
+  # Moves each of `ids` to the staff `staff_of.(entries, id)` gives (nil:
+  # it stays), one after another.
+  defp each_moved(entries, ids, staff_of) do
+    Enum.reduce_while(ids, {:ok, entries}, fn id, {:ok, entries} ->
+      case staff_of.(entries, id) do
+        nil -> {:cont, {:ok, entries}}
+        staff -> entries |> restaff(id, staff) |> continue_if_ok()
+      end
+    end)
   end
 
   # The lowest voice no note on the staff overlaps.

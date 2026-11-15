@@ -295,8 +295,9 @@ defmodule DrawMusic.Music.Editing do
   Moves the given notes `delta` steps up (positive) or down the scale of the
   key. Each keeps its accidental: the key's version of its new letter,
   sharpened or flattened as much as it was (F♯ up a step in C major is G♯;
-  the key's own F♯ in G major goes to G). A note taken past middle C moves
-  to the other staff (`DrawMusic.Music.StaffCrossing`).
+  the key's own F♯ in G major goes to G). A note taken past its staff's
+  half of the gap between the staves moves to the other staff
+  (`DrawMusic.Music.StaffCrossing`).
   """
   @spec move_steps(Score.t(), Context.t(), [id()], integer()) :: result()
   def move_steps(%Score{} = score, %Context{} = ctx, ids, delta) when is_integer(delta) do
@@ -307,9 +308,23 @@ defmodule DrawMusic.Music.Editing do
   end
 
   @doc """
+  Puts the notes among `ids` on `staff` at their own pitches, however far
+  from it they are (a left-hand part written high on the bass staff, say).
+  Each joins a note there that starts and ends with it as a chord, or else
+  goes in the lowest voice with room; rests among `ids` stay where they are.
+  """
+  @spec put_on_staff(Score.t(), Context.t(), [id()], Note.staff()) :: result()
+  def put_on_staff(%Score{} = score, %Context{} = ctx, ids, staff) do
+    with {:ok, entries} <- StaffCrossing.restaff_all(Timeline.flatten(score, ctx), ids, staff) do
+      rebuild(score, ctx, entries)
+    end
+  end
+
+  @doc """
   Moves note `id` onto `step` of `staff` (where a single dragged note was
   let go), keeping its time, value, dots and accidental (as
-  `move_steps/4`). Past middle C it goes to the staff on that side. On
+  `move_steps/4`). Past its staff's half of the gap between the staves it
+  goes to the other staff (`DrawMusic.Music.StaffCrossing`). On
   another staff it leaves its chord and voice, and joins a note there that
   starts and ends with it as a chord, or else goes in the lowest voice with
   room. Returns its id.
@@ -919,7 +934,7 @@ defmodule DrawMusic.Music.Editing do
   end
 
   # Changes the pitch of the notes among `ids` (`fun`, note to note); any
-  # taken past middle C move to the other staff.
+  # taken past their staff's half of the gap move to the other staff.
   defp move_pitches(score, ctx, ids, fun) do
     with {:ok, entries} <- map_entries(score, ctx, ids, &note_only(&1, fun)),
          {:ok, entries} <- StaffCrossing.settle(entries, ids) do

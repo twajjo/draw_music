@@ -1,8 +1,9 @@
 defmodule DrawMusicWeb.Editor.NoteMenu do
   @moduledoc """
   The right-click menu, at the pointer: for one note or rest (split, length,
-  a third above or below, rest or note, ties, a tempo change there, delete),
-  or for a selection (transpose, reverse, copy, cut, delete).
+  a third above or below, rest or note, ties, which staff, a tempo change
+  there, delete), or for a selection (transpose, which staff, reverse, copy,
+  cut, delete).
 
   A standalone LiveComponent: its actions are built by
   `DrawMusicWeb.EditorCommands.menu/4` and reported to the editor. Its
@@ -33,7 +34,7 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
 
   # The actions `EditorCommands.menu/4` builds.
   @actions ~w(split set_value toggle_menu_dot to_rest to_note tie_next untie add_third_above
-              add_third_below menu_delete transpose reverse)
+              add_third_below menu_delete transpose reverse put_on_staff)
 
   @intervals ~w(m2 M2 m3 M3 P4 A4 P5 m6 M6 m7 M7 P8)
 
@@ -105,6 +106,7 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
       <.menu_box menu={@menu} width="w-56" target={@myself}>
         <p class="px-2 pb-1 text-[0.65rem] opacity-60">{length(@menu.ids)} selected</p>
         <.transpose_items target={@myself} />
+        <.staff_items target={@myself} />
         <.separator />
         <.item id="menu-reverse" action="reverse" target={@myself}>Reverse</.item>
         <.item id="menu-copy" action="copy" target={@myself}>Copy</.item>
@@ -286,6 +288,7 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
     <.item id="menu-to-rest" action="to_rest" target={@target}>Make it a rest</.item>
     <.item id="menu-tie-next" action="tie_next" target={@target}>Tie to the next note</.item>
     <.item id="menu-untie" action="untie" target={@target}>Remove ties</.item>
+    <.staff_items target={@target} />
     """
   end
 
@@ -300,6 +303,29 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
   defp separator(assigns) do
     ~H"""
     <div class="my-1 border-t border-base-300" />
+    """
+  end
+
+  attr :target, :any, required: true
+
+  # The notes onto either staff at their own pitch: a part's notes can sit
+  # on its own staff however high or low they go.
+  defp staff_items(assigns) do
+    ~H"""
+    <button
+      :for={
+        {staff, label} <- [{"treble", "Put on the treble staff"}, {"bass", "Put on the bass staff"}]
+      }
+      id={"menu-staff-#{staff}"}
+      type="button"
+      role="menuitem"
+      phx-click="put_on_staff"
+      phx-value-staff={staff}
+      phx-target={@target}
+      class="block w-full rounded px-2 py-1 text-left transition-colors hover:bg-base-200"
+    >
+      {label}
+    </button>
     """
   end
 

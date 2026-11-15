@@ -37,6 +37,20 @@ defmodule DrawMusicWeb.Editor.NoteMenuTest do
     Enum.flat_map(measures, fn measure -> Enum.map(measure.notes, & &1.id) end)
   end
 
+  test "Put on the bass staff moves the notes there at their own pitch",
+       %{conn: conn, score: score, c4: c4, e4: e4} do
+    view = host(conn, score, selection_menu([c4.id, e4.id]))
+    view |> element("#menu-staff-bass") |> render_click()
+
+    assert_receive {:component_sent, {:editor, {:edit, fun}}}
+    {:ok, moved} = fun.(score, @ctx)
+    [bar | _rest] = moved.measures
+    assert bar.notes |> Enum.map(&{&1.staff, &1.step}) |> Enum.sort() == [bass: 28, bass: 30]
+
+    view = host(conn, score, menu_for(c4))
+    assert has_element?(view, "#menu-staff-treble")
+  end
+
   test "an action reports its edit, then closes", %{conn: conn, score: score, e4: e4} do
     view = host(conn, score, menu_for(e4))
     view |> element("#menu-split") |> render_click()

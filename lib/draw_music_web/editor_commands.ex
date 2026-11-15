@@ -218,6 +218,14 @@ defmodule DrawMusicWeb.EditorCommands do
     transpose(menu.ids, by, dir, params["interval"])
   end
 
+  # "Put on the treble staff" / "… bass staff": the notes keep their pitch.
+  def menu("put_on_staff", %{"staff" => name}, menu, _insert?) do
+    case EditorPlacement.staff(name) do
+      nil -> refused(:not_found)
+      staff -> &Editing.put_on_staff(&1, &2, menu.ids, staff)
+    end
+  end
+
   def menu(_event, _params, _menu, _insert?), do: refused(:not_found)
 
   # Sets a new length (or toggles the dot); in Insert mode a longer length

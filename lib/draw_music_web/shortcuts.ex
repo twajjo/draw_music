@@ -104,7 +104,7 @@ defmodule DrawMusicWeb.Shortcuts do
       mouse: "drag note",
       modes: @edit,
       action:
-        "Move it up or down, hearing each step; it lands when you let go, keeping its sharp or flat (hold Shift for a sharp, Ctrl or Alt for a flat). Alone it can move to the other staff; a selected note brings the selection. Past middle C a note goes to the other staff"
+        "Move it up or down, hearing each step; it lands when you let go, keeping its sharp or flat (hold Shift for a sharp, Ctrl or Alt for a flat). Alone it can move to the other staff; a selected note brings the selection. A note stays on its staff up to its fourth ledger line into the gap (treble down to D3, bass up to B4); past that it goes to the other staff. Right-click › Put on the treble/bass staff moves notes on purpose"
     },
     %Shortcut{
       group: "Selecting and moving",
@@ -125,7 +125,7 @@ defmodule DrawMusicWeb.Shortcuts do
       keys: ["ArrowUp", "ArrowDown"],
       modes: @edit,
       action:
-        "Move the selection a scale step; each note keeps its sharp or flat. A note taken past middle C moves to the other staff (joining a note of the same length there as a chord)"
+        "Move the selection a scale step; each note keeps its sharp or flat. A note taken past its staff's half of the gap (treble below D3, bass above B4) moves to the other staff, joining a note of the same length there as a chord"
     },
     %Shortcut{
       group: "Selecting and moving",

@@ -83,27 +83,33 @@ export function insertColumn(measure, staff, x, head) {
   return measure.columns.find((c) => c.staves.includes(staff) && x < c.x + head) || null
 }
 
-// Middle C, the boundary between the staves for a moved note.
-const MIDDLE_C = 28
+// y of the middle of the gap between the staves, relative to a system.
+function gapMiddle(geometry) {
+  const top = geometry.staff_top
+  return (top.treble + 4 + top.bass) / 2
+}
+
+// The step a staff's position at the gap's middle has: the furthest into
+// the gap that staff keeps a note (the treble staff D3, the bass staff B4).
+function stepAtGapMiddle(geometry, staff) {
+  return geometry.top_step[staff] - Math.round((gapMiddle(geometry) - geometry.staff_top[staff]) * 2)
+}
 
 // The staff a moved note at `step` belongs on (as StaffCrossing.staff_for):
-// past middle C, the other one; middle C stays where it is.
-export function staffFor(staff, step) {
-  if (staff === "bass" && step > MIDDLE_C) return "treble"
-  if (staff === "treble" && step < MIDDLE_C) return "bass"
+// each staff keeps the notes on its half of the gap between the staves;
+// past that, the other one.
+export function staffFor(geometry, staff, step) {
+  if (staff === "bass" && step > stepAtGapMiddle(geometry, "bass")) return "treble"
+  if (staff === "treble" && step < stepAtGapMiddle(geometry, "treble")) return "bass"
   return staff
 }
 
 // The staff and step at y in a given system, for one dragged note: between
-// the staves, the closer staff, but no further into the gap than middle C,
-// so the note is shown where it will land (past middle C it would belong to
-// the other staff).
+// the staves, the staff whose half of the gap it is in, which is where the
+// note will stay when let go.
 export function staffStepAt(geometry, system, y) {
-  const top = geometry.staff_top
-  const gapMiddle = (top.treble + 4 + top.bass) / 2
-  const staff = y - system.y < gapMiddle ? "treble" : "bass"
-  const step = stepOnStaff(geometry, system, staff, y)
-  return {staff, step: staff === "treble" ? Math.max(step, MIDDLE_C) : Math.min(step, MIDDLE_C)}
+  const staff = y - system.y < gapMiddle(geometry) ? "treble" : "bass"
+  return {staff, step: stepOnStaff(geometry, system, staff, y)}
 }
 
 // The step at y on a given staff of a system (no switching staves), for
