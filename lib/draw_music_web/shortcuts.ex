@@ -63,7 +63,7 @@ defmodule DrawMusicWeb.Shortcuts do
       mouse: "hover or drag a note",
       modes: @edit,
       action:
-        "Its name shows beside it, like G♯4 (middle C is C4), while you place it or drag it. Turn this off in Preferences › Reading aids"
+        "Its name shows beside it, like G♯, or F♮ where a natural sign is needed, while you place it, drag it or move it with ↑/↓. Turn this off in Preferences › Reading aids"
     },
     %Shortcut{
       group: "Placing",

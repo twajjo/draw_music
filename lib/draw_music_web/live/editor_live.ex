@@ -20,6 +20,8 @@ defmodule DrawMusicWeb.EditorLive do
     ScoreComponents
   }
 
+  import DrawMusicWeb.PreferencesComponents, only: [preferences_panel: 1]
+
   alias DrawMusic.Engraving.Layout
   alias DrawMusic.Library
   alias DrawMusic.Library.{Composition, Key, Version}
@@ -44,8 +46,10 @@ defmodule DrawMusicWeb.EditorLive do
     EditorPlacement,
     EditorSaving,
     EditorSettings,
+    InkPicker,
     LayoutToggle,
     PlaybackPayload,
+    PreferenceSwitch,
     ScoreSvg,
     Shortcuts,
     TempoTarget,
@@ -73,7 +77,12 @@ defmodule DrawMusicWeb.EditorLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} wide>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      preferences_patch={"#{@path}?panel=preferences"}
+      wide
+    >
       <%!-- Version status and downloads sit on the title's row, at the right. --%>
       <header class="flex flex-wrap items-start justify-between gap-4">
         <div class="space-y-1">
@@ -281,6 +290,8 @@ defmodule DrawMusicWeb.EditorLive do
           id="transpose"
           key={elem(@dialog, 1)}
         />
+        <.preferences_panel :if={@preferences?} scope={@current_scope} close={@path} />
+        <.unsaved_dialog />
       </div>
     </Layouts.app>
     """
@@ -307,6 +318,17 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign(:instrument, version.instrument)
      |> assign_placeholder()
      |> lay_out_after_join()}
+  end
+
+  # The Preferences panel is part of the address (`?panel=preferences`), so
+  # opening and closing it are patches: the editor, unsaved work included,
+  # stays as it is.
+  @impl true
+  def handle_params(params, uri, socket) do
+    {:noreply,
+     socket
+     |> assign(:path, URI.parse(uri).path)
+     |> assign(:preferences?, params["panel"] == "preferences")}
   end
 
   # Engraving and drawing a long score takes seconds, more than joining the
@@ -438,6 +460,13 @@ defmodule DrawMusicWeb.EditorLive do
      socket
      |> assign(:current_scope, %{socket.assigns.current_scope | user: user})
      |> assign_layout()}
+  end
+
+  # Another preference, from the Preferences panel: the editor follows it
+  # (the ink and the reading aids are read from the user when drawn).
+  def handle_info({component, {:updated, user}}, socket)
+      when component in [InkPicker, PreferenceSwitch] do
+    {:noreply, assign(socket, :current_scope, %{socket.assigns.current_scope | user: user})}
   end
 
   defp load(:new, _scope, _params) do

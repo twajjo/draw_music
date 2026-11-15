@@ -4,19 +4,13 @@ defmodule DrawMusicWeb.UserLive.Settings do
   on_mount {DrawMusicWeb.UserAuth, :require_sudo_mode}
 
   alias DrawMusic.Accounts
-  alias DrawMusicWeb.{InkPicker, LayoutToggle, PreferenceSwitch}
 
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="text-center">
-        <.header>
-          Preferences
-          <:subtitle>
-            Your account, and how the editor looks and helps you (a piece's own settings are in the editor)
-          </:subtitle>
-        </.header>
+        <.header>Manage Account Login</.header>
       </div>
 
       <.form for={@email_form} id="email_form" phx-submit="update_email" phx-change="validate_email">
@@ -68,52 +62,6 @@ defmodule DrawMusicWeb.UserLive.Settings do
           Save Password
         </.button>
       </.form>
-
-      <div class="divider" />
-
-      <section id="appearance" class="space-y-4">
-        <.header>
-          Appearance
-          <:subtitle>
-            Follow your system, or always use light or dark (saved in this browser)
-          </:subtitle>
-        </.header>
-        <Layouts.theme_toggle />
-      </section>
-
-      <div class="divider" />
-
-      <section id="score-display" class="space-y-4">
-        <.header>
-          Score display
-          <:subtitle>How scores are laid out, and the notation color in dark mode</:subtitle>
-        </.header>
-        <div class="space-y-2">
-          <p class="text-sm font-medium">Layout</p>
-          <.live_component module={LayoutToggle} id="settings-layout" scope={@current_scope} />
-        </div>
-        <div class="space-y-2">
-          <p class="text-sm font-medium">Dark mode ink</p>
-          <.live_component module={InkPicker} id="settings-ink" scope={@current_scope} />
-        </div>
-      </section>
-
-      <div class="divider" />
-
-      <section id="reading-aids" class="space-y-4">
-        <.header>
-          Reading aids
-          <:subtitle>Help with reading music, for when the notes aren't second nature yet</:subtitle>
-        </.header>
-        <.live_component
-          module={PreferenceSwitch}
-          id="settings-name-notes"
-          scope={@current_scope}
-          field={:name_notes}
-          label="Name the note being placed or dragged"
-          hint="Shows its name, like G♯4, beside the note while you place it or drag it"
-        />
-      </section>
     </Layouts.app>
     """
   end
@@ -206,15 +154,4 @@ defmodule DrawMusicWeb.UserLive.Settings do
         {:noreply, assign(socket, password_form: to_form(changeset, action: :insert))}
     end
   end
-
-  # A saved preference: the page (and its ink) follows the new user.
-  @impl true
-  def handle_info({component, {:updated, user}}, socket)
-      when component in [InkPicker, LayoutToggle, PreferenceSwitch] do
-    {:noreply, assign(socket, :current_scope, %{socket.assigns.current_scope | user: user})}
-  end
-
-  # Anything else (e.g. the test mailer's copy of a sent email) is ignored,
-  # as it was before this page handled any messages.
-  def handle_info(_message, socket), do: {:noreply, socket}
 end

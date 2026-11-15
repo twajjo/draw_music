@@ -18,6 +18,8 @@ const CHORD_LABEL_SIZE = 1.6
 // A note's name (a reading aid) sits this far right of its head, at this size.
 const NAME_GAP = 2.2
 const NAME_SIZE = 1.6
+// The paper-colored outline around each letter (staff spaces).
+const NAME_OUTLINE = 0.35
 // A band's highlight reaches this far (staff spaces) above and below the
 // grand staff; a staff is four spaces tall.
 const BAND_PAD = 1.5
@@ -42,11 +44,24 @@ function ledgerLines(g, geometry, staff, step, x) {
   }
 }
 
-// A note's name ("G♯4") beside its head at (x, y).
-function nameLabel(x, y, name) {
-  const text = element("text", {x: x + NAME_GAP, y: y + NAME_SIZE / 3, "font-family": "sans-serif", "font-size": NAME_SIZE})
+// A note's name ("G♯") beside its head at (x, y) in a system at `systemY`:
+// in the selection color, not faded like the ghost, with a thin outline of
+// paper so the staff lines don't cut through it.
+function nameLabel(systemY, x, y, name) {
+  const g = element("g", {transform: `translate(0 ${systemY})`})
+  const text = element("text", {
+    x: x + NAME_GAP,
+    y: y + NAME_SIZE / 3,
+    "font-family": "sans-serif",
+    "font-size": NAME_SIZE,
+    "stroke-width": NAME_OUTLINE,
+    "paint-order": "stroke",
+  })
+  text.style.fill = "var(--score-selection)"
+  text.style.stroke = "var(--score-paper)"
   text.textContent = name
-  return text
+  g.appendChild(text)
+  return g
 }
 
 // A group in a system's coordinates, drawn faded in the score's ink.
@@ -106,8 +121,8 @@ export class Overlay {
     }
 
     g.appendChild(glyph(armed.glyph, x, y))
-    if (name && !rest) g.appendChild(nameLabel(x, y, name))
     this.svg.appendChild(g)
+    if (name && !rest) this.svg.appendChild(nameLabel(t.system.y, x, y, name))
   }
 
   // Dragged notes' heads where they would land (`targets`, in `system`),
@@ -117,14 +132,23 @@ export class Overlay {
     this.clear()
     const g = ghostGroup(system.y)
 
+    let label = null
     for (const t of targets) {
       const y = stepY(geometry, t.staff, t.step)
       ledgerLines(g, geometry, t.staff, t.step, t.x)
       if (t.alter !== keyAlter(geometry.sf, t.step)) g.appendChild(glyph(ACCIDENTALS[t.alter], t.x - 1.3, y))
       g.appendChild(glyph(t.el.textContent, t.x, y))
-      if (named && t.id === named.id) g.appendChild(nameLabel(t.x, y, named.name))
+      if (named && t.id === named.id) label = nameLabel(system.y, t.x, y, named.name)
     }
     this.svg.appendChild(g)
+    if (label) this.svg.appendChild(label)
+  }
+
+  // Names beside notes on the score (`labels`: {system, x, y, name} each),
+  // until the next drawing or clear.
+  names(labels) {
+    this.clear()
+    for (const label of labels) this.svg.appendChild(nameLabel(label.system.y, label.x, label.y, label.name))
   }
 
   // A dashed guide line, from a tie's start to the pointer.

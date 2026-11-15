@@ -10,7 +10,7 @@ export function typing(e) {
 // editor's keys are off. Help is always on the page, shown and hidden in
 // the browser.
 export function dialogOpen() {
-  if (document.querySelector("#settings-form, #save-as-form, #transpose-dialog, #tempo-dialog")) {
+  if (document.querySelector("#settings-form, #save-as-form, #transpose-dialog, #tempo-dialog, #preferences-panel, #unsaved-dialog[open]")) {
     return true
   }
   const help = document.getElementById("help")

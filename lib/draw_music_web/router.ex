@@ -43,6 +43,8 @@ defmodule DrawMusicWeb.Router do
       on_mount: [{DrawMusicWeb.UserAuth, :require_authenticated}] do
       live "/users/settings", UserLive.Settings, :edit
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
+      # Preferences need a signed-in user, but not a recent log-in.
+      live "/users/preferences", UserLive.Preferences, :edit
 
       # The signed-in user's own compositions. The main page is a blank,
       # unsaved composition.

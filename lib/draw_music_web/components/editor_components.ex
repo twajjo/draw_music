@@ -143,6 +143,41 @@ defmodule DrawMusicWeb.EditorComponents do
     """
   end
 
+  @doc """
+  The question asked before leaving the editor with unsaved changes (a link
+  out, New, Compositions, Back). The score hook's `PageGuard` opens it and
+  answers it in the browser: Stay (the default, also Esc) or Leave without
+  saving. Nothing is sent to the server.
+  """
+  @spec unsaved_dialog(map()) :: Phoenix.LiveView.Rendered.t()
+  def unsaved_dialog(assigns) do
+    ~H"""
+    <dialog
+      id="unsaved-dialog"
+      phx-update="ignore"
+      aria-labelledby="unsaved-dialog-title"
+      class="m-auto w-full max-w-md rounded-box border border-base-300 bg-base-100 p-6 text-base-content shadow-2xl backdrop:bg-black/40"
+    >
+      <h2 id="unsaved-dialog-title" class="flex items-center gap-2 text-lg font-semibold">
+        <.icon name="hero-exclamation-triangle" class="size-5 text-warning" /> Unsaved changes
+      </h2>
+      <p class="mt-3 text-sm">
+        This piece has changes that haven't been saved. If you leave now, they will be
+        lost: there is no way back to them, from Compositions or anywhere else.
+      </p>
+      <p class="mt-2 text-sm opacity-75">To keep them, stay and save first.</p>
+      <div class="mt-6 flex justify-end gap-2">
+        <button id="unsaved-leave" type="button" class="btn btn-ghost btn-sm text-error">
+          Leave without saving
+        </button>
+        <button id="unsaved-stay" type="button" class="btn btn-primary btn-sm" autofocus>
+          Stay and keep editing
+        </button>
+      </div>
+    </dialog>
+    """
+  end
+
   defp percent(part, whole), do: part / whole * 100
 
   defp filled_bars(score) do
