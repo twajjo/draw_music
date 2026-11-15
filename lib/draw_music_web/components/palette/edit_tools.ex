@@ -3,7 +3,8 @@ defmodule DrawMusicWeb.Palette.EditTools do
   The palette's two rows in Edit mode. The first holds what is placed: the
   durations, then tie and the chords menu. The second holds how it is
   placed: the modifiers (rest, dot, accidentals), the Insert/Overlay
-  switch, then settings, select all, undo and redo.
+  switch, Suggest key (`DrawMusicWeb.Palette.KeyMenu`), then settings,
+  select all, undo and redo.
 
   A click arms a piece, and it stays armed until another is picked; the
   armed state lives on the server (see `DrawMusicWeb.EditorPalette`).
@@ -13,8 +14,9 @@ defmodule DrawMusicWeb.Palette.EditTools do
 
   import DrawMusicWeb.CoreComponents, only: [icon: 1]
   import DrawMusicWeb.Palette.Buttons
+  import DrawMusicWeb.Palette.KeyMenu
 
-  alias DrawMusic.Music.Chords
+  alias DrawMusic.Music.{Chords, KeySuggestion}
   alias DrawMusicWeb.EditorPalette
 
   @values [
@@ -57,6 +59,11 @@ defmodule DrawMusicWeb.Palette.EditTools do
   attr :can_undo?, :boolean, default: false
   attr :can_redo?, :boolean, default: false
   attr :mode, :atom, default: :major, doc: "the key's mode, for chord numerals"
+
+  attr :key_suggestion, KeySuggestion,
+    required: true,
+    doc: "better keys for the score, for the Suggest key button"
+
   attr :target, :any, default: nil, doc: "the component the controls' clicks go to"
 
   @spec edit_tools(map()) :: Phoenix.LiveView.Rendered.t()
@@ -79,6 +86,7 @@ defmodule DrawMusicWeb.Palette.EditTools do
       <div class="col-start-3 row-start-2 ml-3 flex min-w-0 flex-nowrap items-stretch gap-2">
         <.modifiers armed={@armed} row_kind={@row_kind} target={@target} />
         <.placing_toggle insert?={@insert?} target={@target} />
+        <.key_menu suggestion={@key_suggestion} target={@target} />
         <.history_tools can_undo?={@can_undo?} can_redo?={@can_redo?} target={@target} />
       </div>
     </div>

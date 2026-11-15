@@ -69,8 +69,8 @@ defmodule DrawMusic.Music.KeySuggestionTest do
       assert length(suggestion.keys) <= 4
       assert Enum.all?(suggestion.keys, &(&1.accidentals < suggestion.accidentals))
 
-      assert Enum.map(suggestion.keys, & &1.fit) ==
-               Enum.sort(Enum.map(suggestion.keys, & &1.fit), :desc)
+      order = Enum.map(suggestion.keys, &{&1.accidentals, -&1.fit})
+      assert order == Enum.sort(order)
     end
 
     test "offers nothing for music already at home in its key" do
@@ -80,7 +80,28 @@ defmodule DrawMusic.Music.KeySuggestionTest do
       assert suggestion.keys == []
     end
 
-    test "is not worth it for a few accidentals" do
+    # Three bars heard in C minor, written in C major: D♯, G♯ then G♮, B♯.
+    test "offers a key for a short piece with a handful of accidentals" do
+      score = score([~w(G3 D4 D4 D#4), ~w(G#3 G#3 G3 D4), ~w(D4 B#3 F3 F3)])
+      suggestion = KeySuggestion.suggest(score, {0, :major})
+
+      assert suggestion.accidentals == 4
+      assert suggestion.worth_it?
+      # The fewest accidentals first: C minor's three flats leave none.
+      assert [%KeyFit{sf: -3, accidentals: 0, accidental_notes: []} | _others] = suggestion.keys
+
+      # G minor's two flats leave the A♭s, named once.
+      assert %KeyFit{accidentals: 1, accidental_notes: ["A♭"]} =
+               Enum.find(suggestion.keys, &(&1.sf == -2 and &1.mode == :minor))
+    end
+
+    test "offers no key whose accidentals are more than two different notes" do
+      suggestion = KeySuggestion.suggest(by_ear_in_e_flat(), {0, :major})
+
+      assert Enum.all?(suggestion.keys, &(length(&1.accidental_notes) <= 2))
+    end
+
+    test "is not worth it for a single accidental" do
       suggestion = KeySuggestion.suggest(score([~w(C4 D4 E4 F#4), ~w(G4 A4 B4 C5)]), {0, :major})
 
       refute suggestion.worth_it?

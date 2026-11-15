@@ -26,6 +26,8 @@ defmodule DrawMusicWeb.Editor.Intent do
       `DrawMusicWeb.Editor.SettingsDialog`). A new key is confirmed first.
     * `{:transpose, {sf, mode}, direction}`: move the notes into the key,
       `:nearest`, `:up` or `:down`.
+    * `{:rekey, {sf, mode}}`: put the score in the key without changing how
+      it sounds (every note re-spelled), undoably.
     * `{:palette, changes}`: the palette's new state, only what changed,
       out of `armed`, `row_kind` and `insert?` (see
       `DrawMusicWeb.Editor.Palette`).
@@ -52,6 +54,7 @@ defmodule DrawMusicWeb.Editor.Intent do
           | {:flash, :info | :error, String.t()}
           | {:settings, key(), map()}
           | {:transpose, key(), :nearest | :up | :down}
+          | {:rekey, key()}
           | {:palette, palette_changes()}
           | {:mode, :edit | :play}
           | {:history, :undo | :redo}

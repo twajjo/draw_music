@@ -230,6 +230,13 @@ defmodule DrawMusicWeb.Shortcuts do
     },
     %Shortcut{
       group: "Editing",
+      mouse: "Suggest key (palette)",
+      modes: @edit,
+      action:
+        "When the notes carry clearly more accidentals than another key would write (the whole piece is judged), as when music entered by ear in C major is really in E♭, Suggest key lists better keys, the one leaving the fewest accidentals first, each with how many it would leave and on which notes (only keys whose accidentals fall on at most two different notes are listed). Pick one: the key signature changes and every note is re-spelled (A♯ becomes B♭), but nothing sounds different. Undo puts it back; a saved piece is saved in the new key"
+    },
+    %Shortcut{
+      group: "Editing",
       mouse: "right-click",
       modes: @edit,
       action:
