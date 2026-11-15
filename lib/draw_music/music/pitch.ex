@@ -107,6 +107,9 @@ defmodule DrawMusic.Music.Pitch do
 
   @spec letter(integer()) :: 0..6
   def letter(step), do: Integer.mod(step, @steps_per_octave)
+  @doc "The step's letter name, without accidental or octave, e.g. `\"C\"`."
+  @spec letter_name(integer()) :: String.t()
+  def letter_name(step), do: elem(@letter_names, letter(step))
   @spec octave(integer()) :: integer()
   def octave(step), do: Integer.floor_div(step, @steps_per_octave)
   @spec step(0..6, integer()) :: integer()

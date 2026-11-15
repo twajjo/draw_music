@@ -19,6 +19,8 @@ defmodule DrawMusicWeb.Editor.Palette do
     * `:selection`: the selected ids, which the dot, the accidentals and
       the chords change when nothing is armed.
     * `:can_undo?`, `:can_redo?`, `:mode` (the key's), `:editor_mode`.
+    * `:key_suggestion`: better keys for the score
+      (`DrawMusic.Music.KeySuggestion`), for the Suggest key button.
     * The `:below_mode`, `:play_controls` and `:trailing` slots, placed in
       the toolbar.
 
@@ -31,6 +33,7 @@ defmodule DrawMusicWeb.Editor.Palette do
     * `{:mode, mode}`: the Edit/Play buttons and P.
     * `{:history, :undo | :redo}`: the buttons and their keys.
     * `{:open, :settings}`: the settings button.
+    * `{:rekey, {sf, mode}}`: a key chosen from Suggest key, one it offered.
   """
 
   use DrawMusicWeb, :live_component
@@ -38,7 +41,7 @@ defmodule DrawMusicWeb.Editor.Palette do
   import DrawMusicWeb.PaletteComponents
   import DrawMusicWeb.Palette.EditTools
 
-  alias DrawMusic.Music.{Session, TempoEditing, Timeline}
+  alias DrawMusic.Music.{KeyFit, KeySuggestion, Session, TempoEditing, Timeline}
   alias DrawMusicWeb.Editor.Intent
   alias DrawMusicWeb.{EditorCommands, EditorPalette}
 
@@ -52,6 +55,7 @@ defmodule DrawMusicWeb.Editor.Palette do
     can_redo?: false,
     mode: :major,
     editor_mode: :edit,
+    key_suggestion: %KeySuggestion{accidentals: 0, keys: [], worth_it?: false},
     below_mode: [],
     play_controls: [],
     trailing: []
@@ -60,7 +64,7 @@ defmodule DrawMusicWeb.Editor.Palette do
   # Edit mode's events; in Play mode (its buttons gone, its keys off) a
   # stray one is ignored.
   @edit_events ~w(arm arm_value arm_chord arm_tie disarm single_notes toggle_rest toggle_dot
-                  set_accidental toggle_insert select_all undo redo open_settings)
+                  set_accidental toggle_insert select_all undo redo open_settings rekey)
 
   @impl true
   @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
@@ -123,6 +127,16 @@ defmodule DrawMusicWeb.Editor.Palette do
 
   def handle_event("redo", _params, socket) do
     Intent.notify({:history, :redo})
+    {:noreply, socket}
+  end
+
+  # Only a key the button offered is taken (the params come from the browser).
+  def handle_event("rekey", %{"sf" => sf, "mode" => mode}, socket) do
+    case Enum.find(socket.assigns.key_suggestion.keys, &offered?(&1, sf, mode)) do
+      %KeyFit{sf: sf, mode: mode} -> Intent.notify({:rekey, {sf, mode}})
+      nil -> :ok
+    end
+
     {:noreply, socket}
   end
 
@@ -220,6 +234,7 @@ defmodule DrawMusicWeb.Editor.Palette do
         can_undo?={@can_undo?}
         can_redo?={@can_redo?}
         mode={@mode}
+        key_suggestion={@key_suggestion}
         target={@myself}
       />
       {render_slot(@play_controls)}
@@ -291,6 +306,12 @@ defmodule DrawMusicWeb.Editor.Palette do
   defp next_mode("edit", _current), do: :edit
   defp next_mode(_toggle, :edit), do: :play
   defp next_mode(_toggle, :play), do: :edit
+
+  # The browser sends the key as given in the button: sf as an integer (or
+  # its text) and the mode's name.
+  defp offered?(%KeyFit{sf: sf, mode: mode}, given_sf, given_mode) do
+    to_string(sf) == to_string(given_sf) and Atom.to_string(mode) == given_mode
+  end
 
   defp report_armed({:ok, armed}), do: Intent.notify({:palette, %{armed: armed}})
   defp report_armed(:error), do: :ok

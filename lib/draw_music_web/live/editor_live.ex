@@ -29,7 +29,9 @@ defmodule DrawMusicWeb.EditorLive do
   alias DrawMusic.Music.{
     Context,
     Editing,
+    KeySuggestion,
     Playback,
+    Rekey,
     Score,
     Session,
     TempoEditing,
@@ -132,6 +134,7 @@ defmodule DrawMusicWeb.EditorLive do
         can_redo?={@session.redo != []}
         mode={@session.ctx.mode}
         editor_mode={@editor_mode}
+        key_suggestion={@key_suggestion}
       >
         <:play_controls>
           <.live_component
@@ -434,6 +437,19 @@ defmodule DrawMusicWeb.EditorLive do
   # Settings apply at once; a new key is confirmed in the transpose dialog.
   def handle_info({:editor, {:settings, key, fields}}, socket) do
     {:noreply, apply_settings(socket, key, fields)}
+  end
+
+  # Suggest key: the same sounds in the chosen key, saved in it as a new key
+  # change would be.
+  def handle_info({:editor, {:rekey, {sf, mode}}}, socket) do
+    %{session: session} = socket.assigns
+    score = Rekey.to_signature(session.score, sf)
+    session = Session.change_context(session, %{session.ctx | sf: sf, mode: mode}, score)
+
+    {:noreply,
+     socket
+     |> assign(:session, session)
+     |> in_new_key(sf, mode)}
   end
 
   def handle_info({:editor, {:transpose, {sf, mode}, direction}}, socket) do
@@ -900,11 +916,18 @@ defmodule DrawMusicWeb.EditorLive do
   end
 
   defp in_new_key(socket, sf, mode) do
-    %{current_scope: scope, composition: composition} = socket.assigns
+    %{current_scope: scope, composition: composition, version: old} = socket.assigns
 
     case Library.save_in_key(scope, composition, %{sf: sf, mode: mode}, version_attrs(socket)) do
-      {:ok, saved} -> saved_and_open(socket, saved, "Saved in #{Key.name(sf, mode)}")
-      {:error, changeset} -> put_flash(socket, :error, EditorSaving.error_message(changeset))
+      {:ok, saved} ->
+        message =
+          "Saved as #{Key.name(sf, mode)} v#{saved.number} " <>
+            "(#{Key.name(old.key)} v#{old.number} is kept)"
+
+        saved_and_open(socket, saved, message)
+
+      {:error, changeset} ->
+        put_flash(socket, :error, EditorSaving.error_message(changeset))
     end
   end
 
@@ -942,6 +965,7 @@ defmodule DrawMusicWeb.EditorLive do
     |> assign_pieces()
     |> assign(:geometry_json, Jason.encode!(EditorGeometry.encode(engraved, ctx)))
     |> assign(:score_loading?, loading?)
+    |> assign(:key_suggestion, KeySuggestion.suggest(score, {ctx.sf, ctx.mode}))
   end
 
   # The pieces drawn from the engraving, with the user's reading aids (only
