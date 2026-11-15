@@ -217,6 +217,14 @@ defmodule DrawMusicWeb.ScoreSvg do
   end
 
   # A reading aid's letter (editor only), centred on its point.
+  # A selected note's name is drawn only while its note is selected.
+  defp item(%ReadingAid{shown: :when_selected} = aid, selection, range) do
+    case MapSet.member?(selection, aid.note_id) do
+      true -> item(%{aid | shown: :always}, selection, range)
+      false -> []
+    end
+  end
+
   defp item(%ReadingAid{} = aid, _selection, _range) do
     [
       "<text",

@@ -60,10 +60,10 @@ defmodule DrawMusicWeb.Shortcuts do
     },
     %Shortcut{
       group: "Placing",
-      mouse: "hover or drag a note",
+      mouse: "hover, drag or select a note",
       modes: @edit,
       action:
-        "Its name shows beside it, like G♯, or F♮ where a natural sign is needed, while you place it, drag it or move it with ↑/↓. Turn this off in Preferences › Reading aids"
+        "Its name shows beside it, like G♯, or F♮ where a natural sign is needed, while you place it, drag it, or have it selected (a range of notes too, and as ↑/↓ moves them). Turn this off in Preferences › Reading aids; never in downloads"
     },
     %Shortcut{
       group: "Placing",

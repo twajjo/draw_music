@@ -169,7 +169,7 @@ defmodule DrawMusic.Engraving.Notes do
       top_y: top_y,
       bottom_y: bottom_y,
       items:
-        Enum.map(heads, &notehead(&1, glyph, staff)) ++
+        Enum.map(heads, &notehead(&1, glyph, staff, accidentals)) ++
           ledgers(heads, staff, left, right) ++
           dots(heads, right) ++ accidentals(heads, left, accidentals),
       anchors:
@@ -467,11 +467,12 @@ defmodule DrawMusic.Engraving.Notes do
     %Glyph{role: role, glyph: glyph, x: x, y: y, id: id}
   end
 
-  defp notehead(head, glyph, staff) do
+  defp notehead(head, glyph, staff, shown) do
     %{
       glyph(:notehead, glyph, head.x, head.y, head.note.id)
       | staff: staff,
-        alter: head.note.alter
+        alter: head.note.alter,
+        sign: Map.get(shown, head.note.id)
     }
   end
 
