@@ -26,11 +26,11 @@ defmodule DrawMusicWeb.EditorLiveTest do
   test "the score hook is told whether to name the note being placed or dragged",
        %{conn: conn, scope: scope} do
     {:ok, view, _html} = live(conn, ~p"/")
-    assert has_element?(view, "#score-editor[data-name-notes='true']")
+    assert has_element?(view, "#score-editor[data-show-note-names='true']")
 
-    {:ok, _user} = Accounts.update_user_preferences(scope, %{name_notes: false})
+    {:ok, _user} = Accounts.update_user_preferences(scope, %{show_note_names: false})
     {:ok, view, _html} = live(conn, ~p"/")
-    assert has_element?(view, "#score-editor[data-name-notes='false']")
+    assert has_element?(view, "#score-editor[data-show-note-names='false']")
   end
 
   # A long score would otherwise be engraved and sent twice; the first,

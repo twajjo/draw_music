@@ -1,7 +1,7 @@
 defmodule DrawMusicWeb.PreferenceSwitch do
   @moduledoc """
   An on/off switch for one of the user's yes-or-no preferences (e.g.
-  `:name_notes`), saved as soon as it is flipped.
+  `:show_note_names`), saved as soon as it is flipped.
 
   A standalone LiveComponent: it saves the preference itself and works in
   any LiveView.
@@ -12,6 +12,8 @@ defmodule DrawMusicWeb.PreferenceSwitch do
     * `:field` — the preference, a boolean field of `DrawMusic.Accounts.User`
       that `User.preferences_changeset/2` accepts.
     * `:label` — what the switch is called; `:hint` — a line saying what it does.
+    * `:disabled` — true locks the switch (a preference that depends on
+      another one that is off); false by default.
 
   ## Messages to the parent
   Sent as `{DrawMusicWeb.PreferenceSwitch, message}`:
@@ -53,6 +55,7 @@ defmodule DrawMusicWeb.PreferenceSwitch do
         name="value"
         value={Map.fetch!(@scope.user, @field)}
         label={@label}
+        disabled={@disabled}
         class="toggle toggle-primary"
       />
       <p class="text-sm opacity-70">{@hint}</p>
@@ -63,7 +66,10 @@ defmodule DrawMusicWeb.PreferenceSwitch do
   @impl true
   @spec update(map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   def update(%{scope: %Scope{}, field: field} = assigns, socket) when is_atom(field) do
-    {:ok, assign(socket, Map.take(assigns, [:id, :scope, :field, :label, :hint]))}
+    {:ok,
+     socket
+     |> assign(Map.take(assigns, [:id, :scope, :field, :label, :hint]))
+     |> assign(:disabled, Map.get(assigns, :disabled, false))}
   end
 
   def update(_assigns, _socket) do

@@ -96,11 +96,20 @@ defmodule DrawMusicWeb.PreferencesComponents do
       </.header>
       <.live_component
         module={PreferenceSwitch}
-        id="settings-name-notes"
+        id="settings-show-note-names"
         scope={@scope}
-        field={:name_notes}
-        label="Name the notes being placed, moved or selected"
-        hint="Shows a note's name, like G♯, beside it while you place it, drag it or have it selected (a range too). Never in downloads"
+        field={:show_note_names}
+        label="Show note names"
+        hint="Shows a note's name, like G♯, beside it, with ♮ where a natural sign is written. Never in downloads"
+      />
+      <.live_component
+        module={PreferenceSwitch}
+        id="settings-note-names-in-edit-only"
+        scope={@scope}
+        field={:note_names_in_edit_only}
+        disabled={not @scope.user.show_note_names}
+        label="Only while editing and placing"
+        hint="On: names show while you place a note, drag it or have it selected (a range too). Off: every note is named at all times. Needs note names shown"
       />
       <.live_component
         module={PreferenceSwitch}

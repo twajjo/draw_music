@@ -13,8 +13,8 @@
 // Server state arrives as data attributes on the hook element:
 // data-geometry (EditorGeometry.encode), data-armed (EditorGeometry.armed),
 // data-insert (Insert mode), data-mode, data-dirty, data-loading,
-// data-layout and data-name-notes (the user's preference: name the note
-// being placed or dragged). Playback is Editor.Transport's: it says where it is with
+// data-layout and data-show-note-names (the user's preference: name the
+// note being placed or dragged). Playback is Editor.Transport's: it says where it is with
 // "score:playhead" and "score:play-start" window events, and the playhead
 // is drawn here (playhead_view.js).
 
@@ -104,7 +104,7 @@ export default {
     this.armed = JSON.parse(this.el.dataset.armed || "null")
     this.mode = this.el.dataset.mode || "edit"
     this.insert = this.el.dataset.insert === "true"
-    this.nameNotes = this.el.dataset.nameNotes === "true"
+    this.showNoteNames = this.el.dataset.showNoteNames === "true"
     this.el.classList.toggle("play-mode", this.mode === "play")
     this.overlay.setViewBox(this.score.dataset.viewBox)
     setPageCursor(this.el, this.armed && this.armed.glyph)
@@ -264,7 +264,7 @@ export default {
 
   // With the preference on, the dragged note under the pointer is named.
   namedTarget(targets) {
-    if (!this.nameNotes) return null
+    if (!this.showNoteNames) return null
     const t = targets.find((target) => target.id === this.drag.anchor.id)
     const at = {system: this.drag.anchor.system, staff: t.staff, step: t.step, x: t.x}
     const skip = targets.map((target) => target.id)
@@ -273,7 +273,7 @@ export default {
 
   // With the preference on, the name of the note about to be placed.
   ghostName(t, alter) {
-    if (!this.nameNotes) return null
+    if (!this.showNoteNames) return null
     const at = {system: t.system, staff: t.staff, step: t.step, x: t.ghostX}
     const inEffect = alterInEffect(this.score, this.geometry, at)
     return noteName(t.step, alter ?? keyAlter(this.geometry.sf, t.step), inEffect)

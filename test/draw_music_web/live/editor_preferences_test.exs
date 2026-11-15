@@ -17,8 +17,8 @@ defmodule DrawMusicWeb.EditorPreferencesTest do
     assert_patch(view, "/?panel=preferences")
     assert has_element?(view, "#preferences-panel")
 
-    view |> element("#settings-name-notes") |> render_change(%{"value" => "false"})
-    assert has_element?(view, "[data-name-notes=false]")
+    view |> element("#settings-show-note-names") |> render_change(%{"value" => "false"})
+    assert has_element?(view, "[data-show-note-names=false]")
 
     view |> element("#preferences-close") |> render_click()
     assert_patch(view, "/")

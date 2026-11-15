@@ -60,15 +60,29 @@ defmodule DrawMusicWeb.EditorReadingAidsTest do
     place(view, 0, 0, "C4")
 
     view |> element("#account-menu-settings") |> render_click()
-    view |> element("#settings-name-notes") |> render_change(%{"value" => "false"})
+    view |> element("#settings-show-note-names") |> render_change(%{"value" => "false"})
     render_hook(view, "select", %{"ids" => note_ids(view), "add" => false})
 
     refute has_element?(view, "#score .reading-aid[data-aid=note]")
   end
 
+  test "every note is named, selected or not, with names at all times", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/")
+    placing_mode(view, :overlay)
+    view |> element("#palette-quarter") |> render_click()
+    place(view, 0, 0, "C4")
+    place(view, 0, 960, "E4")
+    render_hook(view, "clear_selection", %{})
+
+    view |> element("#account-menu-settings") |> render_click()
+    view |> element("#settings-note-names-in-edit-only") |> render_change(%{"value" => "false"})
+
+    assert count(view, "#score .reading-aid[data-aid=note]") == 2
+  end
+
   test "downloads never carry them, whatever the preference", %{conn: conn, scope: scope} do
     version = version_fixture(scope)
-    prefs = %{letter_staves: true, name_notes: true}
+    prefs = %{letter_staves: true, show_note_names: true, note_names_in_edit_only: false}
     {:ok, _user} = Accounts.update_user_preferences(scope, prefs)
 
     {:ok, view, _html} = live(conn, path(version))
