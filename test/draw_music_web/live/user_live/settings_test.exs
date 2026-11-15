@@ -59,6 +59,20 @@ defmodule DrawMusicWeb.UserLive.SettingsTest do
       assert Accounts.get_user_by_email(user.email)
     end
 
+    test "refuses another user's email, in any case, and sends no link", %{conn: conn, user: user} do
+      other = user_fixture()
+      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+
+      for email <- [other.email, String.upcase(other.email)] do
+        result = lv |> form("#email_form", %{"user" => %{"email" => email}}) |> render_submit()
+
+        assert result =~ "has already been taken"
+        refute result =~ "A link to confirm your email"
+      end
+
+      assert Accounts.get_user!(user.id).email == user.email
+    end
+
     test "renders errors with invalid data (phx-change)", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/users/settings")
 
@@ -210,48 +224,14 @@ defmodule DrawMusicWeb.UserLive.SettingsTest do
     end
   end
 
-  describe "score display" do
-    setup %{conn: conn} do
-      user = user_fixture()
-      %{conn: log_in_user(conn, user), user: user}
-    end
+  describe "the account page" do
+    test "has the email and password, not the preferences", %{conn: conn} do
+      {:ok, lv, _html} = conn |> log_in_user(user_fixture()) |> live(~p"/users/settings")
 
-    test "a swatch saves the dark-mode ink and the layout toggle saves the layout",
-         %{conn: conn, user: user} do
-      {:ok, lv, _html} = live(conn, ~p"/users/settings")
-
-      lv |> element("#settings-ink-ffbf47") |> render_click()
-      lv |> element("#settings-layout-page") |> render_click()
-
-      user = Accounts.get_user!(user.id)
-      assert user.score_ink_dark == "#ffbf47"
-      assert user.score_layout == :page
-    end
-
-    test "naming the note being placed or dragged is on until turned off",
-         %{conn: conn, user: user} do
-      {:ok, lv, _html} = live(conn, ~p"/users/settings")
-      assert has_element?(lv, "#settings-name-notes-input[checked]")
-
-      lv |> element("#settings-name-notes") |> render_change(%{"value" => "false"})
-
-      assert Accounts.get_user!(user.id).name_notes == false
-      refute has_element?(lv, "#settings-name-notes-input[checked]")
-    end
-
-    test "the page and the account menu call it Preferences", %{conn: conn} do
-      {:ok, lv, _html} = live(conn, ~p"/users/settings")
-      assert has_element?(lv, "h1", "Preferences")
-      assert has_element?(lv, "#account-menu-settings", "Preferences")
-    end
-
-    test "a custom color too dark to read on black is refused", %{conn: conn, user: user} do
-      {:ok, lv, _html} = live(conn, ~p"/users/settings")
-
-      lv |> form("#settings-ink-custom", %{color: "#202020"}) |> render_submit()
-
-      assert has_element?(lv, "#settings-ink .text-error")
-      assert Accounts.get_user!(user.id).score_ink_dark == nil
+      assert has_element?(lv, "#email_form")
+      assert has_element?(lv, "#password_form")
+      refute has_element?(lv, "#reading-aids")
+      refute has_element?(lv, "#score-display")
     end
   end
 end
