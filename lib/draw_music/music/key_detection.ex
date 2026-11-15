@@ -22,15 +22,23 @@ defmodule DrawMusic.Music.KeyDetection do
   def detect([]), do: nil
 
   def detect(notes) do
+    [{key, _fit} | _others] = ranked(notes)
+    key
+  end
+
+  @doc """
+  All 24 keys as `{{sf, mode}, fit}`, best fit first, for `notes` (`{midi,
+  ticks}` pairs). `fit` is a correlation, -1.0 to 1.0. Six sharps or flats
+  are written with sharps, so F♯ major and G♭ major are the one key.
+  """
+  @spec ranked([{0..127, pos_integer()}]) :: [{{-7..7, :major | :minor}, float()}]
+  def ranked(notes) do
     weights = Enum.reduce(notes, List.duplicate(0, @semitones), &add_note/2)
 
-    {{tonic, mode}, _fit} =
-      for tonic <- 0..(@semitones - 1), {mode, profile} <- [major: @major, minor: @minor] do
-        {{tonic, mode}, correlation(weights, rotate(profile, tonic))}
-      end
-      |> Enum.max_by(&elem(&1, 1))
-
-    {signature(tonic, mode), mode}
+    for tonic <- 0..(@semitones - 1), {mode, profile} <- [major: @major, minor: @minor] do
+      {{signature(tonic, mode), mode}, correlation(weights, rotate(profile, tonic))}
+    end
+    |> Enum.sort_by(&elem(&1, 1), :desc)
   end
 
   defp add_note({midi, ticks}, weights) do
