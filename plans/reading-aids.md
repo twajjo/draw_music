@@ -39,7 +39,8 @@ Three small PRs, each merged before the next.
   the gap between the staves, the treble side stops at middle C and so does
   the bass side. The ghost then always shows where the note will land, on
   its real staff.
-- Files: migration (`users.name_notes`), `Accounts.User` (changeset),
+- Files: migration (`users.name_notes`, renamed `show_note_names` in R2c),
+  `Accounts.User` (changeset),
   `UserLive.Settings` (the toggle, the heading), the layout's account menu,
   `EditorLive` (data attribute), `geometry.js` (`staffStepAt`), `overlay.js`
   (the label), `note_drag.js`, `index.js`, a small pure `note_name.js`,
@@ -57,9 +58,11 @@ existing "name notes" preference, with a second toggle for when they show):
   or moved with ↑/↓. The server draws them (`ReadingAid` `shown:
   :when_selected`, drawn only while the note is selected), so the arrow
   keys' JS labels went; ♮ follows the engraving's written `sign`.
-- **R2c**, when the names appear: a second toggle under "name notes",
-  "While editing and placing" or "At all times" (`users.name_notes_always`),
-  locked while "name notes" is off. At all times, every note is named.
+- **R2c**, when the names appear: a second toggle under "Show note names",
+  "Only while editing and placing" (`users.note_names_in_edit_only`, on by
+  default), locked while names are hidden. Off, every note is named at all
+  times. R2c also renames `name_notes` to `show_note_names`, to say what
+  each field does.
 - **"Letter the staff lines and spaces"**: tiny letters at the start of each
   line of music:
   - each staff's spaces (treble F A C E, bass A C E G);
@@ -67,7 +70,7 @@ existing "name notes" preference, with a second toggle for when they show):
   - middle C marked between the staves.
 - **What it isn't part of:** the downloaded SVG, the MIDI or the score itself.
   It's a way of viewing, not part of the music.
-- Files: migrations (`users.letter_staves`, `users.name_notes_always`),
+- Files: migrations (`users.letter_staves`, `users.note_names_in_edit_only`),
   `Accounts.User`, the Preferences page, the engraving or `ScoreSvg` (the
   letters, drawn only in the editor), `/help`, tests.
 

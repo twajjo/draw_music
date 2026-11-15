@@ -11,10 +11,11 @@ defmodule DrawMusicWeb.ReadingAids do
     staff's lines (treble E G B D F, bass G B D F A) and spaces (treble F A C
     E, bass A C E G) in two small columns left of the staves, and middle C on
     its ledger line below the treble and above the bass.
-  - `name_notes`: each selected note's name beside its head: its letter and
+  - `show_note_names`: each selected note's name beside its head: its letter and
     accidental (G♯, B♭), with ♮ only where the score writes a natural. Every
     note is named, but drawn only while it is selected (`ReadingAid` `shown:
-    :when_selected`), so selecting needs no new aids.
+    :when_selected`), so selecting needs no new aids. With
+    `note_names_in_edit_only` off, every note's name is drawn at all times.
   """
 
   alias DrawMusic.Accounts.User
@@ -67,7 +68,8 @@ defmodule DrawMusicWeb.ReadingAids do
   end
 
   defp aids(%System{items: items}, user) do
-    letters(user.letter_staves) ++ names(user.name_notes, items)
+    letters(user.letter_staves) ++
+      names(user.show_note_names, user.note_names_in_edit_only, items)
   end
 
   # Steps an even distance from the top line are lines; the others, spaces.
@@ -103,8 +105,9 @@ defmodule DrawMusicWeb.ReadingAids do
   defp name(step, %Glyph{alter: alter}) when alter in [nil, 0], do: letter(step)
   defp name(step, %Glyph{alter: alter}), do: letter(step) <> Map.fetch!(@signs, alter)
 
-  defp names(true = _name_notes?, items), do: note_names(items, :when_selected)
-  defp names(false, _items), do: []
+  defp names(true = _show?, true = _edit_only?, items), do: note_names(items, :when_selected)
+  defp names(true, false, items), do: note_names(items, :always)
+  defp names(false, _edit_only?, _items), do: []
 
   defp with_aids(%System{items: items} = system, user) do
     %{system | items: items ++ aids(system, user)}

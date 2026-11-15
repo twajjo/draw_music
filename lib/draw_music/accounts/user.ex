@@ -15,9 +15,11 @@ defmodule DrawMusic.Accounts.User do
     # the notation color in dark mode (nil: white).
     field :score_layout, Ecto.Enum, values: [:strip, :page], default: :strip
     field :score_ink_dark, :string
-    # Reading aids: name the note being placed or dragged; letter the staff
-    # lines and spaces.
-    field :name_notes, :boolean, default: true
+    # Reading aids: name the notes being placed, moved or selected (with
+    # note_names_in_edit_only off, every note at all times); letter the
+    # staff lines and spaces.
+    field :show_note_names, :boolean, default: true
+    field :note_names_in_edit_only, :boolean, default: true
     field :letter_staves, :boolean, default: false
 
     timestamps(type: :utc_datetime)
@@ -32,7 +34,8 @@ defmodule DrawMusic.Accounts.User do
           authenticated_at: DateTime.t() | nil,
           score_layout: :strip | :page,
           score_ink_dark: String.t() | nil,
-          name_notes: boolean(),
+          show_note_names: boolean(),
+          note_names_in_edit_only: boolean(),
           letter_staves: boolean(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
@@ -41,13 +44,26 @@ defmodule DrawMusic.Accounts.User do
   @doc """
   A changeset for the user's preferences: the score's layout and dark-mode
   ink, and the reading aids. The dark-mode ink must be a `#rrggbb` color
-  readable on black: a WCAG contrast ratio of at least 7:1.
+  readable on black: a WCAG contrast ratio of at least 7:1. Naming notes at
+  all times (`note_names_in_edit_only` off) needs `show_note_names` on.
   """
   @spec preferences_changeset(t(), map()) :: Ecto.Changeset.t()
   def preferences_changeset(user, attrs) do
     user
-    |> cast(attrs, [:score_layout, :score_ink_dark, :name_notes, :letter_staves])
-    |> validate_required([:score_layout, :name_notes, :letter_staves])
+    |> cast(attrs, [
+      :score_layout,
+      :score_ink_dark,
+      :show_note_names,
+      :note_names_in_edit_only,
+      :letter_staves
+    ])
+    |> validate_required([
+      :score_layout,
+      :show_note_names,
+      :note_names_in_edit_only,
+      :letter_staves
+    ])
+    |> validate_all_times_needs_names()
     |> update_change(:score_ink_dark, &String.downcase/1)
     |> validate_format(:score_ink_dark, ~r/^#[0-9a-f]{6}$/,
       message: "must be a color like #ffcc66"
@@ -68,6 +84,18 @@ defmodule DrawMusic.Accounts.User do
       end
 
     (0.2126 * r + 0.7152 * g + 0.0722 * b + 0.05) / 0.05
+  end
+
+  # Naming notes at all times (edit-only off) needs note names shown (the
+  # switch is locked while they're not). Hiding names leaves it as it is,
+  # unused.
+  defp validate_all_times_needs_names(changeset) do
+    edit_only = get_change(changeset, :note_names_in_edit_only)
+
+    case {edit_only, get_field(changeset, :show_note_names)} do
+      {false, false} -> add_error(changeset, :note_names_in_edit_only, "needs note names shown")
+      _allowed -> changeset
+    end
   end
 
   @doc """

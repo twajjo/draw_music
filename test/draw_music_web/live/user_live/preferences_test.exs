@@ -5,6 +5,7 @@ defmodule DrawMusicWeb.UserLive.PreferencesTest do
   import DrawMusic.AccountsFixtures
 
   alias DrawMusic.Accounts
+  alias DrawMusic.Accounts.Scope
 
   setup %{conn: conn} do
     user = user_fixture()
@@ -26,12 +27,27 @@ defmodule DrawMusicWeb.UserLive.PreferencesTest do
   test "naming the note being placed or moved is on until turned off",
        %{conn: conn, user: user} do
     {:ok, lv, _html} = live(conn, ~p"/users/preferences")
-    assert has_element?(lv, "#settings-name-notes-input[checked]")
+    assert has_element?(lv, "#settings-show-note-names-input[checked]")
 
-    lv |> element("#settings-name-notes") |> render_change(%{"value" => "false"})
+    lv |> element("#settings-show-note-names") |> render_change(%{"value" => "false"})
 
-    assert Accounts.get_user!(user.id).name_notes == false
-    refute has_element?(lv, "#settings-name-notes-input[checked]")
+    assert Accounts.get_user!(user.id).show_note_names == false
+    refute has_element?(lv, "#settings-show-note-names-input[checked]")
+  end
+
+  test "names only while editing is on, and locked while names are hidden",
+       %{conn: conn, user: user} do
+    {:ok, lv, _html} = live(conn, ~p"/users/preferences")
+    assert has_element?(lv, "#settings-note-names-in-edit-only-input[checked]")
+    refute has_element?(lv, "#settings-note-names-in-edit-only-input[disabled]")
+
+    lv |> element("#settings-show-note-names") |> render_change(%{"value" => "false"})
+    assert has_element?(lv, "#settings-note-names-in-edit-only-input[disabled]")
+
+    scope = Scope.for_user(Accounts.get_user!(user.id))
+
+    assert {:error, _changeset} =
+             Accounts.update_user_preferences(scope, %{note_names_in_edit_only: false})
   end
 
   test "a custom color too dark to read on black is refused", %{conn: conn, user: user} do
