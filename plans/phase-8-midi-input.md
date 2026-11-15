@@ -104,7 +104,7 @@ Phases 5, 6 and 7 had 104, 53 and 57 files per PR. That is far too many to revie
 | PR | Contents |
 |---|---|
 | 8.1 | Fix: dropdown menus close when you click away or press Escape (see below) |
-| 8.2 | Top bar: a **Settings** page for score display; the account menu's "Settings" becomes **Account** (see below) |
+| 8.2 | **Done differently** (#31, #35–#37): Preferences (panel or page) and Manage account, both in the account menu (see below) |
 | 8.3 | Score paper: a user default, independent of the interface theme (see below) |
 | 8.4 | Score paper: a per-composition override (see below) |
 | 8.5 | The Save menu moves to the top bar (after 8.1, which fixes the dropdown it uses; see below) |
@@ -202,7 +202,9 @@ The sweeps (8.8–8.11) are split further if any area turns out to be over about
 - The user checks in the browser: dark interface with white paper, light interface with dark paper, and a composition overriding the default.
 
 ## Settings in the top bar, Account in the menu (requested 2026-11-06)
-**Now:** the score display preferences sit on the account page (`/users/settings`, "Score display" section), reached from the account menu's "Settings" item. That name hides what the page mostly is: account setup (email, password).
+**Superseded (2026-11-14):** built differently in #31 and #35–#37. There is no top-bar Settings button: the account menu has **Preferences** (a panel over the editor, or `/users/preferences` elsewhere) and **Manage account** (`/users/settings`, email and password only). The rest of this section is the original design, kept for the record; where 8.3 and 8.24 say "the Settings page", read "Preferences".
+
+**Was:** the score display preferences sit on the account page (`/users/settings`, "Score display" section), reached from the account menu's "Settings" item. That name hides what the page mostly is: account setup (email, password).
 
 **The design (PR 8.2):**
 - **A new `DrawMusicWeb.SettingsLive` at `/settings`.** It goes in the existing `live_session :require_authenticated_user` (and its `:require_authenticated_user` pipeline), because preferences belong to a signed-in user.
