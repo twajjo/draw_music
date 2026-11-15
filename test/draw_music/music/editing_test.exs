@@ -362,12 +362,20 @@ defmodule DrawMusic.Music.EditingTest do
       {score, _id} =
         note!(Score.new(2), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
 
-      # Inside the note: where clicked. Past the music: right after it.
+      # At the note: in front of it. Inside it: after it.
       assert Editing.insert_point(score, @ctx, :treble, 0) == 0
-      assert Editing.insert_point(score, @ctx, :treble, 2880) == 960
-      assert Editing.insert_point(score, @ctx, :treble, 3840 + 1920) == 960
-      # The bass staff is empty: its music starts at the beginning.
-      assert Editing.insert_point(score, @ctx, :bass, 1920) == 0
+      assert Editing.insert_point(score, @ctx, :treble, 480) == 960
+    end
+
+    test "the rests that end the piece are items too: no point pulls back to the music" do
+      {score, _id} =
+        note!(Score.new(4), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
+
+      # In front of bar 4's whole rest, and of the empty bass staff's in bar 2.
+      assert Editing.insert_point(score, @ctx, :treble, 3 * 3840) == 3 * 3840
+      assert Editing.insert_point(score, @ctx, :bass, 3840) == 3840
+      # Inside the whole rest: in front of it, in the bar it was put in.
+      assert Editing.insert_point(score, @ctx, :bass, 3840 + 960) == 3840
     end
 
     test "like a text cursor: in front of a rest between notes, never inside an item" do

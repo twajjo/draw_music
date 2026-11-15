@@ -403,34 +403,28 @@ defmodule DrawMusic.Music.Editing do
   end
 
   @doc """
-  Where an insert at tick `at` on `staff` lands, like a text cursor: never
-  inside an item and never leaving a gap. At or past the end of the
-  staff's music (into the rests that end the piece) it lands where the
-  music ends (the start of the piece if there is none); where a note or
-  rest starts, there; inside one, where it ends.
+  Where an insert at tick `at` on `staff` lands, like a text cursor among
+  characters: every note and rest is one, the rests that end the piece
+  included, so it lands where it's put, never inside an item. Where a note
+  or rest starts, there (in front of it); inside a note, where it ends;
+  inside a rest, in front of it, so it stays in the bar it was put in.
   """
   @spec insert_point(Score.t(), Context.t(), Note.staff(), non_neg_integer()) ::
           non_neg_integer()
   def insert_point(%Score{} = score, %Context{} = ctx, staff, at) do
-    entries = Enum.filter(Timeline.flatten(score, ctx), &(&1.event.staff == staff))
-
-    music_end =
-      entries
-      |> Enum.reject(&filler?/1)
-      |> Enum.map(&(&1.start + &1.ticks))
-      |> Enum.max(fn -> 0 end)
-
     spans =
-      for entry <- entries, entry.start < music_end, do: {entry.start, entry.start + entry.ticks}
+      for %{event: %{staff: ^staff}} = entry <- Timeline.flatten(score, ctx),
+          do: {entry.kind, entry.start, entry.start + entry.ticks}
 
-    cursor(spans, min(at, music_end))
+    cursor(spans, at)
   end
 
-  # Out of whatever item `at` falls inside, to where it ends.
+  # Out of whatever item `at` falls inside: a note's end, a rest's start.
   defp cursor(spans, at) do
-    case Enum.find(spans, fn {from, to} -> from < at and at < to end) do
+    case Enum.find(spans, fn {_kind, from, to} -> from < at and at < to end) do
       nil -> at
-      {_from, to} -> cursor(spans, to)
+      {:note, _from, to} -> cursor(spans, to)
+      {_rest, from, _to} -> from
     end
   end
 

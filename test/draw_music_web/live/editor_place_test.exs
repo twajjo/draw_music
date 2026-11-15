@@ -187,23 +187,26 @@ defmodule DrawMusicWeb.EditorPlaceTest do
       assert [%{offset: 2880, value: :quarter}] =
                for(r <- hd(session_of(view).score.measures).rests, r.staff == :treble, do: r)
 
-      # Clicks past the music land right after it, a rest included.
-      place(view, 1, 1920, "E4")
+      # In front of the rests after the music, as in front of any item: the
+      # bar's closing rest, and bar 3's whole rest, the bars between kept.
+      place(view, 0, 2880, "E4")
+      place(view, 2, 0, "G4")
       view |> element("#palette-rest-toggle") |> render_click()
       arm(view, "quarter")
-      place(view, 1, 2880, "B4")
+      place(view, 2, 960, "B4")
       view |> element("#palette-rest-toggle") |> render_click()
       arm(view, "quarter")
-      place(view, 1, 2880, "F4")
+      place(view, 2, 1920, "F4")
 
       assert notes_of(view) == [
                {0, 0, "C4", :quarter, 0},
                {0, 960, "D4", :half, 0},
                {0, 2880, "E4", :quarter, 0},
-               {1, 960, "F4", :quarter, 0}
+               {2, 0, "G4", :quarter, 0},
+               {2, 1920, "F4", :quarter, 0}
              ]
 
-      assert user_rests(view) == [{1, 0, :quarter}]
+      assert user_rests(view) == [{2, 960, :quarter}]
     end
 
     test "in front of a note or a rest mid-bar, moving it and what follows", %{view: view} do
