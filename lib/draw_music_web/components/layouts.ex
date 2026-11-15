@@ -148,7 +148,7 @@ defmodule DrawMusicWeb.Layouts do
         <.link
           :if={!@preferences_patch}
           id="account-menu-settings"
-          href={~p"/users/settings#appearance"}
+          href={~p"/users/preferences"}
           role="menuitem"
           class="flex items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors hover:bg-base-200"
         >

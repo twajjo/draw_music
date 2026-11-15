@@ -4,21 +4,13 @@ defmodule DrawMusicWeb.UserLive.Settings do
   on_mount {DrawMusicWeb.UserAuth, :require_sudo_mode}
 
   alias DrawMusic.Accounts
-  import DrawMusicWeb.PreferencesComponents, only: [preference_sections: 1]
-
-  alias DrawMusicWeb.{InkPicker, LayoutToggle, PreferenceSwitch}
 
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="text-center">
-        <.header>
-          Preferences
-          <:subtitle>
-            Your account, and how the editor looks and helps you (a piece's own settings are in the editor)
-          </:subtitle>
-        </.header>
+        <.header>Manage Account Login</.header>
       </div>
 
       <.form for={@email_form} id="email_form" phx-submit="update_email" phx-change="validate_email">
@@ -70,10 +62,6 @@ defmodule DrawMusicWeb.UserLive.Settings do
           Save Password
         </.button>
       </.form>
-
-      <div class="divider" />
-
-      <.preference_sections scope={@current_scope} />
     </Layouts.app>
     """
   end
@@ -166,15 +154,4 @@ defmodule DrawMusicWeb.UserLive.Settings do
         {:noreply, assign(socket, password_form: to_form(changeset, action: :insert))}
     end
   end
-
-  # A saved preference: the page (and its ink) follows the new user.
-  @impl true
-  def handle_info({component, {:updated, user}}, socket)
-      when component in [InkPicker, LayoutToggle, PreferenceSwitch] do
-    {:noreply, assign(socket, :current_scope, %{socket.assigns.current_scope | user: user})}
-  end
-
-  # Anything else (e.g. the test mailer's copy of a sent email) is ignored,
-  # as it was before this page handled any messages.
-  def handle_info(_message, socket), do: {:noreply, socket}
 end

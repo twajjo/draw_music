@@ -153,6 +153,14 @@ defmodule DrawMusic.AccountsTest do
       refute Repo.get_by(UserToken, user_id: user.id)
     end
 
+    test "does not take an email another user registered after the link was sent",
+         %{user: user, token: token, email: email} do
+      user_fixture(%{email: email})
+
+      assert Accounts.update_user_email(user, token) == {:error, :transaction_aborted}
+      assert Repo.get!(User, user.id).email == user.email
+    end
+
     test "does not update email with invalid token", %{user: user} do
       assert Accounts.update_user_email(user, "oops") ==
                {:error, :transaction_aborted}
