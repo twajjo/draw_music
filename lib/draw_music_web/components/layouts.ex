@@ -25,6 +25,11 @@ defmodule DrawMusicWeb.Layouts do
   attr :flash, :map, required: true, doc: "the map of flash messages"
   attr :wide, :boolean, default: false, doc: "use the full window width (e.g. for a score)"
 
+  attr :preferences_patch, :string,
+    default: nil,
+    doc:
+      "where the account menu's Preferences patches to, in a page with its own panel (the editor)"
+
   attr :current_scope, :map,
     default: nil,
     doc: "the current [scope](https://phoenix.hexdocs.pm/scopes.html)"
@@ -55,7 +60,7 @@ defmodule DrawMusicWeb.Layouts do
 
       <div class="ml-auto flex items-center gap-2 text-sm">
         <%= if @current_scope do %>
-          <.account_menu user={@current_scope.user} />
+          <.account_menu user={@current_scope.user} preferences_patch={@preferences_patch} />
         <% else %>
           <.link href={~p"/users/log-in"} class="btn btn-ghost btn-sm">Log in</.link>
           <.link href={~p"/users/register"} class="btn btn-primary btn-sm">Register</.link>
@@ -86,6 +91,10 @@ defmodule DrawMusicWeb.Layouts do
   behind a button showing the user's email. Clicking elsewhere closes it.
   """
   attr :user, :map, required: true
+
+  attr :preferences_patch, :string,
+    default: nil,
+    doc: "patch to this for Preferences (the page stays); otherwise go to the Preferences page"
 
   @spec account_menu(map()) :: Phoenix.LiveView.Rendered.t()
   def account_menu(assigns) do
@@ -126,13 +135,34 @@ defmodule DrawMusicWeb.Layouts do
           <.theme_toggle />
         </div>
         <div class="border-t border-base-300" />
-        <.link
+        <button
+          :if={@preferences_patch}
           id="account-menu-settings"
-          href={~p"/users/settings"}
+          type="button"
+          phx-click={JS.hide(to: "#account-menu") |> JS.patch(@preferences_patch, replace: true)}
+          role="menuitem"
+          class="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors hover:bg-base-200"
+        >
+          <.icon name="hero-cog-6-tooth" class="size-4" /> Preferences
+        </button>
+        <.link
+          :if={!@preferences_patch}
+          id="account-menu-settings"
+          href={~p"/users/settings#appearance"}
           role="menuitem"
           class="flex items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors hover:bg-base-200"
         >
           <.icon name="hero-cog-6-tooth" class="size-4" /> Preferences
+        </.link>
+        <%!-- Email and password: always the account's own page, which leaves
+             the editor (whose unsaved-changes guard asks first). --%>
+        <.link
+          id="account-menu-account"
+          href={~p"/users/settings"}
+          role="menuitem"
+          class="flex items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors hover:bg-base-200"
+        >
+          <.icon name="hero-user-circle" class="size-4" /> Manage account
         </.link>
         <.link
           id="account-menu-log-out"
