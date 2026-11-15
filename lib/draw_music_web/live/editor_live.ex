@@ -291,6 +291,7 @@ defmodule DrawMusicWeb.EditorLive do
           key={elem(@dialog, 1)}
         />
         <.preferences_panel :if={@preferences?} scope={@current_scope} close={@path} />
+        <.unsaved_dialog />
       </div>
     </Layouts.app>
     """
