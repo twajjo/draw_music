@@ -30,16 +30,40 @@ defmodule DrawMusic.Music.Session do
           dirty?: boolean()
         }
 
-  @doc """
-  A clean session over `score` read against `ctx`. A score with no measures
-  starts with one empty bar, so there is somewhere to write. Gaps are filled
-  with filler rests, so every rest drawn can be selected.
-  """
-  @spec new(Score.t(), Context.t()) :: t()
-  def new(%Score{measures: []}, %Context{} = ctx), do: new(Score.new(), ctx)
+  @doc "Replaces the context (and the score re-read against it), undoably."
+  @spec change_context(t(), Context.t(), Score.t()) :: t()
+  def change_context(%__MODULE__{} = session, %Context{} = ctx, %Score{} = score) do
+    record(session, score, ctx)
+  end
 
-  def new(%Score{} = score, %Context{} = ctx) do
-    %__MODULE__{score: Editing.fill_rests(score, ctx), ctx: ctx}
+  @spec clear_selection(t()) :: t()
+  def clear_selection(%__MODULE__{} = session), do: %{session | selection: MapSet.new()}
+
+  @doc "Narrows the selection to its earliest event; an empty selection stays empty."
+  @spec collapse_selection(t()) :: t()
+  def collapse_selection(%__MODULE__{score: score, ctx: ctx, selection: selection} = session) do
+    first =
+      score
+      |> Timeline.flatten(ctx)
+      |> Enum.filter(&(&1.event.id in selection))
+      |> Enum.min_by(& &1.start, fn -> nil end)
+
+    case first do
+      nil -> session
+      entry -> %{session | selection: MapSet.new([entry.event.id])}
+    end
+  end
+
+  @doc "Copies the selection to the clipboard; with nothing selected, nothing changes."
+  @spec copy(t()) :: t()
+  def copy(%__MODULE__{selection: selection} = session) do
+    case MapSet.size(selection) do
+      0 ->
+        session
+
+      _some ->
+        %{session | clipboard: Editing.copy(session.score, session.ctx, selection_ids(session))}
+    end
   end
 
   @doc """
@@ -58,30 +82,39 @@ defmodule DrawMusic.Music.Session do
     end
   end
 
-  # An edit that changes nothing leaves history and the saved state alone.
-  defp maybe_record(%__MODULE__{score: score} = session, score), do: session
-  defp maybe_record(session, score), do: record(session, score, session.ctx)
-
-  @doc "Replaces the context (and the score re-read against it), undoably."
-  @spec change_context(t(), Context.t(), Score.t()) :: t()
-  def change_context(%__MODULE__{} = session, %Context{} = ctx, %Score{} = score) do
-    record(session, score, ctx)
+  @doc "Ids of every note, rest and tempo change in the score."
+  @spec event_ids(t()) :: MapSet.t(Ecto.UUID.t())
+  def event_ids(%__MODULE__{score: score}) do
+    events = for m <- score.measures, event <- m.notes ++ m.rests, do: event.id
+    MapSet.new(events ++ Enum.map(score.tempos, & &1.id))
   end
 
-  @doc "Steps back one change; does nothing at the start of the history."
-  @spec undo(t()) :: t()
-  def undo(%__MODULE__{undo: []} = session), do: session
+  @doc "The note or rest with `id`, or nil."
+  @spec find_event(t(), Ecto.UUID.t()) :: Note.t() | Rest.t() | nil
+  def find_event(%__MODULE__{score: score}, id) do
+    Enum.find_value(score.measures, fn m -> Enum.find(m.notes ++ m.rests, &(&1.id == id)) end)
+  end
 
-  def undo(%__MODULE__{undo: [{score, ctx} | rest]} = session) do
-    %{
-      session
-      | score: score,
-        ctx: ctx,
-        undo: rest,
-        redo: [{session.score, session.ctx} | session.redo],
-        dirty?: true
-    }
-    |> prune_selection()
+  @doc """
+  A clean session over `score` read against `ctx`. A score with no measures
+  starts with one empty bar, so there is somewhere to write. Gaps are filled
+  with filler rests, so every rest drawn can be selected.
+  """
+  @spec new(Score.t(), Context.t()) :: t()
+  def new(%Score{measures: []}, %Context{} = ctx), do: new(Score.new(), ctx)
+
+  def new(%Score{} = score, %Context{} = ctx) do
+    %__MODULE__{score: Editing.fill_rests(score, ctx), ctx: ctx}
+  end
+
+  @doc """
+  Where to paste: tick `at` if one is given, else `last_click`, else
+  straight after the selection, else the start. Never past the end of the
+  score: the browser's numbers are untrusted.
+  """
+  @spec paste_at(t(), term(), non_neg_integer() | nil) :: non_neg_integer()
+  def paste_at(%__MODULE__{score: score, ctx: ctx} = session, at, last_click) do
+    min(wanted_paste_at(session, at, last_click), Timeline.end_tick(score, ctx))
   end
 
   @doc "Re-applies the last undone change; does nothing if there is none."
@@ -115,8 +148,15 @@ defmodule DrawMusic.Music.Session do
     %{session | selection: selected(session.selection, known, add?)}
   end
 
-  defp selected(current, known, true = _add?), do: MapSet.union(current, known)
-  defp selected(_current, known, false), do: known
+  @doc "The selected notes and rests (not tempo changes)."
+  @spec selected_events(t()) :: [Note.t() | Rest.t()]
+  def selected_events(%__MODULE__{score: score, selection: selection}) do
+    for m <- score.measures, event <- m.notes ++ m.rests, event.id in selection, do: event
+  end
+
+  @doc "The selected ids, as a list."
+  @spec selection_ids(t()) :: [Ecto.UUID.t()]
+  def selection_ids(%__MODULE__{selection: selection}), do: MapSet.to_list(selection)
 
   @doc "Adds `id` to the selection, or removes it if already selected."
   @spec toggle(t(), Ecto.UUID.t()) :: t()
@@ -128,68 +168,29 @@ defmodule DrawMusic.Music.Session do
     end
   end
 
-  @spec clear_selection(t()) :: t()
-  def clear_selection(%__MODULE__{} = session), do: %{session | selection: MapSet.new()}
+  @doc "Steps back one change; does nothing at the start of the history."
+  @spec undo(t()) :: t()
+  def undo(%__MODULE__{undo: []} = session), do: session
 
-  @doc "Narrows the selection to its earliest event; an empty selection stays empty."
-  @spec collapse_selection(t()) :: t()
-  def collapse_selection(%__MODULE__{score: score, ctx: ctx, selection: selection} = session) do
-    first =
-      score
-      |> Timeline.flatten(ctx)
-      |> Enum.filter(&(&1.event.id in selection))
-      |> Enum.min_by(& &1.start, fn -> nil end)
-
-    case first do
-      nil -> session
-      entry -> %{session | selection: MapSet.new([entry.event.id])}
-    end
+  def undo(%__MODULE__{undo: [{score, ctx} | rest]} = session) do
+    %{
+      session
+      | score: score,
+        ctx: ctx,
+        undo: rest,
+        redo: [{session.score, session.ctx} | session.redo],
+        dirty?: true
+    }
+    |> prune_selection()
   end
 
-  @doc "Copies the selection to the clipboard; with nothing selected, nothing changes."
-  @spec copy(t()) :: t()
-  def copy(%__MODULE__{selection: selection} = session) do
-    case MapSet.size(selection) do
-      0 ->
-        session
+  # An edit that changes nothing leaves history and the saved state alone.
+  defp maybe_record(%__MODULE__{score: score} = session, score), do: session
+  defp maybe_record(session, score), do: record(session, score, session.ctx)
 
-      _some ->
-        %{session | clipboard: Editing.copy(session.score, session.ctx, selection_ids(session))}
-    end
+  defp prune_selection(session) do
+    %{session | selection: MapSet.intersection(session.selection, event_ids(session))}
   end
-
-  @doc "Ids of every note, rest and tempo change in the score."
-  @spec event_ids(t()) :: MapSet.t(Ecto.UUID.t())
-  def event_ids(%__MODULE__{score: score}) do
-    events = for m <- score.measures, event <- m.notes ++ m.rests, do: event.id
-    MapSet.new(events ++ Enum.map(score.tempos, & &1.id))
-  end
-
-  @doc "The note or rest with `id`, or nil."
-  @spec find_event(t(), Ecto.UUID.t()) :: Note.t() | Rest.t() | nil
-  def find_event(%__MODULE__{score: score}, id) do
-    Enum.find_value(score.measures, fn m -> Enum.find(m.notes ++ m.rests, &(&1.id == id)) end)
-  end
-
-  @doc """
-  Where to paste: tick `at` if one is given, else `last_click`, else
-  straight after the selection, else the start. Never past the end of the
-  score: the browser's numbers are untrusted.
-  """
-  @spec paste_at(t(), term(), non_neg_integer() | nil) :: non_neg_integer()
-  def paste_at(%__MODULE__{score: score, ctx: ctx} = session, at, last_click) do
-    min(wanted_paste_at(session, at, last_click), Timeline.end_tick(score, ctx))
-  end
-
-  @doc "The selected notes and rests (not tempo changes)."
-  @spec selected_events(t()) :: [Note.t() | Rest.t()]
-  def selected_events(%__MODULE__{score: score, selection: selection}) do
-    for m <- score.measures, event <- m.notes ++ m.rests, event.id in selection, do: event
-  end
-
-  @doc "The selected ids, as a list."
-  @spec selection_ids(t()) :: [Ecto.UUID.t()]
-  def selection_ids(%__MODULE__{selection: selection}), do: MapSet.to_list(selection)
 
   defp record(session, score, ctx) do
     %{
@@ -203,9 +204,8 @@ defmodule DrawMusic.Music.Session do
     |> prune_selection()
   end
 
-  defp prune_selection(session) do
-    %{session | selection: MapSet.intersection(session.selection, event_ids(session))}
-  end
+  defp selected(current, known, true = _add?), do: MapSet.union(current, known)
+  defp selected(_current, known, false), do: known
 
   defp wanted_paste_at(_session, at, _last_click) when is_integer(at) and at >= 0, do: at
   defp wanted_paste_at(_session, _at, last_click) when is_integer(last_click), do: last_click

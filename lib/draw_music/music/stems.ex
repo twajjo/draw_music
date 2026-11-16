@@ -22,9 +22,6 @@ defmodule DrawMusic.Music.Stems do
     toward(middle - Enum.min(steps), Enum.max(steps) - middle)
   end
 
-  defp toward(below, above) when below > above, do: :up
-  defp toward(_below, _above), do: :down
-
   @doc """
   Like `direction/2`, for `voice` on a staff whose measure uses
   `voice_count` voices.
@@ -32,4 +29,7 @@ defmodule DrawMusic.Music.Stems do
   def direction(staff, steps, _voice, 1), do: direction(staff, steps)
   def direction(_staff, _steps, voice, _voice_count) when rem(voice, 2) == 1, do: :up
   def direction(_staff, _steps, _voice, _voice_count), do: :down
+
+  defp toward(below, above) when below > above, do: :up
+  defp toward(_below, _above), do: :down
 end

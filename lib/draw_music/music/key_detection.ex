@@ -45,12 +45,6 @@ defmodule DrawMusic.Music.KeyDetection do
     List.update_at(weights, rem(midi, @semitones), &(&1 + ticks))
   end
 
-  # The profile with its tonic moved to `tonic`.
-  defp rotate(profile, tonic) do
-    {head, tail} = Enum.split(profile, @semitones - tonic)
-    tail ++ head
-  end
-
   defp correlation(xs, ys) do
     mean_x = Enum.sum(xs) / @semitones
     mean_y = Enum.sum(ys) / @semitones
@@ -62,7 +56,12 @@ defmodule DrawMusic.Music.KeyDetection do
   end
 
   defp dot(xs, ys), do: xs |> Enum.zip_with(ys, &(&1 * &2)) |> Enum.sum()
-  defp sum_of_squares(xs), do: dot(xs, xs)
+
+  # The profile with its tonic moved to `tonic`.
+  defp rotate(profile, tonic) do
+    {head, tail} = Enum.split(profile, @semitones - tonic)
+    tail ++ head
+  end
 
   # Sharps count up, flats down; six either way is written with sharps.
   defp signature(tonic, :minor),
@@ -74,4 +73,6 @@ defmodule DrawMusic.Music.KeyDetection do
       sharps -> sharps - @semitones
     end
   end
+
+  defp sum_of_squares(xs), do: dot(xs, xs)
 end

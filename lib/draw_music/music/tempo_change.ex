@@ -50,6 +50,16 @@ defmodule DrawMusic.Music.TempoChange do
     |> validate_gradual()
   end
 
+  @doc "The tempo the change leaves the music at."
+  @spec end_bpm(t()) :: pos_integer()
+  def end_bpm(%__MODULE__{to_bpm: nil, bpm: bpm}), do: bpm
+  def end_bpm(%__MODULE__{to_bpm: to_bpm}), do: to_bpm
+
+  @doc "Whether the change is gradual (rit. or accel.)."
+  @spec gradual?(t()) :: boolean()
+  def gradual?(%__MODULE__{to_tick: nil}), do: false
+  def gradual?(%__MODULE__{}), do: true
+
   # A gradual change has both ends, and ends after it starts.
   defp validate_gradual(changeset) do
     case {get_field(changeset, :tick), get_field(changeset, :to_tick),
@@ -59,14 +69,4 @@ defmodule DrawMusic.Music.TempoChange do
       _partial -> add_error(changeset, :to_tick, "must come after the start, with an end tempo")
     end
   end
-
-  @doc "Whether the change is gradual (rit. or accel.)."
-  @spec gradual?(t()) :: boolean()
-  def gradual?(%__MODULE__{to_tick: nil}), do: false
-  def gradual?(%__MODULE__{}), do: true
-
-  @doc "The tempo the change leaves the music at."
-  @spec end_bpm(t()) :: pos_integer()
-  def end_bpm(%__MODULE__{to_bpm: nil, bpm: bpm}), do: bpm
-  def end_bpm(%__MODULE__{to_bpm: to_bpm}), do: to_bpm
 end
