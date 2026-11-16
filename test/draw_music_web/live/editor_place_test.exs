@@ -85,7 +85,7 @@ defmodule DrawMusicWeb.EditorPlaceTest do
           %{"measure" => 0, "offset" => 0, "staff" => "treble", "step" => 28, "alter" => 9},
           %{"measure" => -1, "offset" => 0, "staff" => "treble", "step" => 28}
         ] do
-      render_hook(view, "place", bad)
+      canvas_hook(view, "place", bad)
     end
 
     assert notes_of(view) == []

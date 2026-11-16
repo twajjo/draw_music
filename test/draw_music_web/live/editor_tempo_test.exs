@@ -177,7 +177,7 @@ defmodule DrawMusicWeb.EditorTempoTest do
 
   test "Delete removes a selected mark and leaves the notes; Undo brings it back", %{view: view} do
     add_tempo(view, %{bpm: "60"})
-    render_hook(view, "delete", %{})
+    canvas_hook(view, "delete", %{})
 
     assert tempos(view) == []
     assert length(notes_of(view)) == 2

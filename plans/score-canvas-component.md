@@ -101,6 +101,12 @@ the rest still to `EditorLive` (11c removes that split). The guard is
 `last_click`. The hook sends everything with `pushEventTo(this.el, …)`, and
 their tests target `#score-editor`.
 
+As built: the component takes the whole `session` (paste needs its clipboard
+and selection) in place of `score`, `ctx` and `selection`, and keeps
+`last_click` as its own state. Every edit goes to `EditorLive` as an
+`{:edit, fun}` or `{:edit, fun, :select}` intent; the bar buttons get a
+`target`. `EditorLive` handles no score events now, only `edit_details`.
+
 ## Afterwards
 PR 12 composes `EditorLive.render/1` and groups the leftover assigns, and
 PR 13 is the function-order sweep. (`transport.ex`, at 578 lines, can be split

@@ -79,6 +79,7 @@ defmodule DrawMusicWeb.EditorComponents do
   """
   attr :engraved, :map, required: true
   attr :score, :map, required: true, doc: "the Music.Score, to know which bars hold music"
+  attr :target, :any, required: true, doc: "the component the buttons' events go to"
 
   @spec measure_controls(map()) :: Phoenix.LiveView.Rendered.t()
   def measure_controls(assigns) do
@@ -111,6 +112,7 @@ defmodule DrawMusicWeb.EditorComponents do
           title="Insert a bar before this one"
           aria-label="Insert a bar before this one"
           phx-click="insert_measure"
+          phx-target={@target}
           phx-value-index={bar.index}
           class="btn btn-ghost btn-xs btn-square"
         >
@@ -122,6 +124,7 @@ defmodule DrawMusicWeb.EditorComponents do
           title="Delete this bar"
           aria-label="Delete this bar"
           phx-click="delete_measure"
+          phx-target={@target}
           phx-value-index={bar.index}
           data-confirm={MapSet.member?(@filled, bar.index) && "Delete this bar and the music in it?"}
           class="btn btn-ghost btn-xs btn-square"
@@ -134,6 +137,7 @@ defmodule DrawMusicWeb.EditorComponents do
         type="button"
         title="Add a bar at the end"
         phx-click="add_measure"
+        phx-target={@target}
         class="btn btn-ghost btn-xs pointer-events-auto absolute -translate-y-1/2 gap-1 opacity-60 transition-opacity hover:opacity-100"
         style={"left: calc(#{@last.end_left}% + 0.5rem); top: #{@last.top}%"}
       >

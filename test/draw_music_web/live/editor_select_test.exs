@@ -71,7 +71,7 @@ defmodule DrawMusicWeb.EditorSelectTest do
 
     test "deleting after it leaves no notes", %{view: view} do
       view |> element("#palette") |> render_hook("select_all", %{})
-      render_hook(view, "delete", %{})
+      canvas_hook(view, "delete", %{})
       assert notes_of(view) == []
     end
 
@@ -99,8 +99,8 @@ defmodule DrawMusicWeb.EditorSelectTest do
   test "arrows move the selection by scale steps and beats", %{view: view} do
     select(view, [id_at(view, 960)])
 
-    render_hook(view, "move", %{"dir" => "up"})
-    render_hook(view, "move", %{"dir" => "right"})
+    canvas_hook(view, "move", %{"dir" => "up"})
+    canvas_hook(view, "move", %{"dir" => "right"})
 
     assert {0, 1920, "F4", :quarter, 0} in notes_of(view)
   end
@@ -109,22 +109,22 @@ defmodule DrawMusicWeb.EditorSelectTest do
        %{view: view} do
     placing_mode(view, :overlay)
     select(view, [id_at(view, 0)])
-    render_hook(view, "delete", %{})
+    canvas_hook(view, "delete", %{})
     assert notes_of(view) == [{0, 960, "E4", :quarter, 0}]
   end
 
   test "in Insert, delete removes the selection and closes the gap", %{view: view} do
     select(view, [id_at(view, 0)])
-    render_hook(view, "delete", %{})
+    canvas_hook(view, "delete", %{})
     assert notes_of(view) == [{0, 0, "E4", :quarter, 0}]
   end
 
   test "Shift moves by octaves, Ctrl by semitones", %{view: view} do
     select(view, [id_at(view, 0)])
-    render_hook(view, "move", %{"dir" => "up", "by" => "octave"})
+    canvas_hook(view, "move", %{"dir" => "up", "by" => "octave"})
     assert {0, 0, "C5", :quarter, 0} in notes_of(view)
 
-    render_hook(view, "move", %{"dir" => "down", "by" => "semitone"})
+    canvas_hook(view, "move", %{"dir" => "down", "by" => "semitone"})
     assert {0, 0, "B4", :quarter, 0} in notes_of(view)
   end
 
@@ -134,14 +134,14 @@ defmodule DrawMusicWeb.EditorSelectTest do
     canvas_hook(view, "disarm", %{})
     select(view, [id_at(view, 1920)])
 
-    render_hook(view, "move", %{"dir" => "up", "by" => "octave"})
+    canvas_hook(view, "move", %{"dir" => "up", "by" => "octave"})
     assert {0, 1920, "F♯5", :quarter, 0} in notes_of(view)
   end
 
   test "a paste far past the end lands at the end", %{view: view} do
     select(view, [id_at(view, 0)])
-    render_hook(view, "copy", %{})
-    render_hook(view, "paste", %{"at" => 1_000_000_000})
+    canvas_hook(view, "copy", %{})
+    canvas_hook(view, "paste", %{"at" => 1_000_000_000})
 
     assert length(session_of(view).score.measures) == 5
     assert {4, 0, "C4", :quarter, 0} in notes_of(view)
@@ -192,8 +192,8 @@ defmodule DrawMusicWeb.EditorSelectTest do
 
   test "copy and paste duplicate at the given tick", %{view: view} do
     canvas_hook(view, "select_range", %{"from" => 0, "to" => 3840})
-    render_hook(view, "copy", %{})
-    render_hook(view, "paste", %{"at" => 3840})
+    canvas_hook(view, "copy", %{})
+    canvas_hook(view, "paste", %{"at" => 3840})
 
     assert {1, 0, "C4", :quarter, 0} in notes_of(view)
     assert {1, 960, "E4", :quarter, 0} in notes_of(view)
@@ -202,16 +202,16 @@ defmodule DrawMusicWeb.EditorSelectTest do
   test "cut removes and keeps a copy", %{view: view} do
     placing_mode(view, :overlay)
     select(view, [id_at(view, 0)])
-    render_hook(view, "cut", %{})
-    render_hook(view, "paste", %{"at" => 1920})
+    canvas_hook(view, "cut", %{})
+    canvas_hook(view, "paste", %{"at" => 1920})
 
     assert notes_of(view) == [{0, 960, "E4", :quarter, 0}, {0, 1920, "C4", :quarter, 0}]
   end
 
   test "paste always inserts, moving later music on that staff right", %{view: view} do
     select(view, [id_at(view, 0)])
-    render_hook(view, "copy", %{})
-    render_hook(view, "paste", %{"at" => 0})
+    canvas_hook(view, "copy", %{})
+    canvas_hook(view, "paste", %{"at" => 0})
 
     assert notes_of(view) == [
              {0, 0, "C4", :quarter, 0},
@@ -233,7 +233,7 @@ defmodule DrawMusicWeb.EditorSelectTest do
     select(view, [id])
     view |> element("#palette-undo") |> render_click()
 
-    render_hook(view, "move", %{"dir" => "up"})
+    canvas_hook(view, "move", %{"dir" => "up"})
     assert notes_of(view) == [{0, 0, "C4", :quarter, 0}]
     assert count(view, "#score .selected") == 0
   end
@@ -244,7 +244,7 @@ defmodule DrawMusicWeb.EditorSelectTest do
     canvas_hook(view, "disarm", %{})
     select(view, [id_at(view, 1920)])
 
-    render_hook(view, "move", %{"dir" => "up"})
+    canvas_hook(view, "move", %{"dir" => "up"})
 
     assert has_element?(view, "#flash-error", "That would go outside the piano's range")
     assert {0, 1920, "C8", :quarter, 0} in notes_of(view)

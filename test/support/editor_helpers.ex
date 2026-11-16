@@ -29,7 +29,7 @@ defmodule DrawMusicWeb.EditorHelpers do
 
   @doc """
   Sends `event` from the score's hook to `Editor.ScoreCanvas`, which handles
-  selecting, the tempo marks, the right-click menu, audition and disarm.
+  every event from the score.
   """
   def canvas_hook(view, event, params \\ %{}) do
     view |> element("#score-editor") |> render_hook(event, params)
@@ -50,6 +50,6 @@ defmodule DrawMusicWeb.EditorHelpers do
       }
       |> then(&if(Keyword.get(opts, :alter, false), do: Map.put(&1, "alter", alter), else: &1))
 
-    render_hook(view, "place", params)
+    canvas_hook(view, "place", params)
   end
 end
