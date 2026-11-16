@@ -20,6 +20,7 @@ defmodule DrawMusicWeb.EditorLive do
 
   import DrawMusicWeb.PreferencesComponents, only: [preferences_panel: 1]
 
+  alias DrawMusic.Accounts
   alias DrawMusic.Engraving.Layout
   alias DrawMusic.Library
   alias DrawMusic.Library.{Composition, Key, Version}
@@ -38,9 +39,8 @@ defmodule DrawMusicWeb.EditorLive do
     EditorGeometry,
     EditorSaving,
     EditorSettings,
-    InkPicker,
     LayoutToggle,
-    PreferenceSwitch,
+    PreferencesForm,
     ReadingAids,
     ScoreSvg,
     Shortcuts,
@@ -232,29 +232,32 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign_layout()}
   end
 
-  # Another preference, from the Preferences panel: the editor follows it.
-  # The ink and the placing aid are read from the user when drawn; the staff
-  # letters are part of the pieces, so those are drawn again (not engraved).
-  def handle_info({InkPicker, {:updated, user}}, socket) do
-    {:noreply, assign(socket, :current_scope, %{socket.assigns.current_scope | user: user})}
+  # The Preferences panel's form: the editor shows its preview; Save and
+  # Cancel close the panel (closing puts back what's stored, `handle_params`).
+  def handle_info({PreferencesForm, {:preview, user}}, socket) do
+    {:noreply, follow_user(socket, user)}
   end
 
-  def handle_info({PreferenceSwitch, {:updated, user}}, socket) do
+  def handle_info({PreferencesForm, {_saved_or_cancelled, user}}, socket) do
     {:noreply,
      socket
-     |> assign(:current_scope, %{socket.assigns.current_scope | user: user})
-     |> assign_pieces()}
+     |> follow_user(user)
+     |> push_patch(to: socket.assigns.path, replace: true)}
   end
 
   # The Preferences panel is part of the address (`?panel=preferences`), so
   # opening and closing it are patches: the editor, unsaved work included,
-  # stays as it is.
+  # stays as it is. However it's closed (Save, Cancel, or the browser's Back),
+  # the editor goes back to the stored preferences, dropping any preview.
   @impl true
   def handle_params(params, uri, socket) do
+    open? = params["panel"] == "preferences"
+
     {:noreply,
      socket
      |> assign(:path, URI.parse(uri).path)
-     |> assign(:preferences?, params["panel"] == "preferences")}
+     |> closing_preferences(Map.get(socket.assigns, :preferences?, false), open?)
+     |> assign(:preferences?, open?)}
   end
 
   @impl true
@@ -363,7 +366,7 @@ defmodule DrawMusicWeb.EditorLive do
           insert?={@palette.insert?}
           extras={@extras}
         />
-        <.preferences_panel :if={@preferences?} scope={@current_scope} close={@path} />
+        <.preferences_panel :if={@preferences?} scope={@current_scope} />
       </.score_paper>
     </Layouts.app>
     """
@@ -430,6 +433,14 @@ defmodule DrawMusicWeb.EditorLive do
 
   defp close_menu(socket), do: socket
 
+  # Closing the Preferences panel, however it happened: back to what's
+  # stored, which drops a preview that Save or Cancel didn't settle.
+  defp closing_preferences(socket, true = _was_open?, false = _open?) do
+    follow_user(socket, Accounts.get_user!(socket.assigns.current_scope.user.id))
+  end
+
+  defp closing_preferences(socket, _was_open?, _open?), do: socket
+
   # `apply_edit/2` when the outcome doesn't matter beyond the socket.
   defp edit(socket, fun) do
     case apply_edit(socket, fun) do
@@ -445,6 +456,15 @@ defmodule DrawMusicWeb.EditorLive do
       {:ok, socket, ids} -> update(socket, :session, &Session.select(&1, ids, false))
       {:error, socket} -> socket
     end
+  end
+
+  # The editor in `user`'s preferences (stored or previewed).
+  defp follow_user(socket, user) do
+    %{current_scope: scope} = socket.assigns
+
+    socket
+    |> assign(:current_scope, %{scope | user: user})
+    |> redraw_for(scope.user, user)
   end
 
   defp history_step(session, :undo), do: Session.undo(session)
@@ -520,6 +540,15 @@ defmodule DrawMusicWeb.EditorLive do
   defp pieces(engraved, user) do
     ScoreSvg.pieces(ReadingAids.add(engraved, user), user.score_layout)
   end
+
+  # A new layout lays the score out again; other preferences redraw its
+  # pieces (the reading aids are in them; the ink is read when drawn).
+  defp redraw_for(socket, same, same), do: socket
+
+  defp redraw_for(socket, %{score_layout: layout}, %{score_layout: layout}),
+    do: assign_pieces(socket)
+
+  defp redraw_for(socket, _old, _new), do: assign_layout(socket)
 
   defp saved_and_open(socket, saved, message) do
     socket

@@ -293,6 +293,13 @@ defmodule DrawMusicWeb.Shortcuts do
       action:
         "On the Compositions page, read a .mid file into the library under the name it carries (you can change it). If the name is taken: replace that key's versions with it, add it as a new version, or pick another name"
     },
+    %Shortcut{
+      group: "Saving",
+      mouse: "account menu › Preferences",
+      modes: @both,
+      action:
+        "Your own preferences (layout, dark-mode ink, reading aids). Changes show at once but aren't kept until Save; Cancel puts back what you had, and Defaults fills in the starting values (Save to keep them). Only Save or Cancel closes it"
+    },
     # Playback (the play controls replace the edit palette in Play mode)
     %Shortcut{
       group: "Playback",

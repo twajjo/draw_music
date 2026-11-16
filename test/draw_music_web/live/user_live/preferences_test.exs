@@ -12,50 +12,78 @@ defmodule DrawMusicWeb.UserLive.PreferencesTest do
     %{conn: log_in_user(conn, user), user: user}
   end
 
-  test "a swatch saves the dark-mode ink and the layout toggle saves the layout",
+  test "changes preview and store nothing; Save stores them and leaves",
        %{conn: conn, user: user} do
     {:ok, lv, _html} = live(conn, ~p"/users/preferences")
 
-    lv |> element("#settings-ink-ffbf47") |> render_click()
-    lv |> element("#settings-layout-page") |> render_click()
+    change(lv, %{score_layout: "page", score_ink_dark: "#ffbf47"})
 
-    user = Accounts.get_user!(user.id)
-    assert user.score_ink_dark == "#ffbf47"
-    assert user.score_layout == :page
+    assert has_element?(lv, "#preferences-form-layout-page.btn-primary")
+    assert has_element?(lv, "#preferences-form-ink-ffbf47.ring-2")
+    assert has_element?(lv, "#unsaved-guard[data-dirty=true]")
+    assert Accounts.get_user!(user.id).score_layout == :strip
+
+    lv |> form("#preferences-form") |> render_submit()
+
+    stored = Accounts.get_user!(user.id)
+    assert {stored.score_layout, stored.score_ink_dark} == {:page, "#ffbf47"}
+    assert_push_event(lv, "preferences:leave", %{to: "/compositions"})
+    assert has_element?(lv, "#unsaved-guard[data-dirty=false]")
   end
 
-  test "naming the note being placed or moved is on until turned off",
+  test "Cancel discards the changes and leaves", %{conn: conn, user: user} do
+    {:ok, lv, _html} = live(conn, ~p"/users/preferences")
+    change(lv, %{letter_staves: "true"})
+
+    lv |> element("#preferences-form-cancel") |> render_click()
+
+    assert Accounts.get_user!(user.id).letter_staves == false
+    assert_push_event(lv, "preferences:leave", %{to: "/compositions"})
+    assert has_element?(lv, "#unsaved-guard[data-dirty=false]")
+  end
+
+  test "Defaults fills in a new user's preferences, stored only on Save",
+       %{conn: conn, user: user} do
+    {:ok, _user} =
+      Accounts.update_user_preferences(Scope.for_user(user), %{
+        score_layout: :page,
+        letter_staves: true,
+        score_ink_dark: "#ffbf47"
+      })
+
+    {:ok, lv, _html} = live(conn, ~p"/users/preferences")
+    lv |> element("#preferences-form-defaults") |> render_click()
+
+    assert has_element?(lv, "#preferences-form-layout-strip.btn-primary")
+    assert has_element?(lv, "#preferences-form-ink-ffffff.ring-2")
+    assert Accounts.get_user!(user.id).score_layout == :page
+
+    lv |> form("#preferences-form") |> render_submit()
+
+    stored = Accounts.get_user!(user.id)
+
+    assert {stored.score_layout, stored.letter_staves, stored.score_ink_dark} ==
+             {:strip, false, nil}
+  end
+
+  test "names only while editing is locked while names are hidden", %{conn: conn} do
+    {:ok, lv, _html} = live(conn, ~p"/users/preferences")
+    assert has_element?(lv, "#preferences-form-note-names-in-edit-only[checked]")
+    refute has_element?(lv, "#preferences-form-note-names-in-edit-only[disabled]")
+
+    change(lv, %{show_note_names: "false"})
+
+    assert has_element?(lv, "#preferences-form-note-names-in-edit-only[disabled]")
+  end
+
+  test "a custom color too dark to read on black is refused, and can't be saved",
        %{conn: conn, user: user} do
     {:ok, lv, _html} = live(conn, ~p"/users/preferences")
-    assert has_element?(lv, "#settings-show-note-names-input[checked]")
 
-    lv |> element("#settings-show-note-names") |> render_change(%{"value" => "false"})
+    lv |> form("#preferences-form") |> render_change(%{custom_ink: "#202020"})
 
-    assert Accounts.get_user!(user.id).show_note_names == false
-    refute has_element?(lv, "#settings-show-note-names-input[checked]")
-  end
-
-  test "names only while editing is on, and locked while names are hidden",
-       %{conn: conn, user: user} do
-    {:ok, lv, _html} = live(conn, ~p"/users/preferences")
-    assert has_element?(lv, "#settings-note-names-in-edit-only-input[checked]")
-    refute has_element?(lv, "#settings-note-names-in-edit-only-input[disabled]")
-
-    lv |> element("#settings-show-note-names") |> render_change(%{"value" => "false"})
-    assert has_element?(lv, "#settings-note-names-in-edit-only-input[disabled]")
-
-    scope = Scope.for_user(Accounts.get_user!(user.id))
-
-    assert {:error, _changeset} =
-             Accounts.update_user_preferences(scope, %{note_names_in_edit_only: false})
-  end
-
-  test "a custom color too dark to read on black is refused", %{conn: conn, user: user} do
-    {:ok, lv, _html} = live(conn, ~p"/users/preferences")
-
-    lv |> form("#settings-ink-custom", %{color: "#202020"}) |> render_submit()
-
-    assert has_element?(lv, "#settings-ink .text-error")
+    assert has_element?(lv, "#preferences-form-ink .text-error")
+    assert has_element?(lv, "#preferences-form-save[disabled]")
     assert Accounts.get_user!(user.id).score_ink_dark == nil
   end
 
@@ -72,5 +100,9 @@ defmodule DrawMusicWeb.UserLive.PreferencesTest do
     conn = log_in_user(conn, user_fixture(), token_authenticated_at: stale)
 
     assert {:ok, _lv, _html} = live(conn, ~p"/users/preferences")
+  end
+
+  defp change(lv, fields) do
+    lv |> form("#preferences-form", user: fields) |> render_change()
   end
 end

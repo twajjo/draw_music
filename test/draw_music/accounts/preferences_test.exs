@@ -4,7 +4,7 @@ defmodule DrawMusic.Accounts.PreferencesTest do
   import DrawMusic.DataCase, only: [errors_on: 1]
 
   alias DrawMusic.Accounts.User
-  alias DrawMusicWeb.InkPicker
+  alias DrawMusicWeb.PreferencesForm
 
   defp prefs(attrs), do: User.preferences_changeset(%User{}, attrs)
 
@@ -19,6 +19,14 @@ defmodule DrawMusic.Accounts.PreferencesTest do
     assert %{score_ink_dark: [_]} = errors_on(prefs(%{score_ink_dark: "#fc6"}))
   end
 
+  test "the dark-mode ink can go back to none, which is white" do
+    changeset =
+      User.preferences_changeset(%User{score_ink_dark: "#ffbf47"}, %{score_ink_dark: ""})
+
+    assert changeset.valid?
+    assert Ecto.Changeset.get_change(changeset, :score_ink_dark, :unchanged) == nil
+  end
+
   test "the dark-mode ink must be readable on black" do
     assert %{score_ink_dark: ["is too dark to read on black"]} =
              errors_on(prefs(%{score_ink_dark: "#333333"}))
@@ -27,7 +35,7 @@ defmodule DrawMusic.Accounts.PreferencesTest do
   end
 
   test "every preset swatch is accepted" do
-    for {_name, color} <- InkPicker.presets() do
+    for {_name, color} <- PreferencesForm.presets() do
       assert prefs(%{score_ink_dark: color}).valid?, "#{color} should be readable on black"
     end
   end

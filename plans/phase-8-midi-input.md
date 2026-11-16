@@ -106,9 +106,9 @@ Phases 5, 6 and 7 had 104, 53 and 57 files per PR. That is far too many to revie
 | 8.1 | Fix: dropdown menus close when you click away or press Escape (see below). **Partly done** (#50): the Save menu closes on a pick and on a click away. Still to do: Escape, the shared `<.dropdown>`, the Chords menu and the library dropdown |
 | 8.2 | **Done differently** (#31, #35–#37): Preferences (panel or page) and Manage account, both in the account menu (see below) |
 | 8.2a | The editor header shows the version's instrument, "For <instrument>" (see below) |
-| 8.2b | Preferences saved explicitly: one form, live preview, Save / Cancel / Defaults (see below) |
-| 8.3 | Score paper: a user default, independent of the interface theme, in the 8.2b form (see below) |
-| 8.4 | Score paper: a per-composition override (see below) |
+| 8.2b | Preferences saved explicitly: one form, live preview, Save / Cancel / Defaults; the theme in it; Page / Strip view-only for the session (`plans/preferences-form.md`, PRs 1–3) |
+| 8.3 | Score paper: a user preference, independent of the interface theme, in the 8.2b form, with a session toggle in the editor (`plans/preferences-form.md`, PR 4) |
+| 8.4 | **Dropped** (2026-11-15): the paper is a view choice, never stored with a composition |
 | 8.5 | The Save menu moves to the top bar (after 8.1, which fixes the dropdown it uses; see below) |
 | 8.6 | Import .mid from the top bar (see below) |
 | 8.7 | **Deferred to the end of the app** (2026-11-15): the DrawMusic wordmark's target (see below) |
