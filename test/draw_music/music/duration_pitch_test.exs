@@ -82,7 +82,10 @@ defmodule DrawMusic.Music.DurationPitchTest do
     end
 
     test "tonic/2 of major and relative minor keys" do
-      names = fn {letter, _pc} -> Enum.at(~w(C D E F G A B), letter) end
+      names = fn {letter, _pc} ->
+        Enum.at(~w(C D E F G A B), letter)
+      end
+
       assert names.(Pitch.tonic(3, :major)) == "A"
       assert names.(Pitch.tonic(3, :minor)) == "F"
       assert names.(Pitch.tonic(-3, :minor)) == "C"

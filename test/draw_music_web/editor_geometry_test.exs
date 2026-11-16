@@ -5,8 +5,6 @@ defmodule DrawMusicWeb.EditorGeometryTest do
   alias DrawMusicWeb.{Armed, EditorGeometry}
   alias DrawMusicWeb.EditorGeometry.ChordShape
 
-  defp chord(chord), do: %Armed{kind: :chord, value: :quarter, chord: chord}
-
   test "a chord quality sends its intervals above the root and its suffix" do
     payload = EditorGeometry.armed(chord({:quality, :minor}), %Context{})
 
@@ -46,4 +44,6 @@ defmodule DrawMusicWeb.EditorGeometryTest do
     payload = EditorGeometry.armed(%Armed{kind: :note, value: :quarter}, %Context{})
     assert payload.chord == nil
   end
+
+  defp chord(chord), do: %Armed{kind: :chord, value: :quarter, chord: chord}
 end

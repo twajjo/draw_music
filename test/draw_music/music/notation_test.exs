@@ -5,21 +5,6 @@ defmodule DrawMusic.Music.NotationTest do
 
   alias DrawMusic.Music.{Accidentals, Beaming, Context, Measure, Note, Rest, Stems}
 
-  defp note(spn, offset, attrs \\ %{}) do
-    {step, alter} = pitch!(spn)
-
-    struct!(
-      %Note{id: Ecto.UUID.generate(), staff: :treble, voice: 1, value: :eighth, dots: 0},
-      Map.merge(%{offset: offset, step: step, alter: alter}, attrs)
-    )
-  end
-
-  defp eighths(offsets, attrs \\ %{}), do: Enum.map(offsets, &note("C5", &1, attrs))
-
-  defp offsets(groups), do: Enum.map(groups, & &1.offsets)
-
-  defp step(spn), do: elem(pitch!(spn), 0)
-
   describe "Beaming.groups/3" do
     test "groups eighths by the beat in simple meters" do
       measure = %Measure{notes: eighths([0, 480, 960, 1440, 1920]), rests: []}
@@ -102,4 +87,19 @@ defmodule DrawMusic.Music.NotationTest do
       assert Accidentals.displayed(measure, 0, MapSet.new([a.id])) == %{}
     end
   end
+
+  defp eighths(offsets, attrs \\ %{}), do: Enum.map(offsets, &note("C5", &1, attrs))
+
+  defp note(spn, offset, attrs \\ %{}) do
+    {step, alter} = pitch!(spn)
+
+    struct!(
+      %Note{id: Ecto.UUID.generate(), staff: :treble, voice: 1, value: :eighth, dots: 0},
+      Map.merge(%{offset: offset, step: step, alter: alter}, attrs)
+    )
+  end
+
+  defp offsets(groups), do: Enum.map(groups, & &1.offsets)
+
+  defp step(spn), do: elem(pitch!(spn), 0)
 end

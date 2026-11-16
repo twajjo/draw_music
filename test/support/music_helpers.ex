@@ -6,10 +6,7 @@ defmodule DrawMusic.MusicHelpers do
 
   alias DrawMusic.Music.{Editing, Pitch, Placement, Timeline}
 
-  def pitch!(spn) do
-    {:ok, pitch} = Pitch.parse(spn)
-    pitch
-  end
+  def entries(score, ctx), do: Timeline.flatten(score, ctx)
 
   @doc """
   Places a note and returns `{score, id}`. `attrs` are `DrawMusic.Music.Placement`
@@ -20,17 +17,22 @@ defmodule DrawMusic.MusicHelpers do
     {score, id}
   end
 
-  @doc "A `DrawMusic.Music.Placement` from Placement fields, pitched at `spn` if given."
-  def placement(spn \\ nil, attrs) do
-    pitch = if spn, do: Enum.zip([:step, :alter], Tuple.to_list(pitch!(spn))), else: []
-    struct!(Placement, Map.merge(Map.new(pitch), attrs))
-  end
-
   @doc "All notes as `{measure_index, offset, spn, value, dots}`, in order."
   def notes(score) do
     for {measure, index} <- Enum.with_index(score.measures),
         note <- measure.notes,
         do: {index, note.offset, Pitch.name(note.step, note.alter), note.value, note.dots}
+  end
+
+  def pitch!(spn) do
+    {:ok, pitch} = Pitch.parse(spn)
+    pitch
+  end
+
+  @doc "A `DrawMusic.Music.Placement` from Placement fields, pitched at `spn` if given."
+  def placement(spn \\ nil, attrs) do
+    pitch = if spn, do: Enum.zip([:step, :alter], Tuple.to_list(pitch!(spn))), else: []
+    struct!(Placement, Map.merge(Map.new(pitch), attrs))
   end
 
   @doc "Ids of the notes of a tie chain starting at `id`."
@@ -43,6 +45,4 @@ defmodule DrawMusic.MusicHelpers do
     end)
     |> Enum.to_list()
   end
-
-  def entries(score, ctx), do: Timeline.flatten(score, ctx)
 end

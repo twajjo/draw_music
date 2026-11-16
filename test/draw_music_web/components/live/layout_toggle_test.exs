@@ -7,13 +7,6 @@ defmodule DrawMusicWeb.LayoutToggleTest do
 
   setup :register_and_log_in_user
 
-  defp host(conn, scope) do
-    attrs = %{scope: scope, id: "layout"}
-    session = %{"component" => LayoutToggle, "attrs" => attrs, "test_pid" => self()}
-    {:ok, view, _html} = live_isolated(conn, ComponentHostLive, session: session)
-    view
-  end
-
   test "shows the user's layout as chosen", %{conn: conn, scope: scope} do
     view = host(conn, scope)
 
@@ -24,9 +17,16 @@ defmodule DrawMusicWeb.LayoutToggleTest do
     view = host(conn, scope)
 
     view |> element("#subject-page") |> render_click()
-    assert_received {:component_sent, {LayoutToggle, {:updated, %{score_layout: :page}}}}
+    assert_receive {:component_sent, {LayoutToggle, {:updated, %{score_layout: :page}}}}
 
     view |> element("#subject-strip") |> render_click()
-    assert_received {:component_sent, {LayoutToggle, {:updated, %{score_layout: :strip}}}}
+    assert_receive {:component_sent, {LayoutToggle, {:updated, %{score_layout: :strip}}}}
+  end
+
+  defp host(conn, scope) do
+    attrs = %{scope: scope, id: "layout"}
+    session = %{"component" => LayoutToggle, "attrs" => attrs, "test_pid" => self()}
+    {:ok, view, _html} = live_isolated(conn, ComponentHostLive, session: session)
+    view
   end
 end

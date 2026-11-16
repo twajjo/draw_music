@@ -12,12 +12,6 @@ defmodule DrawMusicWeb.Editor.SaveAsDialogTest do
 
   setup :register_and_log_in_user
 
-  defp host(conn, attrs) do
-    session = %{"component" => SaveAsDialog, "attrs" => attrs, "test_pid" => self()}
-    {:ok, view, _html} = live_isolated(conn, ComponentHostLive, session: session)
-    view
-  end
-
   # A draft that was given a name and a composer in its details.
   setup %{conn: conn, scope: scope} do
     composition = %Composition{name: "Nocturne", composer: "J. Field", keys: []}
@@ -58,7 +52,7 @@ defmodule DrawMusicWeb.Editor.SaveAsDialogTest do
        %{view: view, scope: scope} do
     view |> form("#save-as-form") |> render_submit()
 
-    assert_received {:component_sent, {:editor, {:saved, %Version{number: 1} = saved, "Saved"}}}
+    assert_receive {:component_sent, {:editor, {:saved, %Version{number: 1} = saved, "Saved"}}}
     assert saved.key.sf == 2
     assert Library.get_composition_by_name(scope, "Nocturne")
   end
@@ -76,12 +70,18 @@ defmodule DrawMusicWeb.Editor.SaveAsDialogTest do
   test "Cancel reports close", %{view: view} do
     view |> element("#save-as-form button", "Cancel") |> render_click()
 
-    assert_received {:component_sent, {:editor, :close}}
+    assert_receive {:component_sent, {:editor, :close}}
   end
 
   test "needs its inputs", %{conn: conn, scope: scope} do
     assert_raise ArgumentError, ~r/SaveAsDialog needs/, fn ->
       host(conn, %{scope: scope})
     end
+  end
+
+  defp host(conn, attrs) do
+    session = %{"component" => SaveAsDialog, "attrs" => attrs, "test_pid" => self()}
+    {:ok, view, _html} = live_isolated(conn, ComponentHostLive, session: session)
+    view
   end
 end

@@ -10,19 +10,6 @@ defmodule DrawMusic.MidiCodecTest do
 
   @moduletag :tmp_dir
 
-  defp import_binary(binary, dir, filename \\ "song.mid") do
-    path = Path.join(dir, filename)
-    File.write!(path, binary)
-    MidiCodec.import(path, filename)
-  end
-
-  defp score_of(version_attrs) do
-    %Version{number: 1}
-    |> Version.changeset(version_attrs)
-    |> Ecto.Changeset.apply_action!(:insert)
-    |> Map.fetch!(:score)
-  end
-
   test "a file exported here re-imports exactly", %{tmp_dir: dir} do
     ctx = %Context{sf: 1, time_num: 3, time_den: 4}
     {score, a} = note!(Score.new(2), ctx, 0, "F#4", %{staff: :treble, offset: 960, value: :half})
@@ -219,5 +206,18 @@ defmodule DrawMusic.MidiCodecTest do
     test "unreadable files are rejected", %{tmp_dir: dir} do
       assert import_binary("not a midi file", dir) == {:error, :invalid_midi}
     end
+  end
+
+  defp import_binary(binary, dir, filename \\ "song.mid") do
+    path = Path.join(dir, filename)
+    File.write!(path, binary)
+    MidiCodec.import(path, filename)
+  end
+
+  defp score_of(version_attrs) do
+    %Version{number: 1}
+    |> Version.changeset(version_attrs)
+    |> Ecto.Changeset.apply_action!(:insert)
+    |> Map.fetch!(:score)
   end
 end

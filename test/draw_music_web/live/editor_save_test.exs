@@ -10,21 +10,6 @@ defmodule DrawMusicWeb.EditorSaveTest do
 
   setup :register_and_log_in_user
 
-  defp open(conn, version) do
-    {:ok, view, _html} =
-      live(
-        conn,
-        LibraryComponents.version_path(version.key.composition.id, version.key, version.number)
-      )
-
-    view
-  end
-
-  defp add_note(view) do
-    view |> element("#palette-quarter") |> render_click()
-    place(view, 0, 0, "C4")
-  end
-
   describe "a saved version" do
     setup %{conn: conn, scope: scope} do
       version = version_fixture(scope)
@@ -97,5 +82,20 @@ defmodule DrawMusicWeb.EditorSaveTest do
     assert has_element?(view, "#unsaved-guard[data-dirty=false]")
     add_note(view)
     assert has_element?(view, "#unsaved-guard[data-dirty=true]")
+  end
+
+  defp add_note(view) do
+    view |> element("#palette-quarter") |> render_click()
+    place(view, 0, 0, "C4")
+  end
+
+  defp open(conn, version) do
+    {:ok, view, _html} =
+      live(
+        conn,
+        LibraryComponents.version_path(version.key.composition.id, version.key, version.number)
+      )
+
+    view
   end
 end

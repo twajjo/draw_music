@@ -8,18 +8,6 @@ defmodule DrawMusicWeb.ReadingAidsTest do
   alias DrawMusic.Music.{Context, Score}
   alias DrawMusicWeb.{ReadingAid, ReadingAids}
 
-  # The letters of one kind, top to bottom, for the staff whose part of the
-  # system (by y) `in_staff?` picks.
-  defp letters(kind, in_staff?) do
-    for %ReadingAid{kind: ^kind, y: y, text: text} <-
-          Enum.sort_by(ReadingAids.staff_letters(), & &1.y),
-        in_staff?.(y),
-        do: text
-  end
-
-  defp treble?(y), do: y <= 4
-  defp bass?(y), do: y >= 12
-
   test "each staff's lines and spaces are lettered, top to bottom" do
     assert letters(:line, &treble?/1) == ~w(F D B G E)
     assert letters(:space, &treble?/1) == ~w(E C A F)
@@ -70,4 +58,17 @@ defmodule DrawMusicWeb.ReadingAidsTest do
       assert length(items) == length(ReadingAids.staff_letters())
     end
   end
+
+  defp bass?(y), do: y >= 12
+
+  # The letters of one kind, top to bottom, for the staff whose part of the
+  # system (by y) `in_staff?` picks.
+  defp letters(kind, in_staff?) do
+    for %ReadingAid{kind: ^kind, y: y, text: text} <-
+          Enum.sort_by(ReadingAids.staff_letters(), & &1.y),
+        in_staff?.(y),
+        do: text
+  end
+
+  defp treble?(y), do: y <= 4
 end

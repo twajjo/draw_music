@@ -7,11 +7,6 @@ defmodule DrawMusic.Music.SessionTest do
 
   @ctx %Context{}
 
-  defp place(session, spn, offset) do
-    at = placement(spn, %{staff: :treble, offset: offset, value: :quarter})
-    Session.edit(session, &Editing.place_note(&1, &2, 0, at))
-  end
-
   setup do
     %{session: Session.new(Score.new(), @ctx)}
   end
@@ -146,5 +141,10 @@ defmodule DrawMusic.Music.SessionTest do
   test "paste never goes past the end of the score", %{session: session} do
     end_tick = Timeline.end_tick(session.score, session.ctx)
     assert Session.paste_at(session, 999_999, nil) == end_tick
+  end
+
+  defp place(session, spn, offset) do
+    at = placement(spn, %{staff: :treble, offset: offset, value: :quarter})
+    Session.edit(session, &Editing.place_note(&1, &2, 0, at))
   end
 end

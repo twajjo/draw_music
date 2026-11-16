@@ -10,19 +10,6 @@ defmodule DrawMusicWeb.EditorReadingAidsTest do
 
   setup :register_and_log_in_user
 
-  defp path(version) do
-    LibraryComponents.version_path(version.key.composition.id, version.key, version.number)
-  end
-
-  # The first bar's note ids, in time order.
-  defp note_ids(view) do
-    session_of(view).score.measures
-    |> hd()
-    |> Map.fetch!(:notes)
-    |> Enum.sort_by(& &1.offset)
-    |> Enum.map(& &1.id)
-  end
-
   test "the staff letters are drawn in the editor only when turned on", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/")
     refute has_element?(view, "#score .reading-aid")
@@ -90,5 +77,18 @@ defmodule DrawMusicWeb.EditorReadingAidsTest do
 
     svg = conn |> get(path(version) <> "/score.svg") |> response(200)
     refute svg =~ "reading-aid"
+  end
+
+  # The first bar's note ids, in time order.
+  defp note_ids(view) do
+    session_of(view).score.measures
+    |> hd()
+    |> Map.fetch!(:notes)
+    |> Enum.sort_by(& &1.offset)
+    |> Enum.map(& &1.id)
+  end
+
+  defp path(version) do
+    LibraryComponents.version_path(version.key.composition.id, version.key, version.number)
   end
 end

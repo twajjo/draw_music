@@ -18,17 +18,6 @@ defmodule DrawMusicWeb.EditorSelectTest do
     %{view: view}
   end
 
-  defp id_at(view, offset) do
-    session_of(view).score.measures
-    |> hd()
-    |> Map.fetch!(:notes)
-    |> Enum.find(&(&1.offset == offset))
-    |> Map.fetch!(:id)
-  end
-
-  defp select(view, ids, add \\ false),
-    do: canvas_hook(view, "select", %{"ids" => ids, "add" => add})
-
   test "a time range selects everything in it, rests included", %{view: view} do
     canvas_hook(view, "select_range", %{"from" => 0, "to" => 3840})
     assert count(view, "#score [id^='note-'].selected") == 2
@@ -266,4 +255,15 @@ defmodule DrawMusicWeb.EditorSelectTest do
     assert count(view, "#score .selected") == 0
     assert MusicHelpers.notes(session_of(view).score) |> length() == 2
   end
+
+  defp id_at(view, offset) do
+    session_of(view).score.measures
+    |> hd()
+    |> Map.fetch!(:notes)
+    |> Enum.find(&(&1.offset == offset))
+    |> Map.fetch!(:id)
+  end
+
+  defp select(view, ids, add \\ false),
+    do: canvas_hook(view, "select", %{"ids" => ids, "add" => add})
 end

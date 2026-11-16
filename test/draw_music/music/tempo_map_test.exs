@@ -6,14 +6,6 @@ defmodule DrawMusic.Music.TempoMapTest do
   # 960 ticks a quarter; tempos count quarters per minute.
   @quarter 960
 
-  defp map(tempos, bpm \\ 60),
-    do: TempoMap.new(%Score{Score.new() | tempos: tempos}, %Context{tempo_bpm: bpm})
-
-  defp mark(tick, bpm), do: %TempoChange{tick: tick, bpm: bpm}
-
-  defp ramp(tick, bpm, to_tick, to_bpm),
-    do: %TempoChange{tick: tick, bpm: bpm, to_tick: to_tick, to_bpm: to_bpm}
-
   test "with no changes, the starting tempo throughout" do
     assert_in_delta TempoMap.seconds(map([], 100), 0, @quarter), 0.6, 1.0e-9
     assert_in_delta TempoMap.seconds(map([], 100), @quarter, 3 * @quarter), 1.2, 1.0e-9
@@ -68,4 +60,12 @@ defmodule DrawMusic.Music.TempoMapTest do
              {2880, 1.5}
            ]
   end
+
+  defp map(tempos, bpm \\ 60),
+    do: TempoMap.new(%Score{Score.new() | tempos: tempos}, %Context{tempo_bpm: bpm})
+
+  defp mark(tick, bpm), do: %TempoChange{tick: tick, bpm: bpm}
+
+  defp ramp(tick, bpm, to_tick, to_bpm),
+    do: %TempoChange{tick: tick, bpm: bpm, to_tick: to_tick, to_bpm: to_bpm}
 end

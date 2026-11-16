@@ -9,14 +9,6 @@ defmodule DrawMusicWeb.EditorPlaceTest do
 
   setup :register_and_log_in_user
 
-  # Most tests place at exact positions, so they work in Overlay.
-  defp draft(conn, mode \\ :overlay) do
-    {:ok, view, _html} = live(conn, ~p"/")
-    placing_mode(view, mode)
-  end
-
-  defp arm(view, value), do: view |> element("#palette-#{value}") |> render_click()
-
   test "a placed note appears", %{conn: conn} do
     view = draft(conn)
     arm(view, "eighth")
@@ -381,5 +373,13 @@ defmodule DrawMusicWeb.EditorPlaceTest do
     assert has_element?(view, "#score-editor[data-geometry]")
     arm(view, "eighth")
     assert has_element?(view, "#score-editor[data-armed*='eighth']")
+  end
+
+  defp arm(view, value), do: view |> element("#palette-#{value}") |> render_click()
+
+  # Most tests place at exact positions, so they work in Overlay.
+  defp draft(conn, mode \\ :overlay) do
+    {:ok, view, _html} = live(conn, ~p"/")
+    placing_mode(view, mode)
   end
 end

@@ -10,37 +10,6 @@ defmodule DrawMusicWeb.LibraryImportTest do
 
   setup :register_and_log_in_user
 
-  # A .mid file as this app exports it, named by its track name.
-  defp midi(name) do
-    key = %Key{sf: 0, mode: :major, composition: %Composition{name: name}}
-    version = %Version{number: 1, key: key, time_num: 4, time_den: 4, score: Score.new(1)}
-    {:ok, binary} = MidiCodec.export(version)
-    binary
-  end
-
-  defp upload(view, filename, content) do
-    view |> element("#import-open") |> render_click()
-    file = file_input(view, "#import-form", :midi, [%{name: filename, content: content}])
-    render_upload(file, filename)
-    view |> form("#import-form") |> render_submit()
-  end
-
-  defp name_it(view, name) do
-    view |> form("#import-name-form", import: %{name: name}) |> render_submit()
-  end
-
-  # Where the library sent us once the dialog reported the import.
-  defp opened(view) do
-    {to, _flash} = assert_redirect(view)
-    to
-  end
-
-  defp versions(scope, name) do
-    composition = Library.get_composition_by_name(scope, name)
-    composition = Library.get_composition!(scope, composition.id)
-    for key <- composition.keys, version <- key.versions, do: {Key.name(key), version.number}
-  end
-
   test "names the piece from the file, takes an edited name, and opens it", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/compositions")
     upload(view, "song.mid", midi("Waltz"))
@@ -118,5 +87,36 @@ defmodule DrawMusicWeb.LibraryImportTest do
       refute has_element?(view, "#import-collision")
       assert versions(scope, "Waltz") == [{"C major", 1}, {"C major", 2}]
     end
+  end
+
+  # A .mid file as this app exports it, named by its track name.
+  defp midi(name) do
+    key = %Key{sf: 0, mode: :major, composition: %Composition{name: name}}
+    version = %Version{number: 1, key: key, time_num: 4, time_den: 4, score: Score.new(1)}
+    {:ok, binary} = MidiCodec.export(version)
+    binary
+  end
+
+  defp name_it(view, name) do
+    view |> form("#import-name-form", import: %{name: name}) |> render_submit()
+  end
+
+  # Where the library sent us once the dialog reported the import.
+  defp opened(view) do
+    {to, _flash} = assert_redirect(view)
+    to
+  end
+
+  defp upload(view, filename, content) do
+    view |> element("#import-open") |> render_click()
+    file = file_input(view, "#import-form", :midi, [%{name: filename, content: content}])
+    render_upload(file, filename)
+    view |> form("#import-form") |> render_submit()
+  end
+
+  defp versions(scope, name) do
+    composition = Library.get_composition_by_name(scope, name)
+    composition = Library.get_composition!(scope, composition.id)
+    for key <- composition.keys, version <- key.versions, do: {Key.name(key), version.number}
   end
 end

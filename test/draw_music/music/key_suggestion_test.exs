@@ -7,29 +7,6 @@ defmodule DrawMusic.Music.KeySuggestionTest do
 
   @c_major %Context{sf: 0}
 
-  # Bars of quarter notes on the treble staff, written in C major.
-  defp score(bars) do
-    Enum.reduce(Enum.with_index(bars), Score.new(length(bars)), fn {bar, index}, score ->
-      bar
-      |> Enum.with_index()
-      |> Enum.reduce(score, fn {spn, beat}, score ->
-        attrs = %{staff: :treble, offset: beat * 960, value: :quarter}
-        {score, _id} = note!(score, @c_major, index, spn, attrs)
-        score
-      end)
-    end)
-  end
-
-  # E♭ major, entered by ear into C major: every E♭, A♭ and B♭ written sharp.
-  defp by_ear_in_e_flat do
-    score([
-      ~w(D#4 F4 G4 G#4),
-      ~w(A#4 C5 D5 D#5),
-      ~w(D#4 G4 A#4 D#5),
-      ~w(G#4 G4 F4 D#4)
-    ])
-  end
-
   describe "Rekey.to_signature/2" do
     test "keeps every pitch and rhythm, spelled for the new key" do
       score = by_ear_in_e_flat()
@@ -106,5 +83,28 @@ defmodule DrawMusic.Music.KeySuggestionTest do
 
       refute suggestion.worth_it?
     end
+  end
+
+  # E♭ major, entered by ear into C major: every E♭, A♭ and B♭ written sharp.
+  defp by_ear_in_e_flat do
+    score([
+      ~w(D#4 F4 G4 G#4),
+      ~w(A#4 C5 D5 D#5),
+      ~w(D#4 G4 A#4 D#5),
+      ~w(G#4 G4 F4 D#4)
+    ])
+  end
+
+  # Bars of quarter notes on the treble staff, written in C major.
+  defp score(bars) do
+    Enum.reduce(Enum.with_index(bars), Score.new(length(bars)), fn {bar, index}, score ->
+      bar
+      |> Enum.with_index()
+      |> Enum.reduce(score, fn {spn, beat}, score ->
+        attrs = %{staff: :treble, offset: beat * 960, value: :quarter}
+        {score, _id} = note!(score, @c_major, index, spn, attrs)
+        score
+      end)
+    end)
   end
 end

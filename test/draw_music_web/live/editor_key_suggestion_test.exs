@@ -20,17 +20,6 @@ defmodule DrawMusicWeb.EditorKeySuggestionTest do
     ~w(G#4 G4 F4 D#4)
   ]
 
-  defp enter_by_ear(view) do
-    placing_mode(view, :overlay)
-    view |> element("#palette-quarter") |> render_click()
-
-    for {bar, measure} <- Enum.with_index(@by_ear), {spn, beat} <- Enum.with_index(bar) do
-      place(view, measure, beat * 960, spn, alter: true)
-    end
-  end
-
-  defp e_flat_choice, do: "#palette-key--3-major"
-
   test "Suggest key stays off while the notes suit their key", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/")
 
@@ -77,5 +66,16 @@ defmodule DrawMusicWeb.EditorKeySuggestionTest do
     {to, flash} = assert_redirect(view)
     assert to =~ "/e-flat-major/v/1"
     assert flash["info"] == "Saved as E♭ major v1 (C major v1 is kept)"
+  end
+
+  defp e_flat_choice, do: "#palette-key--3-major"
+
+  defp enter_by_ear(view) do
+    placing_mode(view, :overlay)
+    view |> element("#palette-quarter") |> render_click()
+
+    for {bar, measure} <- Enum.with_index(@by_ear), {spn, beat} <- Enum.with_index(bar) do
+      place(view, measure, beat * 960, spn, alter: true)
+    end
   end
 end

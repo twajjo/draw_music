@@ -7,12 +7,6 @@ defmodule DrawMusic.LibraryTest do
   alias DrawMusic.Library
   alias DrawMusic.Library.{Key, Version}
 
-  defp numbers_by_key(scope, composition_id) do
-    for key <- Library.get_composition!(scope, composition_id).keys do
-      {Key.name(key), Enum.map(key.versions, & &1.number)}
-    end
-  end
-
   describe "create_composition/4" do
     test "sets the owner from the scope and starts at version 1" do
       scope = user_scope_fixture()
@@ -270,6 +264,12 @@ defmodule DrawMusic.LibraryTest do
 
       assert {:ok, version} = Library.import_score(other, "Sonatina", import_fixture(), :new)
       refute version.key.composition_id == ctx.composition_id
+    end
+  end
+
+  defp numbers_by_key(scope, composition_id) do
+    for key <- Library.get_composition!(scope, composition_id).keys do
+      {Key.name(key), Enum.map(key.versions, & &1.number)}
     end
   end
 end

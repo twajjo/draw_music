@@ -7,14 +7,6 @@ defmodule DrawMusic.Music.EditingTest do
 
   @ctx %Context{}
 
-  defp place(score, index, spn, attrs),
-    do:
-      Editing.place_note(score, @ctx, index, placement(spn, Map.merge(%{staff: :treble}, attrs)))
-
-  defp voices(score) do
-    for m <- score.measures, n <- m.notes, do: {n.offset, n.value, n.voice}
-  end
-
   describe "placing" do
     test "a note fills its measure; overfilling or a missing measure is an error" do
       {score, _id} =
@@ -144,7 +136,9 @@ defmodule DrawMusic.Music.EditingTest do
           ]
       }
 
-      ticks = fn s -> Enum.map(s.tempos, &{&1.tick, &1.to_tick}) end
+      ticks = fn s ->
+        Enum.map(s.tempos, &{&1.tick, &1.to_tick})
+      end
 
       {:ok, inserted} = Editing.insert_measure(score, @ctx, 1)
       assert ticks.(inserted) == [{960, nil}, {7680, nil}, {11_840, 12_840}]
@@ -217,7 +211,10 @@ defmodule DrawMusic.Music.EditingTest do
     test "chordify replaces a selected note's whole chord, built on its lowest note" do
       {score, low} = note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :half})
       {score, _high} = note!(score, @ctx, 0, "G4", %{staff: :treble, offset: 0, value: :half})
-      minor = fn step, alter -> Chords.build(step, alter, :minor) end
+
+      minor = fn step, alter ->
+        Chords.build(step, alter, :minor)
+      end
 
       {:ok, score, ids} = Editing.chordify(score, @ctx, [low], minor)
 
@@ -471,21 +468,6 @@ defmodule DrawMusic.Music.EditingTest do
     end
   end
 
-  # The rests the user placed (filler is checked with fillers/2).
-  defp rests(score) do
-    for {m, i} <- Enum.with_index(score.measures),
-        r <- m.rests,
-        not r.filler,
-        do: {i, r.offset, r.value, r.dots}
-  end
-
-  defp fillers(score, staff) do
-    for {m, i} <- Enum.with_index(score.measures),
-        r <- m.rests,
-        r.filler and r.staff == staff,
-        do: {i, r.offset, r.value, r.dots}
-  end
-
   describe "split/3" do
     test "a note becomes two tied halves" do
       {score, id} =
@@ -609,16 +591,6 @@ defmodule DrawMusic.Music.EditingTest do
       assert notes(score) == [{0, 960, "E4", :half, 0}]
       assert rests(score) == []
     end
-  end
-
-  defp q(score, offset, spn, attrs \\ %{}) do
-    note!(
-      score,
-      @ctx,
-      0,
-      spn,
-      Map.merge(%{staff: :treble, offset: offset, value: :quarter}, attrs)
-    )
   end
 
   describe "delete/3" do
@@ -794,5 +766,38 @@ defmodule DrawMusic.Music.EditingTest do
       assert notes(score) == [{0, 1920, "G4", :quarter, 0}, {1, 0, "G4", :quarter, 0}]
       assert length(tie_chain(score, id)) == 2
     end
+  end
+
+  defp fillers(score, staff) do
+    for {m, i} <- Enum.with_index(score.measures),
+        r <- m.rests,
+        r.filler and r.staff == staff,
+        do: {i, r.offset, r.value, r.dots}
+  end
+
+  defp place(score, index, spn, attrs),
+    do:
+      Editing.place_note(score, @ctx, index, placement(spn, Map.merge(%{staff: :treble}, attrs)))
+
+  defp q(score, offset, spn, attrs \\ %{}) do
+    note!(
+      score,
+      @ctx,
+      0,
+      spn,
+      Map.merge(%{staff: :treble, offset: offset, value: :quarter}, attrs)
+    )
+  end
+
+  # The rests the user placed (filler is checked with fillers/2).
+  defp rests(score) do
+    for {m, i} <- Enum.with_index(score.measures),
+        r <- m.rests,
+        not r.filler,
+        do: {i, r.offset, r.value, r.dots}
+  end
+
+  defp voices(score) do
+    for m <- score.measures, n <- m.notes, do: {n.offset, n.value, n.voice}
   end
 end

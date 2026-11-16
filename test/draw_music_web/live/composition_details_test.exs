@@ -9,11 +9,6 @@ defmodule DrawMusicWeb.CompositionDetailsTest do
 
   setup :register_and_log_in_user
 
-  defp version_path(version),
-    do: LibraryComponents.version_path(version.key.composition.id, version.key, version.number)
-
-  defp stored(scope, version), do: Library.get_composition!(scope, version.key.composition.id)
-
   describe "on the compositions page" do
     test "Details changes a composition's name and credits", %{conn: conn, scope: scope} do
       version = version_fixture(scope)
@@ -89,4 +84,9 @@ defmodule DrawMusicWeb.CompositionDetailsTest do
       assert [%{name: "Nocturne", composer: "J. Field"}] = Library.list_compositions(scope)
     end
   end
+
+  defp stored(scope, version), do: Library.get_composition!(scope, version.key.composition.id)
+
+  defp version_path(version),
+    do: LibraryComponents.version_path(version.key.composition.id, version.key, version.number)
 end

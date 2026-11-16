@@ -10,27 +10,6 @@ defmodule DrawMusic.Music.MovingNotesTest do
   @ctx %Context{}
   @bar 3840
 
-  defp note_of(score, id) do
-    score.measures |> Enum.flat_map(& &1.notes) |> Enum.find(&(&1.id == id))
-  end
-
-  defp rest_ticks(score, staff) do
-    for rest <- hd(score.measures).rests, rest.staff == staff, reduce: 0 do
-      sum -> sum + Duration.ticks(rest.value, rest.dots)
-    end
-  end
-
-  defp rests_on(score, staff) do
-    for rest <- hd(score.measures).rests, rest.staff == staff, do: {rest.offset, rest.value}
-  end
-
-  defp up(score, id, times) do
-    Enum.reduce(1..times, score, fn _step, score ->
-      {:ok, score} = Editing.move_steps(score, @ctx, [id], 1)
-      score
-    end)
-  end
-
   describe "StaffCrossing.staff_for/2" do
     test "each staff keeps its half of the gap: the bass up to B4, the treble down to D3" do
       assert StaffCrossing.staff_for(:bass, 34) == :bass
@@ -193,5 +172,26 @@ defmodule DrawMusic.Music.MovingNotesTest do
 
       assert Editing.put_on_staff(score, @ctx, [b], :bass) == {:error, :duplicate}
     end
+  end
+
+  defp note_of(score, id) do
+    score.measures |> Enum.flat_map(& &1.notes) |> Enum.find(&(&1.id == id))
+  end
+
+  defp rest_ticks(score, staff) do
+    for rest <- hd(score.measures).rests, rest.staff == staff, reduce: 0 do
+      sum -> sum + Duration.ticks(rest.value, rest.dots)
+    end
+  end
+
+  defp rests_on(score, staff) do
+    for rest <- hd(score.measures).rests, rest.staff == staff, do: {rest.offset, rest.value}
+  end
+
+  defp up(score, id, times) do
+    Enum.reduce(1..times, score, fn _step, score ->
+      {:ok, score} = Editing.move_steps(score, @ctx, [id], 1)
+      score
+    end)
   end
 end
