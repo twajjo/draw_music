@@ -286,7 +286,7 @@ defmodule DrawMusicWeb.EditorLive do
       preferences_patch={"#{@path}?panel=preferences"}
       wide
     >
-      <.editor_header composition={@composition} version={@version} />
+      <.editor_header composition={@composition} version={@version} instrument={@extras.instrument} />
 
       <.live_component
         module={Palette}

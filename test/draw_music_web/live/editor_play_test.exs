@@ -383,6 +383,8 @@ defmodule DrawMusicWeb.EditorPlayTest do
       assert assigns(view).extras.instrument == 0
       refute has_element?(view, "#dirty-marker")
       refute has_element?(view, "#use-playback-instrument[disabled]")
+      # The header still names what the version is for.
+      assert has_element?(view, "#version-instrument", "For Acoustic Grand Piano")
     end
 
     test "survives switching to Edit and back", %{view: view} do
@@ -402,6 +404,7 @@ defmodule DrawMusicWeb.EditorPlayTest do
       assert assigns(view).extras.instrument == 73
       assert has_element?(view, "#dirty-marker")
       assert has_element?(view, "#use-playback-instrument[disabled]")
+      assert has_element?(view, "#version-instrument", "For Flute")
     end
 
     test "an out-of-range program is ignored", %{view: view} do

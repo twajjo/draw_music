@@ -11,6 +11,7 @@ defmodule DrawMusicWeb.EditorPage do
   import DrawMusicWeb.LibraryComponents,
     only: [credits: 1, details_button: 1, version_picker: 1, version_path: 3]
 
+  alias DrawMusic.Samples
   alias DrawMusicWeb.{DetailsDialog, EditorSettings}
 
   alias DrawMusicWeb.Editor.{
@@ -24,10 +25,15 @@ defmodule DrawMusicWeb.EditorPage do
   attr :composition, :map, required: true
   attr :version, :map, required: true, doc: "the version open; a draft's `id` is nil"
 
+  attr :instrument, :integer,
+    required: true,
+    doc: "the version's instrument (a GM program), as set in Score settings"
+
   @doc """
-  The title row: the composition's name (with the details button), subtitle
-  and credits, and at the right the version picker, or "Unsaved" for a
-  draft, and the downloads.
+  The title row: the composition's name, the details button and what the
+  version is for (its instrument: shown only, changed in Score settings),
+  then the subtitle and credits; at the right the version picker, or
+  "Unsaved" for a draft, and the downloads.
   """
   @spec editor_header(map()) :: Phoenix.LiveView.Rendered.t()
   def editor_header(assigns) do
@@ -37,6 +43,9 @@ defmodule DrawMusicWeb.EditorPage do
         <div class="flex flex-wrap items-center gap-2">
           <h1 id="composition-name" class="text-2xl font-semibold">{@composition.name}</h1>
           <.details_button id="edit-details" />
+          <span id="version-instrument" class="ml-4 text-sm opacity-70">
+            For {Samples.instrument!(@instrument).name}
+          </span>
         </div>
         <p :if={@composition.subtitle} class="opacity-80">{@composition.subtitle}</p>
         <p :if={credits(@composition) != ""} class="text-sm opacity-60">{credits(@composition)}</p>

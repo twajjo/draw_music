@@ -102,8 +102,10 @@ defmodule DrawMusicWeb.EditorSettingsTest do
       {:ok, view, _html} =
         live(conn, LibraryComponents.version_path(version.key.composition.id, version.key, 1))
 
+      assert has_element?(view, "#version-instrument", "For Acoustic Grand Piano")
       apply_settings(view, %{"instrument" => "73"})
       assert has_element?(view, "#dirty-marker")
+      assert has_element?(view, "#version-instrument", "For Flute")
       view |> element("#save") |> render_click()
 
       assert Library.get_version!(scope, version.id).instrument == 73
