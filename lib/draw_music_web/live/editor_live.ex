@@ -14,7 +14,8 @@ defmodule DrawMusicWeb.EditorLive do
 
   use DrawMusicWeb, :live_view
 
-  import DrawMusicWeb.{EditorComponents, LibraryComponents}
+  import DrawMusicWeb.{EditorComponents, EditorPage}
+  import DrawMusicWeb.LibraryComponents, only: [version_path: 3]
   import DrawMusicWeb.ScoreComponents, only: [layout_width: 1]
 
   import DrawMusicWeb.PreferencesComponents, only: [preferences_panel: 1]
@@ -46,17 +47,7 @@ defmodule DrawMusicWeb.EditorLive do
     VersionLookup
   }
 
-  alias DrawMusicWeb.Editor.{
-    NoteMenu,
-    Palette,
-    SaveAsDialog,
-    SaveMenu,
-    ScoreCanvas,
-    SettingsDialog,
-    TempoDialog,
-    Transport,
-    TransposeDialog
-  }
+  alias DrawMusicWeb.Editor.{Palette, SaveMenu, ScoreCanvas, Transport}
 
   @draft_measures 4
 
@@ -69,42 +60,7 @@ defmodule DrawMusicWeb.EditorLive do
       preferences_patch={"#{@path}?panel=preferences"}
       wide
     >
-      <%!-- Version status and downloads sit on the title's row, at the right. --%>
-      <header class="flex flex-wrap items-start justify-between gap-4">
-        <div class="space-y-1">
-          <div class="flex flex-wrap items-center gap-2">
-            <h1 id="composition-name" class="text-2xl font-semibold">{@composition.name}</h1>
-            <.details_button id="edit-details" />
-          </div>
-          <p :if={@composition.subtitle} class="opacity-80">{@composition.subtitle}</p>
-          <p :if={credits(@composition) != ""} class="text-sm opacity-60">{credits(@composition)}</p>
-        </div>
-        <div class="flex flex-wrap items-center gap-2">
-          <%= if @version.id do %>
-            <.version_picker id="version-picker" composition={@composition} version={@version} />
-          <% else %>
-            <span id="unsaved" class="badge badge-ghost">Unsaved</span>
-          <% end %>
-          <.button
-            :if={@version.id}
-            id="download-svg"
-            href={export_path(@version, "svg")}
-            download
-            class="btn btn-sm"
-          >
-            <.icon name="hero-arrow-down-tray" class="size-4" /> SVG
-          </.button>
-          <.button
-            :if={@version.id}
-            id="download-mid"
-            href={export_path(@version, "mid")}
-            download
-            class="btn btn-sm"
-          >
-            <.icon name="hero-arrow-down-tray" class="size-4" /> MIDI
-          </.button>
-        </div>
-      </header>
+      <.editor_header composition={@composition} version={@version} />
 
       <.live_component
         module={Palette}
@@ -155,14 +111,7 @@ defmodule DrawMusicWeb.EditorLive do
         </:trailing>
       </.live_component>
 
-      <div
-        id="score-paper"
-        class={[
-          "rounded-box border border-base-300 p-4 shadow-sm transition-colors",
-          if(@current_scope.user.score_layout == :strip, do: "overflow-x-auto")
-        ]}
-        style="background-color: var(--score-paper)"
-      >
+      <.score_paper layout={@current_scope.user.score_layout}>
         <.live_component
           module={ScoreCanvas}
           id="score-canvas"
@@ -178,60 +127,19 @@ defmodule DrawMusicWeb.EditorLive do
           show_note_names?={@current_scope.user.show_note_names}
         />
         <.unsaved_guard dirty?={@session.dirty?} />
-        <.live_component
-          :if={match?({:menu, _menu}, @dialog)}
-          module={NoteMenu}
-          id="note-menu"
-          menu={elem(@dialog, 1)}
-          insert?={@insert?}
-          score={@session.score}
-          ctx={@session.ctx}
-        />
         <.help_dialog shortcuts={Shortcuts.for_mode(@editor_mode)} />
-        <%!-- A saved composition's details are stored at once (they aren't
-             part of the score, so not of its undo or its unsaved changes); a
-             draft's are kept until its first save. --%>
-        <.live_component
-          :if={@dialog == :details}
-          module={DetailsDialog}
-          id="details"
-          scope={@current_scope}
-          composition={@composition}
-          persist?={@version.id != nil}
-        />
-        <.live_component
-          :if={@dialog == :save_as}
-          module={SaveAsDialog}
-          id="save-as"
+        <.open_dialog
+          dialog={@dialog}
+          session={@session}
           scope={@current_scope}
           composition={@composition}
           version={@version}
-          key={%{sf: @session.ctx.sf, mode: @session.ctx.mode}}
-          version_attrs={EditorSettings.version_attrs(@session, @tempo_text, @instrument)}
-        />
-        <.live_component
-          :if={match?({:tempo, _target}, @dialog)}
-          module={TempoDialog}
-          id="tempo"
-          target={elem(@dialog, 1)}
-          ctx={@session.ctx}
-        />
-        <.live_component
-          :if={@dialog == :settings}
-          module={SettingsDialog}
-          id="settings"
-          ctx={@session.ctx}
+          insert?={@insert?}
           tempo_text={@tempo_text}
           instrument={@instrument}
         />
-        <.live_component
-          :if={match?({:transpose, _key}, @dialog)}
-          module={TransposeDialog}
-          id="transpose"
-          key={elem(@dialog, 1)}
-        />
         <.preferences_panel :if={@preferences?} scope={@current_scope} close={@path} />
-      </div>
+      </.score_paper>
     </Layouts.app>
     """
   end
@@ -627,9 +535,5 @@ defmodule DrawMusicWeb.EditorLive do
   defp assign_pieces(socket) do
     %{engraved: engraved, current_scope: %{user: user}} = socket.assigns
     assign(socket, :pieces, ScoreSvg.pieces(ReadingAids.add(engraved, user), user.score_layout))
-  end
-
-  defp export_path(version, extension) do
-    version_path(version.key.composition.id, version.key, version.number) <> "/score.#{extension}"
   end
 end
