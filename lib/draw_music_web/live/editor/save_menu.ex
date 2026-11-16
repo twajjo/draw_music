@@ -126,14 +126,15 @@ defmodule DrawMusicWeb.Editor.SaveMenu do
   attr :target, :any, required: true
   slot :inner_block, required: true
 
+  # Picking an item closes the list (a `<details>` only closes itself when
+  # its summary is clicked), then sends the item's event.
   defp menu_item(assigns) do
     ~H"""
     <li>
       <button
         id={@id}
         type="button"
-        phx-click={@event}
-        phx-target={@target}
+        phx-click={JS.remove_attribute("open", to: "#save-menu") |> JS.push(@event, target: @target)}
         class="w-full rounded px-2 py-1.5 text-left transition-colors hover:bg-base-200"
       >
         {render_slot(@inner_block)}
@@ -147,7 +148,12 @@ defmodule DrawMusicWeb.Editor.SaveMenu do
 
   defp more_ways(assigns) do
     ~H"""
-    <details id="save-menu" class="dropdown dropdown-end join-item flex">
+    <%!-- Closed by picking an item (`menu_item/1`) or by a click anywhere else. --%>
+    <details
+      id="save-menu"
+      class="dropdown dropdown-end join-item flex"
+      phx-click-away={JS.remove_attribute("open")}
+    >
       <summary class="btn btn-primary btn-sm btn-square h-auto" aria-label="More ways to save">
         <.icon name="hero-chevron-down-micro" class="size-4" />
       </summary>
