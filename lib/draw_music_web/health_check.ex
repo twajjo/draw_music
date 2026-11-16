@@ -9,9 +9,6 @@ defmodule DrawMusicWeb.HealthCheck do
   import Plug.Conn
 
   @impl Plug
-  def init(opts), do: opts
-
-  @impl Plug
   def call(%Plug.Conn{method: "GET", path_info: ["health"]} = conn, _opts) do
     conn
     |> put_resp_content_type("text/plain")
@@ -20,4 +17,7 @@ defmodule DrawMusicWeb.HealthCheck do
   end
 
   def call(conn, _opts), do: conn
+
+  @impl Plug
+  def init(opts), do: opts
 end

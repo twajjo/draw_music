@@ -27,7 +27,6 @@ defmodule DrawMusicWeb.EditorComponents do
   `?` key runs the command in `data-show`.
   """
   attr :shortcuts, :list, required: true
-
   @spec help_dialog(map()) :: Phoenix.LiveView.Rendered.t()
   def help_dialog(assigns) do
     ~H"""
@@ -68,10 +67,6 @@ defmodule DrawMusicWeb.EditorComponents do
   @spec hide_help(JS.t()) :: JS.t()
   def hide_help(js \\ %JS{}), do: JS.hide(js, to: "#help")
 
-  @doc "Shows the help dialog, in the browser."
-  @spec show_help(JS.t()) :: JS.t()
-  def show_help(js \\ %JS{}), do: JS.show(js, to: "#help", display: "grid")
-
   @doc """
   Small ⊕/⊖ buttons at each bar's top-left (insert a bar before it, delete
   it) and an add-bar button after the last bar, positioned in percent of
@@ -80,7 +75,6 @@ defmodule DrawMusicWeb.EditorComponents do
   attr :engraved, :map, required: true
   attr :score, :map, required: true, doc: "the Music.Score, to know which bars hold music"
   attr :target, :any, required: true, doc: "the component the buttons' events go to"
-
   @spec measure_controls(map()) :: Phoenix.LiveView.Rendered.t()
   def measure_controls(assigns) do
     padding = ScoreComponents.padding()
@@ -146,6 +140,10 @@ defmodule DrawMusicWeb.EditorComponents do
     </div>
     """
   end
+
+  @doc "Shows the help dialog, in the browser."
+  @spec show_help(JS.t()) :: JS.t()
+  def show_help(js \\ %JS{}), do: JS.show(js, to: "#help", display: "grid")
 
   attr :dirty?, :boolean, required: true, doc: "whether there are unsaved changes"
 

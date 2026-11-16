@@ -18,22 +18,8 @@ defmodule DrawMusicWeb.EditorGeometry do
     SystemPayload
   }
 
-  @doc "The geometry of an engraved layout, read against `ctx`."
-  @spec encode(Engraved.t(), Context.t()) :: Payload.t()
-  def encode(%Engraved{} = engraved, %Context{} = ctx) do
-    %Payload{
-      systems:
-        for system <- engraved.systems do
-          %SystemPayload{y: system.y, width: system.width, measures: system.measures}
-        end,
-      staff_top: %StaffPositions{treble: Staff.top(:treble), bass: Staff.top(:bass)},
-      top_step: %StaffPositions{treble: Staff.top_step(:treble), bass: Staff.top_step(:bass)},
-      padding: ScoreComponents.padding(),
-      sf: ctx.sf,
-      ppq: Duration.ppq(),
-      bar_rest_width: Notes.bar_rest_width()
-    }
-  end
+  # The octave a scale-degree chord is worked out in; only its shape is sent.
+  @sample_octave 4
 
   @doc """
   The armed item for the hook: what to draw as the cursor and the time grid
@@ -54,8 +40,22 @@ defmodule DrawMusicWeb.EditorGeometry do
     }
   end
 
-  # The octave a scale-degree chord is worked out in; only its shape is sent.
-  @sample_octave 4
+  @doc "The geometry of an engraved layout, read against `ctx`."
+  @spec encode(Engraved.t(), Context.t()) :: Payload.t()
+  def encode(%Engraved{} = engraved, %Context{} = ctx) do
+    %Payload{
+      systems:
+        for system <- engraved.systems do
+          %SystemPayload{y: system.y, width: system.width, measures: system.measures}
+        end,
+      staff_top: %StaffPositions{treble: Staff.top(:treble), bass: Staff.top(:bass)},
+      top_step: %StaffPositions{treble: Staff.top_step(:treble), bass: Staff.top_step(:bass)},
+      padding: ScoreComponents.padding(),
+      sf: ctx.sf,
+      ppq: Duration.ppq(),
+      bar_rest_width: Notes.bar_rest_width()
+    }
+  end
 
   defp chord_shape({:quality, quality}, _ctx) do
     %ChordShape{

@@ -105,7 +105,6 @@ defmodule DrawMusicWeb.Palette.Buttons do
     include: ~w(phx-value-mode phx-value-by phx-value-dir aria-label data-confirm)
 
   slot :inner_block, required: true
-
   @spec tool_button(map()) :: Phoenix.LiveView.Rendered.t()
   def tool_button(assigns) do
     ~H"""

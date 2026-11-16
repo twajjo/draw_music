@@ -90,6 +90,11 @@ defmodule DrawMusicWeb.CreditsLive do
   def credits, do: @credits
 
   @impl true
+  def mount(_params, _session, socket) do
+    {:ok, assign(socket, page_title: "Credits", credits: @credits)}
+  end
+
+  @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
@@ -123,10 +128,5 @@ defmodule DrawMusicWeb.CreditsLive do
       </ul>
     </Layouts.app>
     """
-  end
-
-  @impl true
-  def mount(_params, _session, socket) do
-    {:ok, assign(socket, page_title: "Credits", credits: @credits)}
   end
 end

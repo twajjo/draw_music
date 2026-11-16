@@ -144,7 +144,6 @@ defmodule DrawMusicWeb.EditorPage do
 
   attr :layout, :atom, required: true, doc: "`:page` or `:strip` (which scrolls sideways)"
   slot :inner_block, required: true
-
   @doc "The paper the score, and the dialogs over it, sit on."
   @spec score_paper(map()) :: Phoenix.LiveView.Rendered.t()
   def score_paper(assigns) do
@@ -163,7 +162,6 @@ defmodule DrawMusicWeb.EditorPage do
   end
 
   attr :version, :map, required: true
-
   # The saved version's SVG and MIDI downloads.
   defp downloads(assigns) do
     ~H"""

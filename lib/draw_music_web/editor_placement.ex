@@ -13,9 +13,22 @@ defmodule DrawMusicWeb.EditorPlacement do
 
   @staves %{"treble" => :treble, "bass" => :bass}
 
-  @doc "The staff a browser names, or nil."
-  @spec staff(term()) :: :treble | :bass | nil
-  def staff(name), do: Map.get(@staves, name)
+  @doc """
+  The pitches of `chord` built on the note `{step, alter}`: a quality has it
+  as its root; a scale degree is the key's chord on that degree, in the
+  note's octave.
+  """
+  @spec chord_pitches(Context.t(), Armed.chord(), {integer(), -2..2}) ::
+          {:ok, [{integer(), -2..2}]} | {:error, :out_of_range}
+  def chord_pitches(_ctx, {:quality, quality}, {step, alter}) do
+    Chords.build(step, alter, quality)
+  end
+
+  def chord_pitches(ctx, {:degree, degree}, {step, _alter}) do
+    {tonic, _pc} = Pitch.tonic(ctx.sf, ctx.mode)
+    root_letter = Integer.mod(tonic + degree - 1, Pitch.steps_per_octave())
+    Chords.diatonic(ctx.sf, ctx.mode, Pitch.step(root_letter, Pitch.octave(step)))
+  end
 
   @doc """
   The target of a `place` event, or `:error` for anything malformed.
@@ -65,6 +78,10 @@ defmodule DrawMusicWeb.EditorPlacement do
     end
   end
 
+  @doc "The staff a browser names, or nil."
+  @spec staff(term()) :: :treble | :bass | nil
+  def staff(name), do: Map.get(@staves, name)
+
   # The bar after the last one is added; any other bar must exist already.
   defp bar_for(%Score{measures: measures} = score, ctx, %PlacementTarget{measure: measure})
        when measure == length(measures) do
@@ -72,6 +89,17 @@ defmodule DrawMusicWeb.EditorPlacement do
   end
 
   defp bar_for(score, _ctx, _target), do: {:ok, score}
+
+  defp int(n) when is_integer(n), do: {:ok, n}
+
+  defp int(s) when is_binary(s) do
+    case Integer.parse(s) do
+      {n, ""} -> {:ok, n}
+      _ -> :error
+    end
+  end
+
+  defp int(_value), do: :error
 
   defp landing(score, _ctx, target, start, false = _insert?), do: {:ok, score, target, start}
 
@@ -92,23 +120,34 @@ defmodule DrawMusicWeb.EditorPlacement do
     end
   end
 
-  defp room_after(score, ctx, at) do
-    if at < Timeline.end_tick(score, ctx),
-      do: {:ok, score},
-      else: Editing.append_measure(score, ctx)
-  end
-
-  defp start_of(score, ctx, %PlacementTarget{measure: measure, offset: offset}) do
-    case Enum.at(Timeline.bars(score, ctx), measure) do
-      {start, _capacity} -> {:ok, start + offset}
-      nil -> {:error, :no_such_measure}
-    end
-  end
-
   defp make_room(score, _ctx, _armed, _target, _start, false), do: {:ok, score}
 
   defp make_room(score, ctx, armed, target, start, true) do
     Editing.insert_time(score, ctx, start, Duration.ticks(armed.value, armed.dots), target.staff)
+  end
+
+  defp non_neg(value) do
+    case int(value) do
+      {:ok, n} when n >= 0 -> {:ok, n}
+      _ -> :error
+    end
+  end
+
+  defp optional_alter(nil), do: {:ok, nil}
+
+  defp optional_alter(value) do
+    case int(value) do
+      {:ok, alter} when alter in -2..2 -> {:ok, alter}
+      _ -> :error
+    end
+  end
+
+  defp pitch(ctx, armed, %PlacementTarget{step: step, alter: alter}) do
+    {step, alter || armed.alter || Pitch.key_alter(ctx.sf, Pitch.letter(step))}
+  end
+
+  defp placement(armed, target) do
+    %Placement{staff: target.staff, offset: target.offset, value: armed.value, dots: armed.dots}
   end
 
   defp put(score, ctx, %Armed{kind: :note} = armed, placement, target) do
@@ -128,55 +167,16 @@ defmodule DrawMusicWeb.EditorPlacement do
 
   defp put(_score, _ctx, _armed, _placement, _target), do: {:error, :not_found}
 
-  defp placement(armed, target) do
-    %Placement{staff: target.staff, offset: target.offset, value: armed.value, dots: armed.dots}
+  defp room_after(score, ctx, at) do
+    if at < Timeline.end_tick(score, ctx),
+      do: {:ok, score},
+      else: Editing.append_measure(score, ctx)
   end
 
-  defp pitch(ctx, armed, %PlacementTarget{step: step, alter: alter}) do
-    {step, alter || armed.alter || Pitch.key_alter(ctx.sf, Pitch.letter(step))}
-  end
-
-  @doc """
-  The pitches of `chord` built on the note `{step, alter}`: a quality has it
-  as its root; a scale degree is the key's chord on that degree, in the
-  note's octave.
-  """
-  @spec chord_pitches(Context.t(), Armed.chord(), {integer(), -2..2}) ::
-          {:ok, [{integer(), -2..2}]} | {:error, :out_of_range}
-  def chord_pitches(_ctx, {:quality, quality}, {step, alter}) do
-    Chords.build(step, alter, quality)
-  end
-
-  def chord_pitches(ctx, {:degree, degree}, {step, _alter}) do
-    {tonic, _pc} = Pitch.tonic(ctx.sf, ctx.mode)
-    root_letter = Integer.mod(tonic + degree - 1, Pitch.steps_per_octave())
-    Chords.diatonic(ctx.sf, ctx.mode, Pitch.step(root_letter, Pitch.octave(step)))
-  end
-
-  defp non_neg(value) do
-    case int(value) do
-      {:ok, n} when n >= 0 -> {:ok, n}
-      _ -> :error
-    end
-  end
-
-  defp int(n) when is_integer(n), do: {:ok, n}
-
-  defp int(s) when is_binary(s) do
-    case Integer.parse(s) do
-      {n, ""} -> {:ok, n}
-      _ -> :error
-    end
-  end
-
-  defp int(_value), do: :error
-
-  defp optional_alter(nil), do: {:ok, nil}
-
-  defp optional_alter(value) do
-    case int(value) do
-      {:ok, alter} when alter in -2..2 -> {:ok, alter}
-      _ -> :error
+  defp start_of(score, ctx, %PlacementTarget{measure: measure, offset: offset}) do
+    case Enum.at(Timeline.bars(score, ctx), measure) do
+      {start, _capacity} -> {:ok, start + offset}
+      nil -> {:error, :no_such_measure}
     end
   end
 end

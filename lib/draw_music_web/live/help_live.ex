@@ -11,6 +11,11 @@ defmodule DrawMusicWeb.HelpLive do
   alias DrawMusicWeb.Shortcuts
 
   @impl true
+  def mount(_params, _session, socket) do
+    {:ok, assign(socket, page_title: "Keys and mouse", shortcuts: Shortcuts.all())}
+  end
+
+  @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
@@ -22,10 +27,5 @@ defmodule DrawMusicWeb.HelpLive do
       <.cheat_sheet shortcuts={@shortcuts} />
     </Layouts.app>
     """
-  end
-
-  @impl true
-  def mount(_params, _session, socket) do
-    {:ok, assign(socket, page_title: "Keys and mouse", shortcuts: Shortcuts.all())}
   end
 end

@@ -181,7 +181,6 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
   end
 
   attr :target, :any, required: true
-
   # The lengths a note or rest can take, and the dot. The browser sends a
   # button's own `value`.
   defp length_items(assigns) do
@@ -222,7 +221,6 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
   attr :width, :string, required: true
   attr :target, :any, required: true
   slot :inner_block, required: true
-
   # The menu's box at the pointer, moved to stay wholly on screen (taller
   # than the window, it scrolls); Esc or a click outside closes it.
   defp menu_box(assigns) do
@@ -275,7 +273,6 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
   end
 
   attr :target, :any, required: true
-
   # A note's own actions: chords, rest, ties.
   defp note_items(assigns) do
     ~H"""
@@ -307,7 +304,6 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
   end
 
   attr :target, :any, required: true
-
   # The notes onto either staff at their own pitch: a part's notes can sit
   # on its own staff however high or low they go.
   defp staff_items(assigns) do
@@ -330,7 +326,6 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
   end
 
   attr :target, :any, required: true
-
   # Up or down by a step, a semitone or an octave, or by any interval.
   defp transpose_items(assigns) do
     assigns = assign(assigns, :intervals, @intervals)

@@ -29,7 +29,6 @@ defmodule DrawMusicWeb.PreferencesComponents do
 
   @doc "All the preference sections, one under the other."
   attr :scope, :map, required: true
-
   @spec preference_sections(map()) :: Phoenix.LiveView.Rendered.t()
   def preference_sections(assigns) do
     ~H"""
@@ -49,7 +48,6 @@ defmodule DrawMusicWeb.PreferencesComponents do
   """
   attr :scope, :map, required: true
   attr :close, :string, required: true
-
   @spec preferences_panel(map()) :: Phoenix.LiveView.Rendered.t()
   def preferences_panel(assigns) do
     ~H"""
@@ -85,7 +83,6 @@ defmodule DrawMusicWeb.PreferencesComponents do
 
   @doc "Help with reading music, for novices."
   attr :scope, :map, required: true
-
   @spec reading_aids(map()) :: Phoenix.LiveView.Rendered.t()
   def reading_aids(assigns) do
     ~H"""
@@ -125,7 +122,6 @@ defmodule DrawMusicWeb.PreferencesComponents do
 
   @doc "How scores are laid out, and the notation's color in dark mode."
   attr :scope, :map, required: true
-
   @spec score_display(map()) :: Phoenix.LiveView.Rendered.t()
   def score_display(assigns) do
     ~H"""

@@ -125,7 +125,6 @@ defmodule DrawMusicWeb.Editor.SaveMenu do
   attr :event, :string, required: true
   attr :target, :any, required: true
   slot :inner_block, required: true
-
   # Picking an item closes the list (a `<details>` only closes itself when
   # its summary is clicked), then sends the item's event.
   defp menu_item(assigns) do

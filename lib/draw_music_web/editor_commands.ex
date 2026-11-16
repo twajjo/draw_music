@@ -43,16 +43,13 @@ defmodule DrawMusicWeb.EditorCommands do
   @octave Map.fetch!(@intervals, "P8")
 
   @doc """
-  Drops dragged notes `steps` scale steps away, with `alter` if a modifier
-  was held. Gives their ids.
+  Turns the given notes into `chord`, each built on the lowest note of the
+  chord it belongs to. Gives the new chords' ids.
   """
-  @spec drop([Ecto.UUID.t()], integer(), -2..2 | nil) :: edit()
-  def drop(ids, steps, alter) do
+  @spec chordify([Ecto.UUID.t()], Armed.chord()) :: edit()
+  def chordify(ids, chord) do
     fn score, ctx ->
-      with {:ok, score} <- Editing.move_steps(score, ctx, ids, steps),
-           {:ok, score} <- maybe_alter(score, ctx, ids, alter) do
-        {:ok, score, ids}
-      end
+      Editing.chordify(score, ctx, ids, &EditorPlacement.chord_pitches(ctx, chord, {&1, &2}))
     end
   end
 
@@ -71,18 +68,17 @@ defmodule DrawMusicWeb.EditorCommands do
     end
   end
 
-  defp delete_events(score, _ctx, [], _insert?), do: {:ok, score}
-  defp delete_events(score, ctx, ids, false = _insert?), do: Editing.remove(score, ctx, ids)
-  defp delete_events(score, ctx, ids, true = _insert?), do: Editing.delete(score, ctx, ids)
-
   @doc """
-  Turns the given notes into `chord`, each built on the lowest note of the
-  chord it belongs to. Gives the new chords' ids.
+  Drops dragged notes `steps` scale steps away, with `alter` if a modifier
+  was held. Gives their ids.
   """
-  @spec chordify([Ecto.UUID.t()], Armed.chord()) :: edit()
-  def chordify(ids, chord) do
+  @spec drop([Ecto.UUID.t()], integer(), -2..2 | nil) :: edit()
+  def drop(ids, steps, alter) do
     fn score, ctx ->
-      Editing.chordify(score, ctx, ids, &EditorPlacement.chord_pitches(ctx, chord, {&1, &2}))
+      with {:ok, score} <- Editing.move_steps(score, ctx, ids, steps),
+           {:ok, score} <- maybe_alter(score, ctx, ids, alter) do
+        {:ok, score, ids}
+      end
     end
   end
 
@@ -98,72 +94,6 @@ defmodule DrawMusicWeb.EditorCommands do
         {:ok, score, [id]}
       end
     end
-  end
-
-  defp maybe_alter(score, _ctx, _ids, nil), do: {:ok, score}
-  defp maybe_alter(score, ctx, ids, alter), do: Editing.set_alter(score, ctx, ids, alter)
-
-  @doc """
-  Gives the notes among `ids` the accidental `alter`; rests among them are
-  left alone.
-  """
-  @spec set_alter([Ecto.UUID.t()], -2..2) :: edit()
-  def set_alter(ids, alter) do
-    fn score, ctx ->
-      notes = for %Note{id: id} <- events(score, ctx, ids), do: id
-      Editing.set_alter(score, ctx, notes, alter)
-    end
-  end
-
-  @doc """
-  Dots the notes and rests `ids`, or takes the dots off if they all have
-  one already.
-  """
-  @spec toggle_dots([Ecto.UUID.t()]) :: edit()
-  def toggle_dots(ids) do
-    fn score, ctx ->
-      events = events(score, ctx, ids)
-
-      dots =
-        case Enum.all?(events, &(&1.dots > 0)) do
-          true -> 0
-          false -> 1
-        end
-
-      Editing.set_dots(score, ctx, Enum.map(events, & &1.id), dots)
-    end
-  end
-
-  # The notes and rests among `ids`, in score order.
-  defp events(score, ctx, ids) do
-    wanted = MapSet.new(ids)
-    for %{event: event} <- Timeline.flatten(score, ctx), event.id in wanted, do: event
-  end
-
-  @doc """
-  Moves notes up or down (`dir`) by a scale `"step"`, `"semitone"`,
-  `"octave"` or a named `"interval"` (m2 … P8).
-  """
-  @spec transpose([Ecto.UUID.t()], String.t(), String.t()) :: edit()
-  @spec transpose([Ecto.UUID.t()], String.t(), String.t(), String.t() | nil) :: edit()
-  def transpose(ids, by, dir, interval \\ nil) do
-    sign = sign(dir)
-
-    case {by, Map.get(@intervals, interval)} do
-      {"step", _} -> &Editing.move_steps(&1, &2, ids, sign)
-      # An exact octave keeps each note's accidental.
-      {"octave", _} -> by_interval(ids, @octave, sign)
-      {"semitone", _} -> &Editing.transpose_chromatic(&1, &2, ids, sign)
-      {"interval", {_steps, _semitones} = interval} -> by_interval(ids, interval, sign)
-      _ -> refused(:not_found)
-    end
-  end
-
-  defp sign("down"), do: -1
-  defp sign(_up), do: 1
-
-  defp by_interval(ids, {steps, semitones}, sign) do
-    &Editing.transpose_interval(&1, &2, ids, steps * sign, semitones * sign)
   end
 
   @doc """
@@ -228,75 +158,6 @@ defmodule DrawMusicWeb.EditorCommands do
 
   def menu(_event, _params, _menu, _insert?), do: refused(:not_found)
 
-  # Sets a new length (or toggles the dot); in Insert mode a longer length
-  # first moves later music on that staff right to make room.
-  defp lengthen(id, value, dots, insert?) do
-    fn score, ctx ->
-      case Enum.find(Timeline.flatten(score, ctx), &(&1.event.id == id)) do
-        nil ->
-          {:error, :not_found}
-
-        entry ->
-          set_length(
-            score,
-            ctx,
-            entry,
-            value || entry.event.value,
-            new_dots(entry, dots),
-            insert?
-          )
-      end
-    end
-  end
-
-  defp new_dots(%{event: %{dots: 0}}, :toggle), do: 1
-  defp new_dots(_entry, :toggle), do: 0
-  defp new_dots(_entry, dots), do: dots
-
-  # A 256th takes no dot, a 128th one more at most.
-  defp set_length(score, ctx, entry, value, dots, insert?) do
-    case Duration.dots_allowed?(value, dots) do
-      true -> fit_length(score, ctx, entry, value, dots, insert?)
-      false -> {:error, :unrepresentable}
-    end
-  end
-
-  defp fit_length(score, ctx, entry, value, dots, insert?) do
-    extra = Duration.ticks(value, dots) - entry.ticks
-
-    with {:ok, score} <- make_room(score, ctx, entry, extra, insert?) do
-      Editing.set_value(score, ctx, Editing.chord_ids(score, ctx, entry.event.id), value, dots)
-    end
-  end
-
-  defp make_room(score, ctx, entry, extra, true = _insert?) when extra > 0 do
-    Editing.insert_time(score, ctx, entry.start + entry.ticks, extra, entry.event.staff)
-  end
-
-  defp make_room(score, _ctx, _entry, _extra, _insert?), do: {:ok, score}
-
-  # Ties a note to the note of the same pitch that starts where it ends.
-  defp tie_next(score, ctx, id) do
-    notes = for %{kind: :note} = entry <- Timeline.flatten(score, ctx), do: entry
-
-    with {:ok, from} <- find(notes, &(&1.event.id == id), :not_found),
-         {:ok, to} <- find(notes, &follows?(&1, from), :not_tieable) do
-      Editing.tie(score, ctx, id, to.event.id)
-    end
-  end
-
-  defp follows?(entry, from) do
-    entry.start == from.start + from.ticks and entry.event.staff == from.event.staff and
-      Note.midi(entry.event) == Note.midi(from.event)
-  end
-
-  defp find(list, fun, reason) do
-    case Enum.find(list, fun) do
-      nil -> {:error, reason}
-      found -> {:ok, found}
-    end
-  end
-
   @doc """
   Pastes a clipboard at absolute tick `at`. Paste always inserts: each staff
   the clipboard covers first makes room, so existing music from `at` on
@@ -321,6 +182,90 @@ defmodule DrawMusicWeb.EditorCommands do
     end
   end
 
+  @doc """
+  Gives the notes among `ids` the accidental `alter`; rests among them are
+  left alone.
+  """
+  @spec set_alter([Ecto.UUID.t()], -2..2) :: edit()
+  def set_alter(ids, alter) do
+    fn score, ctx ->
+      notes = for %Note{id: id} <- events(score, ctx, ids), do: id
+      Editing.set_alter(score, ctx, notes, alter)
+    end
+  end
+
+  @doc """
+  Dots the notes and rests `ids`, or takes the dots off if they all have
+  one already.
+  """
+  @spec toggle_dots([Ecto.UUID.t()]) :: edit()
+  def toggle_dots(ids) do
+    fn score, ctx ->
+      events = events(score, ctx, ids)
+
+      dots =
+        case Enum.all?(events, &(&1.dots > 0)) do
+          true -> 0
+          false -> 1
+        end
+
+      Editing.set_dots(score, ctx, Enum.map(events, & &1.id), dots)
+    end
+  end
+
+  @doc """
+  Moves notes up or down (`dir`) by a scale `"step"`, `"semitone"`,
+  `"octave"` or a named `"interval"` (m2 … P8).
+  """
+  @spec transpose([Ecto.UUID.t()], String.t(), String.t()) :: edit()
+  @spec transpose([Ecto.UUID.t()], String.t(), String.t(), String.t() | nil) :: edit()
+  def transpose(ids, by, dir, interval \\ nil) do
+    sign = sign(dir)
+
+    case {by, Map.get(@intervals, interval)} do
+      {"step", _} -> &Editing.move_steps(&1, &2, ids, sign)
+      # An exact octave keeps each note's accidental.
+      {"octave", _} -> by_interval(ids, @octave, sign)
+      {"semitone", _} -> &Editing.transpose_chromatic(&1, &2, ids, sign)
+      {"interval", {_steps, _semitones} = interval} -> by_interval(ids, interval, sign)
+      _ -> refused(:not_found)
+    end
+  end
+
+  defp by_interval(ids, {steps, semitones}, sign) do
+    &Editing.transpose_interval(&1, &2, ids, steps * sign, semitones * sign)
+  end
+
+  defp delete_events(score, _ctx, [], _insert?), do: {:ok, score}
+  defp delete_events(score, ctx, ids, false = _insert?), do: Editing.remove(score, ctx, ids)
+  defp delete_events(score, ctx, ids, true = _insert?), do: Editing.delete(score, ctx, ids)
+
+  # The notes and rests among `ids`, in score order.
+  defp events(score, ctx, ids) do
+    wanted = MapSet.new(ids)
+    for %{event: event} <- Timeline.flatten(score, ctx), event.id in wanted, do: event
+  end
+
+  defp find(list, fun, reason) do
+    case Enum.find(list, fun) do
+      nil -> {:error, reason}
+      found -> {:ok, found}
+    end
+  end
+
+  defp fit_length(score, ctx, entry, value, dots, insert?) do
+    extra = Duration.ticks(value, dots) - entry.ticks
+
+    with {:ok, score} <- make_room(score, ctx, entry, extra, insert?) do
+      Editing.set_value(score, ctx, Editing.chord_ids(score, ctx, entry.event.id), value, dots)
+    end
+  end
+
+  defp follows?(entry, from) do
+    entry.start == from.start + from.ticks and entry.event.staff == from.event.staff and
+      Note.midi(entry.event) == Note.midi(from.event)
+  end
+
   defp insert_on(score, _ctx, [], _at, _length), do: {:ok, score}
 
   defp insert_on(score, ctx, [staff | rest], at, length) do
@@ -329,5 +274,60 @@ defmodule DrawMusicWeb.EditorCommands do
     end
   end
 
+  # Sets a new length (or toggles the dot); in Insert mode a longer length
+  # first moves later music on that staff right to make room.
+  defp lengthen(id, value, dots, insert?) do
+    fn score, ctx ->
+      case Enum.find(Timeline.flatten(score, ctx), &(&1.event.id == id)) do
+        nil ->
+          {:error, :not_found}
+
+        entry ->
+          set_length(
+            score,
+            ctx,
+            entry,
+            value || entry.event.value,
+            new_dots(entry, dots),
+            insert?
+          )
+      end
+    end
+  end
+
+  defp make_room(score, ctx, entry, extra, true = _insert?) when extra > 0 do
+    Editing.insert_time(score, ctx, entry.start + entry.ticks, extra, entry.event.staff)
+  end
+
+  defp make_room(score, _ctx, _entry, _extra, _insert?), do: {:ok, score}
+
+  defp maybe_alter(score, _ctx, _ids, nil), do: {:ok, score}
+  defp maybe_alter(score, ctx, ids, alter), do: Editing.set_alter(score, ctx, ids, alter)
+
+  defp new_dots(%{event: %{dots: 0}}, :toggle), do: 1
+  defp new_dots(_entry, :toggle), do: 0
+  defp new_dots(_entry, dots), do: dots
+
   defp refused(reason), do: fn _score, _ctx -> {:error, reason} end
+
+  # A 256th takes no dot, a 128th one more at most.
+  defp set_length(score, ctx, entry, value, dots, insert?) do
+    case Duration.dots_allowed?(value, dots) do
+      true -> fit_length(score, ctx, entry, value, dots, insert?)
+      false -> {:error, :unrepresentable}
+    end
+  end
+
+  defp sign("down"), do: -1
+  defp sign(_up), do: 1
+
+  # Ties a note to the note of the same pitch that starts where it ends.
+  defp tie_next(score, ctx, id) do
+    notes = for %{kind: :note} = entry <- Timeline.flatten(score, ctx), do: entry
+
+    with {:ok, from} <- find(notes, &(&1.event.id == id), :not_found),
+         {:ok, to} <- find(notes, &follows?(&1, from), :not_tieable) do
+      Editing.tie(score, ctx, id, to.event.id)
+    end
+  end
 end

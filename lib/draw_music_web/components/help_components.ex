@@ -27,7 +27,6 @@ defmodule DrawMusicWeb.HelpComponents do
 
   @doc "Shortcuts in groups, in the order given."
   attr :shortcuts, :list, required: true, doc: "`DrawMusicWeb.Shortcut` structs, grouped"
-
   @spec cheat_sheet(map()) :: Phoenix.LiveView.Rendered.t()
   def cheat_sheet(assigns) do
     assigns = assign(assigns, :groups, Enum.chunk_by(assigns.shortcuts, & &1.group))
@@ -55,29 +54,8 @@ defmodule DrawMusicWeb.HelpComponents do
     """
   end
 
-  attr :shortcut, Shortcut, required: true
-
-  defp how(%{shortcut: %Shortcut{keys: []}} = assigns) do
-    ~H"""
-    <span class="italic opacity-80">{@shortcut.mouse}</span>
-    """
-  end
-
-  defp how(assigns) do
-    ~H"""
-    <kbd :for={key <- @shortcut.keys} class="kbd kbd-sm">{key_label(key)}</kbd>
-    """
-  end
-
-  defp key_label(key) do
-    key
-    |> String.split("+")
-    |> Enum.map_join("+", &Map.get(@key_labels, &1, &1))
-  end
-
   @doc "One gesture's picture, by name (see `DrawMusicWeb.Shortcut`'s `:diagram`)."
   attr :name, :atom, required: true
-
   @spec diagram(map()) :: Phoenix.LiveView.Rendered.t()
   def diagram(assigns) do
     assigns =
@@ -114,6 +92,26 @@ defmodule DrawMusicWeb.HelpComponents do
       </g>
     </svg>
     """
+  end
+
+  attr :shortcut, Shortcut, required: true
+
+  defp how(%{shortcut: %Shortcut{keys: []}} = assigns) do
+    ~H"""
+    <span class="italic opacity-80">{@shortcut.mouse}</span>
+    """
+  end
+
+  defp how(assigns) do
+    ~H"""
+    <kbd :for={key <- @shortcut.keys} class="kbd kbd-sm">{key_label(key)}</kbd>
+    """
+  end
+
+  defp key_label(key) do
+    key
+    |> String.split("+")
+    |> Enum.map_join("+", &Map.get(@key_labels, &1, &1))
   end
 
   attr :name, :atom, required: true

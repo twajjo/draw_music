@@ -37,7 +37,6 @@ defmodule DrawMusicWeb.PaletteComponents do
   """
   attr :editor_mode, :atom, required: true, values: [:edit, :play]
   attr :target, :any, default: nil, doc: "the component their clicks go to"
-
   @spec mode_switch(map()) :: Phoenix.LiveView.Rendered.t()
   def mode_switch(assigns) do
     assigns = assign(assigns, :modes, @modes)
