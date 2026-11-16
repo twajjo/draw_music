@@ -80,7 +80,10 @@ colour on black) are view choices:
 2. **Appearance in the form:** the theme becomes a form field too, previewed in
    the browser (a colocated hook sets `data-theme`), written to localStorage
    only on Save, put back on Cancel; Defaults is "system". The account menu's
-   theme switch goes.
+   theme switch goes. Done: `DrawMusicWeb.ThemeChoice`, whose hook puts the
+   stored theme back whenever it goes (Cancel, Back, leaving the page).
+   Known gap: on the page, a change of the theme alone doesn't count as
+   unsaved, so leaving by a link doesn't ask (the theme just goes back).
 3. **The session layout:** the palette's Page / Strip buttons switch the
    editor's layout for the session only (an editor assign, starting from the
    preference), no longer saving the preference.

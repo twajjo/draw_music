@@ -298,7 +298,7 @@ defmodule DrawMusicWeb.Shortcuts do
       mouse: "account menu › Preferences",
       modes: @both,
       action:
-        "Your own preferences (layout, dark-mode ink, reading aids). Changes show at once but aren't kept until Save; Cancel puts back what you had, and Defaults fills in the starting values (Save to keep them). Only Save or Cancel closes it"
+        "Your own preferences (light, dark or system theme; layout, dark-mode ink, reading aids). Changes show at once but aren't kept until Save; Cancel puts back what you had, and Defaults fills in the starting values (Save to keep them). Only Save or Cancel closes it"
     },
     # Playback (the play controls replace the edit palette in Play mode)
     %Shortcut{

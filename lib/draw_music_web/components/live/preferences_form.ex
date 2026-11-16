@@ -1,13 +1,18 @@
 defmodule DrawMusicWeb.PreferencesForm do
   @moduledoc """
-  The user's preferences as one form: the score's layout and dark-mode ink,
-  and the reading aids. Nothing is stored until **Save**.
+  The user's preferences as one form: the application's theme, the score's
+  layout and dark-mode ink, and the reading aids. Nothing is stored until
+  **Save**.
 
   While it's open, each valid change is previewed: the parent is sent the
   user with the changes applied (not stored), so the page behind shows them.
   **Cancel** goes back to the stored preferences; **Defaults** fills the form
   with a new user's values, previewed but not stored until Save. An ink too
   dark to read on black shows its error and isn't previewed or saved.
+
+  The theme is kept in the browser, not with the user: its field
+  (`DrawMusicWeb.ThemeChoice`) previews itself, and the form tells it when to
+  store (Save) or go back to "system" (Defaults).
 
   A standalone LiveComponent: it keeps the form and the stored preferences
   (as they were when it opened) to itself, and works in any LiveView.
@@ -30,6 +35,7 @@ defmodule DrawMusicWeb.PreferencesForm do
 
   alias DrawMusic.Accounts
   alias DrawMusic.Accounts.{Scope, User}
+  alias DrawMusicWeb.ThemeChoice
 
   @fields [
     :score_layout,
@@ -79,7 +85,12 @@ defmodule DrawMusicWeb.PreferencesForm do
   end
 
   def handle_event("defaults", _params, socket) do
-    {:noreply, change(socket, defaults())}
+    socket =
+      socket
+      |> change(defaults())
+      |> push_event("theme:default", %{})
+
+    {:noreply, socket}
   end
 
   def handle_event("save", _params, socket) do
@@ -88,7 +99,7 @@ defmodule DrawMusicWeb.PreferencesForm do
     case Accounts.update_user_preferences(Scope.for_user(stored), params) do
       {:ok, user} ->
         notify({:saved, user})
-        {:noreply, socket}
+        {:noreply, push_event(socket, "theme:save", %{})}
 
       {:error, changeset} ->
         {:noreply, assign_form(socket, %{changeset | action: :update})}
@@ -102,6 +113,8 @@ defmodule DrawMusicWeb.PreferencesForm do
     <div>
       <.form for={@form} id={@id} phx-change="change" phx-submit="save" phx-target={@myself}>
         <div class="space-y-8">
+          <ThemeChoice.theme_choice id={"#{@id}-theme"} />
+          <div class="divider" />
           <.score_display id={@id} form={@form} draft={@draft} />
           <div class="divider" />
           <.reading_aids id={@id} form={@form} draft={@draft} />

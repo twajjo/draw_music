@@ -27,6 +27,7 @@ defmodule DrawMusicWeb.UserLive.PreferencesTest do
 
     stored = Accounts.get_user!(user.id)
     assert {stored.score_layout, stored.score_ink_dark} == {:page, "#ffbf47"}
+    assert_push_event(lv, "theme:save", %{})
     assert_push_event(lv, "preferences:leave", %{to: "/compositions"})
     assert has_element?(lv, "#unsaved-guard[data-dirty=false]")
   end
@@ -38,6 +39,7 @@ defmodule DrawMusicWeb.UserLive.PreferencesTest do
     lv |> element("#preferences-form-cancel") |> render_click()
 
     assert Accounts.get_user!(user.id).letter_staves == false
+    refute_push_event(lv, "theme:save", %{})
     assert_push_event(lv, "preferences:leave", %{to: "/compositions"})
     assert has_element?(lv, "#unsaved-guard[data-dirty=false]")
   end
@@ -56,6 +58,8 @@ defmodule DrawMusicWeb.UserLive.PreferencesTest do
 
     assert has_element?(lv, "#preferences-form-layout-strip.btn-primary")
     assert has_element?(lv, "#preferences-form-ink-ffffff.ring-2")
+    assert_push_event(lv, "theme:default", %{})
+    refute_push_event(lv, "theme:save", %{})
     assert Accounts.get_user!(user.id).score_layout == :page
 
     lv |> form("#preferences-form") |> render_submit()
