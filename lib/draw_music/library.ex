@@ -18,41 +18,21 @@ defmodule DrawMusic.Library do
   alias DrawMusic.Library.{Composition, Import, Key, Version}
   alias DrawMusic.Repo
 
-  ## Compositions
-
   @doc """
-  Lists the user's compositions by name, with keys and version summaries
-  (no scores) preloaded.
+  Returns a changeset for tracking composition changes in forms.
   """
-  @spec list_compositions(Scope.t()) :: [Composition.t()]
-  def list_compositions(%Scope{} = scope) do
-    Composition
-    |> where(user_id: ^scope.user.id)
-    |> order_by(asc: :name)
-    |> preload(keys: [versions: ^version_summaries()])
-    |> Repo.all()
+  @spec change_composition(Scope.t(), Composition.t()) :: Ecto.Changeset.t()
+  @spec change_composition(Scope.t(), Composition.t(), map()) :: Ecto.Changeset.t()
+  def change_composition(%Scope{} = scope, %Composition{} = composition, attrs \\ %{}) do
+    Composition.changeset(composition, attrs, scope)
   end
 
   @doc """
-  Gets one of the user's compositions with keys and version summaries
-  preloaded. Raises `Ecto.NoResultsError` if it does not exist or belongs to
-  someone else.
+  Returns a changeset for tracking version changes in forms.
   """
-  @spec get_composition!(Scope.t(), Ecto.UUID.t()) :: Composition.t()
-  def get_composition!(%Scope{} = scope, id) do
-    Composition
-    |> where(user_id: ^scope.user.id, id: ^id)
-    |> preload(keys: [versions: ^version_summaries()])
-    |> Repo.one!()
-  end
-
-  @doc """
-  Finds the user's composition with `name`, ignoring case. Returns `nil` if none.
-  """
-  @spec get_composition_by_name(Scope.t(), String.t()) :: Composition.t() | nil
-  def get_composition_by_name(%Scope{} = scope, name) when is_binary(name) do
-    Repo.get_by(Composition, user_id: scope.user.id, name: String.trim(name))
-  end
+  @spec change_version(Version.t()) :: Ecto.Changeset.t()
+  @spec change_version(Version.t(), map()) :: Ecto.Changeset.t()
+  def change_version(%Version{} = version, attrs \\ %{}), do: Version.changeset(version, attrs)
 
   @doc """
   Creates a composition (`composition_attrs`: name and credits) with one key
@@ -73,28 +53,6 @@ defmodule DrawMusic.Library do
   end
 
   @doc """
-  Returns a changeset for tracking composition changes in forms.
-  """
-  @spec change_composition(Scope.t(), Composition.t()) :: Ecto.Changeset.t()
-  @spec change_composition(Scope.t(), Composition.t(), map()) :: Ecto.Changeset.t()
-  def change_composition(%Scope{} = scope, %Composition{} = composition, attrs \\ %{}) do
-    Composition.changeset(composition, attrs, scope)
-  end
-
-  @doc """
-  Updates a composition's name, credits and notes.
-  """
-  @spec update_composition(Scope.t(), Composition.t(), map()) ::
-          {:ok, Composition.t()} | {:error, Ecto.Changeset.t()}
-  def update_composition(%Scope{} = scope, %Composition{} = composition, attrs) do
-    true = owner?(scope, composition)
-
-    composition
-    |> Composition.changeset(attrs, scope)
-    |> Repo.update()
-  end
-
-  @doc """
   Deletes a composition with all of its keys and versions.
   """
   @spec delete_composition(Scope.t(), Composition.t()) ::
@@ -103,8 +61,6 @@ defmodule DrawMusic.Library do
     true = owner?(scope, composition)
     Repo.delete(composition)
   end
-
-  ## Keys
 
   @doc """
   Deletes a key and its versions. A composition's last key cannot be deleted;
@@ -124,118 +80,6 @@ defmodule DrawMusic.Library do
         {:error, :last_key}
       end
     end)
-  end
-
-  ## Versions
-
-  @doc """
-  Gets one of the user's versions by id, with `key` and `key.composition`
-  loaded. Raises `Ecto.NoResultsError` if not found.
-  """
-  @spec get_version!(Scope.t(), Ecto.UUID.t()) :: Version.t()
-  def get_version!(%Scope{} = scope, id) do
-    scope
-    |> owned_versions()
-    |> where([v], v.id == ^id)
-    |> Repo.one!()
-  end
-
-  @doc """
-  Gets the highest-numbered version in one of the user's keys.
-  """
-  @spec get_latest_version!(Scope.t(), Ecto.UUID.t()) :: Version.t()
-  def get_latest_version!(%Scope{} = scope, key_id) do
-    scope
-    |> owned_versions()
-    |> where([v], v.key_id == ^key_id)
-    |> order_by(desc: :number)
-    |> limit(1)
-    |> Repo.one!()
-  end
-
-  @doc """
-  Gets version `number` of one of the user's compositions in the key
-  `{sf, mode}`, with `key` and `key.composition` loaded. Raises
-  `Ecto.NoResultsError` if not found.
-  """
-  @spec get_version_by_number!(Scope.t(), Ecto.UUID.t(), {-7..7, :major | :minor}, pos_integer()) ::
-          Version.t()
-  def get_version_by_number!(%Scope{} = scope, composition_id, {sf, mode}, number) do
-    scope
-    |> owned_versions()
-    |> where([v, k, c], c.id == ^composition_id and k.sf == ^sf and k.mode == ^mode)
-    |> where([v], v.number == ^number)
-    |> Repo.one!()
-  end
-
-  @doc """
-  Returns a changeset for tracking version changes in forms.
-  """
-  @spec change_version(Version.t()) :: Ecto.Changeset.t()
-  @spec change_version(Version.t(), map()) :: Ecto.Changeset.t()
-  def change_version(%Version{} = version, attrs \\ %{}), do: Version.changeset(version, attrs)
-
-  @doc """
-  Save: overwrites an existing version's content.
-  """
-  @spec save_version(Scope.t(), Version.t(), map()) ::
-          {:ok, Version.t()} | {:error, Ecto.Changeset.t()}
-  def save_version(
-        %Scope{} = scope,
-        %Version{key: %Key{composition: %Composition{}}} = version,
-        attrs
-      ) do
-    true = owner?(scope, version.key.composition)
-
-    version
-    |> Version.changeset(attrs)
-    |> Repo.update()
-  end
-
-  @doc """
-  Save as new version: stores `attrs` under the key's next version number.
-  """
-  @spec save_new_version(Scope.t(), Key.t(), map()) ::
-          {:ok, Version.t()} | {:error, Ecto.Changeset.t()}
-  def save_new_version(
-        %Scope{} = scope,
-        %Key{composition: %Composition{} = composition} = key,
-        attrs
-      ) do
-    true = owner?(scope, composition)
-
-    Repo.transact(fn ->
-      lock_composition!(composition.id)
-      insert_version(key, next_number(key.id), attrs)
-    end)
-  end
-
-  @doc """
-  Stores `version_attrs` as the next version under `key_attrs` (`sf`, `mode`)
-  in an existing composition, creating that key if the composition does not
-  have it yet. Used when transposing into another key.
-  """
-  @spec save_in_key(Scope.t(), Composition.t(), map(), map()) ::
-          {:ok, Version.t()} | {:error, Ecto.Changeset.t()}
-  def save_in_key(%Scope{} = scope, %Composition{} = composition, key_attrs, version_attrs) do
-    true = owner?(scope, composition)
-
-    Repo.transact(fn ->
-      locked = lock_composition!(composition.id)
-
-      with {:ok, key} <- get_or_create_key(locked, key_attrs) do
-        insert_version(key, next_number(key.id), version_attrs)
-      end
-    end)
-  end
-
-  @doc """
-  Save as new composition: same as `create_composition/4`.
-  """
-  @spec save_as_new_composition(Scope.t(), map(), map(), map()) ::
-          {:ok, Version.t()} | {:error, Ecto.Changeset.t()}
-  def save_as_new_composition(%Scope{} = scope, composition_attrs, key_attrs, version_attrs) do
-    create_composition(scope, composition_attrs, key_attrs, version_attrs)
   end
 
   @doc """
@@ -260,11 +104,66 @@ defmodule DrawMusic.Library do
     end)
   end
 
-  defp delete_key_of(%Version{} = version) do
-    with {:ok, _key} <- Repo.delete(version.key), do: {:ok, version}
+  @doc """
+  Gets one of the user's compositions with keys and version summaries
+  preloaded. Raises `Ecto.NoResultsError` if it does not exist or belongs to
+  someone else.
+  """
+  @spec get_composition!(Scope.t(), Ecto.UUID.t()) :: Composition.t()
+  def get_composition!(%Scope{} = scope, id) do
+    Composition
+    |> where(user_id: ^scope.user.id, id: ^id)
+    |> preload(keys: [versions: ^version_summaries()])
+    |> Repo.one!()
   end
 
-  ## Import
+  @doc """
+  Finds the user's composition with `name`, ignoring case. Returns `nil` if none.
+  """
+  @spec get_composition_by_name(Scope.t(), String.t()) :: Composition.t() | nil
+  def get_composition_by_name(%Scope{} = scope, name) when is_binary(name) do
+    Repo.get_by(Composition, user_id: scope.user.id, name: String.trim(name))
+  end
+
+  @doc """
+  Gets the highest-numbered version in one of the user's keys.
+  """
+  @spec get_latest_version!(Scope.t(), Ecto.UUID.t()) :: Version.t()
+  def get_latest_version!(%Scope{} = scope, key_id) do
+    scope
+    |> owned_versions()
+    |> where([v], v.key_id == ^key_id)
+    |> order_by(desc: :number)
+    |> limit(1)
+    |> Repo.one!()
+  end
+
+  @doc """
+  Gets one of the user's versions by id, with `key` and `key.composition`
+  loaded. Raises `Ecto.NoResultsError` if not found.
+  """
+  @spec get_version!(Scope.t(), Ecto.UUID.t()) :: Version.t()
+  def get_version!(%Scope{} = scope, id) do
+    scope
+    |> owned_versions()
+    |> where([v], v.id == ^id)
+    |> Repo.one!()
+  end
+
+  @doc """
+  Gets version `number` of one of the user's compositions in the key
+  `{sf, mode}`, with `key` and `key.composition` loaded. Raises
+  `Ecto.NoResultsError` if not found.
+  """
+  @spec get_version_by_number!(Scope.t(), Ecto.UUID.t(), {-7..7, :major | :minor}, pos_integer()) ::
+          Version.t()
+  def get_version_by_number!(%Scope{} = scope, composition_id, {sf, mode}, number) do
+    scope
+    |> owned_versions()
+    |> where([v, k, c], c.id == ^composition_id and k.sf == ^sf and k.mode == ^mode)
+    |> where([v], v.number == ^number)
+    |> Repo.one!()
+  end
 
   @doc """
   Stores an imported piece (a `DrawMusic.Library.Import`, e.g. from
@@ -308,15 +207,97 @@ defmodule DrawMusic.Library do
     end
   end
 
-  ## Helpers
+  @doc """
+  Lists the user's compositions by name, with keys and version summaries
+  (no scores) preloaded.
+  """
+  @spec list_compositions(Scope.t()) :: [Composition.t()]
+  def list_compositions(%Scope{} = scope) do
+    Composition
+    |> where(user_id: ^scope.user.id)
+    |> order_by(asc: :name)
+    |> preload(keys: [versions: ^version_summaries()])
+    |> Repo.all()
+  end
 
-  defp replace_key_versions(%Composition{} = composition, import) do
-    locked = lock_composition!(composition.id)
+  @doc """
+  Save as new composition: same as `create_composition/4`.
+  """
+  @spec save_as_new_composition(Scope.t(), map(), map(), map()) ::
+          {:ok, Version.t()} | {:error, Ecto.Changeset.t()}
+  def save_as_new_composition(%Scope{} = scope, composition_attrs, key_attrs, version_attrs) do
+    create_composition(scope, composition_attrs, key_attrs, version_attrs)
+  end
 
-    with {:ok, key} <- get_or_create_key(locked, import.key) do
-      Repo.delete_all(where(Version, key_id: ^key.id))
-      insert_version(key, 1, import.version)
-    end
+  @doc """
+  Stores `version_attrs` as the next version under `key_attrs` (`sf`, `mode`)
+  in an existing composition, creating that key if the composition does not
+  have it yet. Used when transposing into another key.
+  """
+  @spec save_in_key(Scope.t(), Composition.t(), map(), map()) ::
+          {:ok, Version.t()} | {:error, Ecto.Changeset.t()}
+  def save_in_key(%Scope{} = scope, %Composition{} = composition, key_attrs, version_attrs) do
+    true = owner?(scope, composition)
+
+    Repo.transact(fn ->
+      locked = lock_composition!(composition.id)
+
+      with {:ok, key} <- get_or_create_key(locked, key_attrs) do
+        insert_version(key, next_number(key.id), version_attrs)
+      end
+    end)
+  end
+
+  @doc """
+  Save as new version: stores `attrs` under the key's next version number.
+  """
+  @spec save_new_version(Scope.t(), Key.t(), map()) ::
+          {:ok, Version.t()} | {:error, Ecto.Changeset.t()}
+  def save_new_version(
+        %Scope{} = scope,
+        %Key{composition: %Composition{} = composition} = key,
+        attrs
+      ) do
+    true = owner?(scope, composition)
+
+    Repo.transact(fn ->
+      lock_composition!(composition.id)
+      insert_version(key, next_number(key.id), attrs)
+    end)
+  end
+
+  @doc """
+  Save: overwrites an existing version's content.
+  """
+  @spec save_version(Scope.t(), Version.t(), map()) ::
+          {:ok, Version.t()} | {:error, Ecto.Changeset.t()}
+  def save_version(
+        %Scope{} = scope,
+        %Version{key: %Key{composition: %Composition{}}} = version,
+        attrs
+      ) do
+    true = owner?(scope, version.key.composition)
+
+    version
+    |> Version.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Updates a composition's name, credits and notes.
+  """
+  @spec update_composition(Scope.t(), Composition.t(), map()) ::
+          {:ok, Composition.t()} | {:error, Ecto.Changeset.t()}
+  def update_composition(%Scope{} = scope, %Composition{} = composition, attrs) do
+    true = owner?(scope, composition)
+
+    composition
+    |> Composition.changeset(attrs, scope)
+    |> Repo.update()
+  end
+
+  defp delete_key_of(%Version{} = version) do
+    with {:ok, _key} <- Repo.delete(version.key), do: {:ok, version}
   end
 
   defp fetch_by_name(scope, name) do
@@ -353,12 +334,10 @@ defmodule DrawMusic.Library do
     end
   end
 
-  defp owned_versions(%Scope{} = scope) do
-    Version
-    |> join(:inner, [v], k in assoc(v, :key))
-    |> join(:inner, [_v, k], c in assoc(k, :composition))
-    |> where([_v, _k, c], c.user_id == ^scope.user.id)
-    |> preload([_v, k, c], key: {k, composition: c})
+  defp key_count(composition_id) do
+    Key
+    |> where(composition_id: ^composition_id)
+    |> Repo.aggregate(:count)
   end
 
   defp lock_composition!(id) do
@@ -376,15 +355,28 @@ defmodule DrawMusic.Library do
     |> Kernel.+(1)
   end
 
+  defp owned_versions(%Scope{} = scope) do
+    Version
+    |> join(:inner, [v], k in assoc(v, :key))
+    |> join(:inner, [_v, k], c in assoc(k, :composition))
+    |> where([_v, _k, c], c.user_id == ^scope.user.id)
+    |> preload([_v, k, c], key: {k, composition: c})
+  end
+
+  defp owner?(%Scope{user: user}, %Composition{user_id: user_id}), do: user.id == user_id
+
+  defp replace_key_versions(%Composition{} = composition, import) do
+    locked = lock_composition!(composition.id)
+
+    with {:ok, key} <- get_or_create_key(locked, import.key) do
+      Repo.delete_all(where(Version, key_id: ^key.id))
+      insert_version(key, 1, import.version)
+    end
+  end
+
   defp version_count(key_id) do
     Version
     |> where(key_id: ^key_id)
-    |> Repo.aggregate(:count)
-  end
-
-  defp key_count(composition_id) do
-    Key
-    |> where(composition_id: ^composition_id)
     |> Repo.aggregate(:count)
   end
 
@@ -405,6 +397,4 @@ defmodule DrawMusic.Library do
           :updated_at
         ])
   end
-
-  defp owner?(%Scope{user: user}, %Composition{user_id: user_id}), do: user.id == user_id
 end

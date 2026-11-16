@@ -57,15 +57,6 @@ defmodule DrawMusic.Engraving.MeasureGeometry do
           bar_rests: [:treble | :bass]
         }
 
-  @doc "x of `offset` ticks into the measure."
-  @spec x_at(t(), number()) :: float()
-  def x_at(%__MODULE__{columns: []} = geom, offset), do: geom.content_x + offset * geom.scale
-
-  def x_at(%__MODULE__{} = geom, offset) do
-    {from, to} = segment_at(geom, offset)
-    from.x + (offset - from.offset) / (to.offset - from.offset) * (to.x - from.x)
-  end
-
   @doc "Ticks into the measure at `x` (in a gap: the next column's offset)."
   @spec offset_at(t(), number()) :: float()
   def offset_at(%__MODULE__{columns: []} = geom, x), do: (x - geom.content_x) / geom.scale
@@ -79,6 +70,20 @@ defmodule DrawMusic.Engraving.MeasureGeometry do
     end
   end
 
+  @doc "x of `offset` ticks into the measure."
+  @spec x_at(t(), number()) :: float()
+  def x_at(%__MODULE__{columns: []} = geom, offset), do: geom.content_x + offset * geom.scale
+
+  def x_at(%__MODULE__{} = geom, offset) do
+    {from, to} = segment_at(geom, offset)
+    from.x + (offset - from.offset) / (to.offset - from.offset) * (to.x - from.x)
+  end
+
+  defp segment_at(geom, offset) do
+    segments = segments(geom)
+    Enum.find(segments, fn {_from, to} -> offset < to.offset end) || List.last(segments)
+  end
+
   # The linear stretches: each column to the start of the next one's gap,
   # and the last one to the end of the content.
   defp segments(%__MODULE__{columns: columns} = geom) do
@@ -89,10 +94,5 @@ defmodule DrawMusic.Engraving.MeasureGeometry do
     columns
     |> Enum.map(&%{offset: &1.offset, x: &1.x})
     |> Enum.zip(ends)
-  end
-
-  defp segment_at(geom, offset) do
-    segments = segments(geom)
-    Enum.find(segments, fn {_from, to} -> offset < to.offset end) || List.last(segments)
   end
 end

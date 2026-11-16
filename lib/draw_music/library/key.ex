@@ -53,11 +53,22 @@ defmodule DrawMusic.Library.Key do
   end
 
   @doc """
+  `{:ok, {sf, mode}}` for a key slug, or `:error` for an unknown slug.
+  """
+  @spec from_slug(String.t()) :: {:ok, {-7..7, :major | :minor}} | :error
+  def from_slug(slug) when is_binary(slug) do
+    Enum.find_value(@keys, :error, fn {sf, mode} ->
+      if slug(sf, mode) == slug, do: {:ok, {sf, mode}}
+    end)
+  end
+
+  @doc """
   Human name of a key, e.g. `name(1, :major)` → `"G major"`.
   """
   @spec name(t()) :: String.t()
   @spec name(-7..7, :major | :minor) :: String.t()
   def name(%__MODULE__{sf: sf, mode: mode}), do: name(sf, mode)
+
   def name(sf, :major) when sf in @sfs, do: Enum.at(@major_tonics, sf + @max_sf) <> " major"
   def name(sf, :minor) when sf in @sfs, do: Enum.at(@minor_tonics, sf + @max_sf) <> " minor"
 
@@ -75,15 +86,5 @@ defmodule DrawMusic.Library.Key do
     |> String.replace("♭", "-flat")
     |> String.replace(" ", "-")
     |> String.downcase()
-  end
-
-  @doc """
-  `{:ok, {sf, mode}}` for a key slug, or `:error` for an unknown slug.
-  """
-  @spec from_slug(String.t()) :: {:ok, {-7..7, :major | :minor}} | :error
-  def from_slug(slug) when is_binary(slug) do
-    Enum.find_value(@keys, :error, fn {sf, mode} ->
-      if slug(sf, mode) == slug, do: {:ok, {sf, mode}}
-    end)
   end
 end

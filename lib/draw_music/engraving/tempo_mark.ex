@@ -47,15 +47,15 @@ defmodule DrawMusic.Engraving.TempoMark do
   @char_width 0.95
   @note_width 1.3
 
+  @doc ~s(The end tempo's words: "= 45".)
+  @spec end_label(t()) :: String.t()
+  def end_label(%__MODULE__{to_bpm: to_bpm}), do: "= #{to_bpm}"
+
   @doc ~s(The words a mark's label shows after its note: "= 90", "= 60 rit.".)
   @spec label(t()) :: String.t()
   def label(%__MODULE__{bpm: bpm, ramp: nil}), do: "= #{bpm}"
   def label(%__MODULE__{bpm: bpm, ramp: :rit}), do: "= #{bpm} rit."
   def label(%__MODULE__{bpm: bpm, ramp: :accel}), do: "= #{bpm} accel."
-
-  @doc ~s(The end tempo's words: "= 45".)
-  @spec end_label(t()) :: String.t()
-  def end_label(%__MODULE__{to_bpm: to_bpm}), do: "= #{to_bpm}"
 
   @doc "How wide a note and `text` are, roughly."
   @spec text_width(String.t()) :: float()

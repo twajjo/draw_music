@@ -205,65 +205,20 @@ defmodule DrawMusic.Samples do
   @min_similarity 0.8
   @max_suggestions 5
 
-  @doc "All 128 GM instruments, in program order."
-  @spec instruments() :: [Instrument.t()]
-  def instruments, do: @instruments
-
-  @doc "The instrument for a GM program number."
-  @spec instrument!(0..127) :: Instrument.t()
-  def instrument!(program) when program in 0..127, do: Enum.at(@instruments, program)
-
-  @doc "The 16 GM families, in GM order."
-  @spec families() :: [String.t()]
-  def families, do: @families
-
-  @doc "The instruments `mix samples.fetch` downloads when given none."
-  @spec default_set() :: [Instrument.t()]
-  def default_set do
-    Enum.map(@default_stems, fn stem -> Enum.find(@instruments, &(&1.stem == stem)) end)
-  end
-
-  @doc """
-  Finds an instrument by GM name (any case), soundfont stem or program
-  number. An unknown name comes back with the closest stems.
-  """
-  @spec lookup(String.t()) :: {:ok, Instrument.t()} | {:error, {:unknown, [String.t()]}}
-  def lookup(query) do
-    wanted = String.downcase(query)
-
-    case Enum.find(@instruments, &matches?(&1, wanted)) do
-      nil -> {:error, {:unknown, suggestions(wanted)}}
-      instrument -> {:ok, instrument}
-    end
-  end
-
-  defp matches?(%Instrument{} = instrument, wanted) do
-    wanted in [
-      String.downcase(instrument.name),
-      instrument.stem,
-      Integer.to_string(instrument.program)
-    ]
-  end
-
-  defp suggestions(wanted) do
-    @stems
-    |> Enum.map(&{String.jaro_distance(&1, wanted), &1})
-    |> Enum.filter(fn {similarity, _stem} -> similarity >= @min_similarity end)
-    |> Enum.sort_by(fn {similarity, _stem} -> similarity end, :desc)
-    |> Enum.take(@max_suggestions)
-    |> Enum.map(fn {_similarity, stem} -> stem end)
-  end
-
-  ## Storage
-
   @typedoc "What can be fetched: one soundfont, or the whole Splendid Grand Piano set."
+
   @type item :: Instrument.t() | :splendid
 
   @soundfont_base "https://gleitz.github.io/midi-js-soundfonts/MusyngKite/"
+
   @splendid_base "https://smpldsnds.github.io/sfzinstruments-splendid-grand-piano/samples/"
+
   @soundfont_dir "musyngkite"
+
   @splendid_dir "splendid-grand-piano"
+
   @license_file "LICENSE.txt"
+
   @parallel_downloads 8
 
   @soundfont_license """
@@ -279,41 +234,15 @@ defmodule DrawMusic.Samples do
   (https://github.com/smpldsnds/sfzinstruments-splendid-grand-piano).
   """
 
-  @doc "Where samples are stored and served from (`config :draw_music, :samples_dir`)."
-  @spec samples_dir() :: Path.t()
-  def samples_dir, do: Application.fetch_env!(:draw_music, :samples_dir)
-
-  @doc """
-  Whether a program's samples are on this server. The piano counts when
-  either the Splendid set or its soundfont is. Option `dir:` (default
-  `samples_dir/0`).
-  """
-  @spec installed?(0..127, keyword()) :: boolean()
-  def installed?(program, opts \\ []) do
-    installed_in?(Manifest.read(dir(opts)), instrument!(program))
+  @doc "The instruments `mix samples.fetch` downloads when given none."
+  @spec default_set() :: [Instrument.t()]
+  def default_set do
+    Enum.map(@default_stems, fn stem -> Enum.find(@instruments, &(&1.stem == stem)) end)
   end
 
-  defp installed_in?(%Manifest{splendid: %{}}, %Instrument{program: 0}), do: true
-  defp installed_in?(manifest, instrument), do: Map.has_key?(manifest.soundfonts, instrument.stem)
-
-  @doc "The programs whose samples are on this server. Option `dir:`."
-  @spec installed(keyword()) :: MapSet.t(0..127)
-  def installed(opts \\ []) do
-    manifest = Manifest.read(dir(opts))
-    for i <- @instruments, installed_in?(manifest, i), into: MapSet.new(), do: i.program
-  end
-
-  @doc """
-  An item's place inside the samples directory (and under `/samples`): a
-  soundfont file, or the Splendid set's folder.
-  """
-  @spec relative_path(item()) :: String.t()
-  def relative_path(:splendid), do: @splendid_dir
-  def relative_path(%Instrument{stem: stem}), do: "#{@soundfont_dir}/#{stem}-mp3.js"
-
-  @doc "Whether the Splendid Grand Piano set is on this server. Option `dir:`."
-  @spec splendid?(keyword()) :: boolean()
-  def splendid?(opts \\ []), do: match?(%Manifest{splendid: %{}}, Manifest.read(dir(opts)))
+  @doc "The 16 GM families, in GM order."
+  @spec families() :: [String.t()]
+  def families, do: @families
 
   @doc "Downloads one item; see `fetch_many/2`."
   @spec fetch(item(), keyword()) :: {:ok, non_neg_integer()} | {:error, term()}
@@ -340,7 +269,83 @@ defmodule DrawMusic.Samples do
     results
   end
 
+  @doc "The programs whose samples are on this server. Option `dir:`."
+  @spec installed(keyword()) :: MapSet.t(0..127)
+  def installed(opts \\ []) do
+    manifest = Manifest.read(dir(opts))
+    for i <- @instruments, installed_in?(manifest, i), into: MapSet.new(), do: i.program
+  end
+
+  @doc """
+  Whether a program's samples are on this server. The piano counts when
+  either the Splendid set or its soundfont is. Option `dir:` (default
+  `samples_dir/0`).
+  """
+  @spec installed?(0..127, keyword()) :: boolean()
+  def installed?(program, opts \\ []) do
+    installed_in?(Manifest.read(dir(opts)), instrument!(program))
+  end
+
+  @doc "The instrument for a GM program number."
+  @spec instrument!(0..127) :: Instrument.t()
+  def instrument!(program) when program in 0..127, do: Enum.at(@instruments, program)
+
+  @doc "All 128 GM instruments, in program order."
+  @spec instruments() :: [Instrument.t()]
+  def instruments, do: @instruments
+
+  @doc """
+  Finds an instrument by GM name (any case), soundfont stem or program
+  number. An unknown name comes back with the closest stems.
+  """
+  @spec lookup(String.t()) :: {:ok, Instrument.t()} | {:error, {:unknown, [String.t()]}}
+  def lookup(query) do
+    wanted = String.downcase(query)
+
+    case Enum.find(@instruments, &matches?(&1, wanted)) do
+      nil -> {:error, {:unknown, suggestions(wanted)}}
+      instrument -> {:ok, instrument}
+    end
+  end
+
+  @doc """
+  An item's place inside the samples directory (and under `/samples`): a
+  soundfont file, or the Splendid set's folder.
+  """
+  @spec relative_path(item()) :: String.t()
+  def relative_path(:splendid), do: @splendid_dir
+  def relative_path(%Instrument{stem: stem}), do: "#{@soundfont_dir}/#{stem}-mp3.js"
+
+  @doc "Where samples are stored and served from (`config :draw_music, :samples_dir`)."
+  @spec samples_dir() :: Path.t()
+  def samples_dir, do: Application.fetch_env!(:draw_music, :samples_dir)
+
+  @doc "Whether the Splendid Grand Piano set is on this server. Option `dir:`."
+  @spec splendid?(keyword()) :: boolean()
+  def splendid?(opts \\ []), do: match?(%Manifest{splendid: %{}}, Manifest.read(dir(opts)))
+
+  defp complete(path, %ManifestEntry{bytes: bytes}) do
+    case File.stat(path) do
+      {:ok, %File.Stat{size: ^bytes}} -> {:ok, bytes}
+      _short_or_missing -> :missing
+    end
+  end
+
+  defp complete(_path, nil), do: :missing
+
   defp dir(opts), do: Keyword.get_lazy(opts, :dir, &samples_dir/0)
+
+  # A failed request leaves whatever was there; the manifest entry is what
+  # says a file is complete. A file only appears via rename, never half-written.
+  defp download(url, path) do
+    case Req.get(url, req_options()) do
+      {:ok, %Req.Response{status: 200, body: body}} -> write(path, body)
+      {:ok, %Req.Response{status: status}} -> {:error, {:http_status, status}}
+      {:error, exception} -> {:error, exception}
+    end
+  end
+
+  defp entry(bytes), do: %ManifestEntry{bytes: bytes, fetched_at: DateTime.utc_now(:second)}
 
   defp fetch_item(%Instrument{stem: stem} = instrument, manifest, dir) do
     set_folder(dir, @soundfont_dir, @soundfont_license)
@@ -376,18 +381,33 @@ defmodule DrawMusic.Samples do
     end
   end
 
-  defp total({:ok, {:ok, bytes}}, {:ok, sum}), do: {:ok, sum + bytes}
-  defp total({:ok, {:error, _reason} = error}, {:ok, _sum}), do: error
-  defp total(_result, error), do: error
+  defp installed_in?(%Manifest{splendid: %{}}, %Instrument{program: 0}), do: true
+  defp installed_in?(manifest, instrument), do: Map.has_key?(manifest.soundfonts, instrument.stem)
 
-  defp complete(path, %ManifestEntry{bytes: bytes}) do
-    case File.stat(path) do
-      {:ok, %File.Stat{size: ^bytes}} -> {:ok, bytes}
-      _short_or_missing -> :missing
-    end
+  defp matches?(%Instrument{} = instrument, wanted) do
+    wanted in [
+      String.downcase(instrument.name),
+      instrument.stem,
+      Integer.to_string(instrument.program)
+    ]
   end
 
-  defp complete(_path, nil), do: :missing
+  defp record({%Instrument{stem: stem}, {:ok, bytes}}, manifest) do
+    %{manifest | soundfonts: Map.put(manifest.soundfonts, stem, entry(bytes))}
+  end
+
+  defp record({:splendid, {:ok, bytes}}, manifest), do: %{manifest | splendid: entry(bytes)}
+
+  # A failure means the files on disk can't be trusted to be complete.
+  defp record({%Instrument{stem: stem}, {:error, _reason}}, manifest) do
+    %{manifest | soundfonts: Map.delete(manifest.soundfonts, stem)}
+  end
+
+  defp record({:splendid, {:error, _reason}}, manifest), do: %{manifest | splendid: nil}
+
+  defp req_options do
+    Keyword.merge([decode_body: false], Application.get_env(:draw_music, :samples_req, []))
+  end
 
   defp set_folder(dir, name, license) do
     folder = Path.join(dir, name)
@@ -396,15 +416,18 @@ defmodule DrawMusic.Samples do
     folder
   end
 
-  # A failed request leaves whatever was there; the manifest entry is what
-  # says a file is complete. A file only appears via rename, never half-written.
-  defp download(url, path) do
-    case Req.get(url, req_options()) do
-      {:ok, %Req.Response{status: 200, body: body}} -> write(path, body)
-      {:ok, %Req.Response{status: status}} -> {:error, {:http_status, status}}
-      {:error, exception} -> {:error, exception}
-    end
+  defp suggestions(wanted) do
+    @stems
+    |> Enum.map(&{String.jaro_distance(&1, wanted), &1})
+    |> Enum.filter(fn {similarity, _stem} -> similarity >= @min_similarity end)
+    |> Enum.sort_by(fn {similarity, _stem} -> similarity end, :desc)
+    |> Enum.take(@max_suggestions)
+    |> Enum.map(fn {_similarity, stem} -> stem end)
   end
+
+  defp total({:ok, {:ok, bytes}}, {:ok, sum}), do: {:ok, sum + bytes}
+  defp total({:ok, {:error, _reason} = error}, {:ok, _sum}), do: error
+  defp total(_result, error), do: error
 
   # A full disk fails this one file, not the whole run, so the manifest is
   # still written for the others.
@@ -421,23 +444,4 @@ defmodule DrawMusic.Samples do
         {:error, {:write, reason}}
     end
   end
-
-  defp req_options do
-    Keyword.merge([decode_body: false], Application.get_env(:draw_music, :samples_req, []))
-  end
-
-  defp record({%Instrument{stem: stem}, {:ok, bytes}}, manifest) do
-    %{manifest | soundfonts: Map.put(manifest.soundfonts, stem, entry(bytes))}
-  end
-
-  defp record({:splendid, {:ok, bytes}}, manifest), do: %{manifest | splendid: entry(bytes)}
-
-  # A failure means the files on disk can't be trusted to be complete.
-  defp record({%Instrument{stem: stem}, {:error, _reason}}, manifest) do
-    %{manifest | soundfonts: Map.delete(manifest.soundfonts, stem)}
-  end
-
-  defp record({:splendid, {:error, _reason}}, manifest), do: %{manifest | splendid: nil}
-
-  defp entry(bytes), do: %ManifestEntry{bytes: bytes, fetched_at: DateTime.utc_now(:second)}
 end

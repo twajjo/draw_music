@@ -235,11 +235,11 @@ defmodule DrawMusic.Samples.Splendid do
   ]
   @formats ~w(ogg m4a)
 
-  @doc "Sample names, without an extension."
-  @spec samples() :: [String.t()]
-  def samples, do: @samples
-
   @doc "File names to download: each sample in each format."
   @spec files() :: [String.t()]
   def files, do: for(sample <- @samples, format <- @formats, do: "#{sample}.#{format}")
+
+  @doc "Sample names, without an extension."
+  @spec samples() :: [String.t()]
+  def samples, do: @samples
 end
