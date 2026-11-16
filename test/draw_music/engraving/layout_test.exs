@@ -3,7 +3,7 @@ defmodule DrawMusic.Engraving.LayoutTest do
 
   import DrawMusic.MusicHelpers
 
-  alias DrawMusic.Engraving.{Beam, Layout, MeasureGeometry, Staff, TempoMark, Tie}
+  alias DrawMusic.Engraving.{Beam, Layout, MeasureGeometry, Notes, Staff, TempoMark, Tie}
   alias DrawMusic.Music.{Context, Editing, Score}
 
   @ctx %Context{}
@@ -99,6 +99,21 @@ defmodule DrawMusic.Engraving.LayoutTest do
                Enum.sort_by(treble_rests, & &1.x)
 
       assert is_binary(a) and is_binary(b)
+    end
+
+    test "the geometry names the staves drawn as a bar rest, which sits where it's drawn" do
+      [measure] = Layout.layout(Score.new(), @ctx).systems |> hd() |> Map.get(:measures)
+      assert measure.bar_rests == [:treble, :bass]
+
+      {score, _id} = place("C5", %{})
+      layout = Layout.layout(score, @ctx)
+      [measure] = layout.systems |> hd() |> Map.get(:measures)
+      assert measure.bar_rests == [:bass]
+
+      # The bass's whole rest is drawn centred, not at beat 1's column.
+      [%{x: rest_x}] = Enum.filter(role(layout, :rest), &(&1.glyph == :restWhole))
+      assert rest_x == measure.x + (measure.width - Notes.bar_rest_width()) / 2
+      assert rest_x > hd(measure.columns).x + 2
     end
 
     test "an unfilled gap is drawn as an implied rest" do

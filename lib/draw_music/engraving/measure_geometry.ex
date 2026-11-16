@@ -10,7 +10,8 @@ defmodule DrawMusic.Engraving.MeasureGeometry do
   ticks map to x linearly; the gap itself is the next column's offset.
   `content_x` is beat 1 and `content_end` the end of the last column's
   space. A measure with no columns maps linearly with `scale` (staff spaces
-  per tick).
+  per tick). `bar_rests` are the staves drawn as one whole rest centred in
+  the bar (`DrawMusic.Engraving.Notes.bar_rest_staves/2`).
   """
 
   alias DrawMusic.Engraving.Column
@@ -38,7 +39,8 @@ defmodule DrawMusic.Engraving.MeasureGeometry do
     :content_end,
     :scale,
     :gap,
-    :columns
+    :columns,
+    bar_rests: []
   ]
 
   @type t :: %__MODULE__{
@@ -51,7 +53,8 @@ defmodule DrawMusic.Engraving.MeasureGeometry do
           content_end: float(),
           scale: float(),
           gap: float(),
-          columns: [Column.t()]
+          columns: [Column.t()],
+          bar_rests: [:treble | :bass]
         }
 
   @doc "x of `offset` ticks into the measure."

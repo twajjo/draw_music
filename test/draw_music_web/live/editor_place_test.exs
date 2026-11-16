@@ -229,6 +229,35 @@ defmodule DrawMusicWeb.EditorPlaceTest do
       assert {1, 0, "B4", :quarter, 0} in notes_of(view)
     end
 
+    test "the space after a bar's last item is the next bar's: what is left of it stays",
+         %{view: view} do
+      arm(view, "quarter")
+      for {offset, spn} <- [{0, "C4"}, {960, "D4"}, {1920, "E4"}], do: place(view, 0, offset, spn)
+      place(view, 1, 0, "G4")
+      # Bar 1: C4 D4 E4 and its closing quarter rest; bar 2 starts with G4.
+
+      # Right of the rest the browser sends the next bar's start.
+      place(view, 1, 0, "B4")
+
+      assert [_c, _d, _e, {1, 0, "B4", :quarter, 0}, {1, 960, "G4", :quarter, 0}] =
+               notes_of(view)
+
+      assert [%{offset: 2880, value: :quarter}] =
+               for(r <- hd(session_of(view).score.measures).rests, r.staff == :treble, do: r)
+    end
+
+    test "after the last bar's music, a bar is added for the new note", %{view: view} do
+      arm(view, "quarter")
+      place(view, 4, 0, "C4")
+      assert length(session_of(view).score.measures) == 5
+      assert notes_of(view) == [{4, 0, "C4", :quarter, 0}]
+
+      placing_mode(view, :overlay)
+      place(view, 5, 0, "D4")
+      assert length(session_of(view).score.measures) == 6
+      assert {5, 0, "D4", :quarter, 0} in notes_of(view)
+    end
+
     test "a note longer than what is left of the bar is tied over it", %{view: view} do
       arm(view, "half")
       place(view, 0, 0, "C4")
