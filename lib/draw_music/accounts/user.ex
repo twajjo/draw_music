@@ -64,7 +64,7 @@ defmodule DrawMusic.Accounts.User do
       :letter_staves
     ])
     |> validate_all_times_needs_names()
-    |> update_change(:score_ink_dark, &String.downcase/1)
+    |> update_change(:score_ink_dark, &downcase_color/1)
     |> validate_format(:score_ink_dark, ~r/^#[0-9a-f]{6}$/,
       message: "must be a color like #ffcc66"
     )
@@ -85,6 +85,10 @@ defmodule DrawMusic.Accounts.User do
 
     (0.2126 * r + 0.7152 * g + 0.0722 * b + 0.05) / 0.05
   end
+
+  # No ink (nil) is the default, white.
+  defp downcase_color(nil), do: nil
+  defp downcase_color(color), do: String.downcase(color)
 
   # Naming notes at all times (edit-only off) needs note names shown (the
   # switch is locked while they're not). Hiding names leaves it as it is,

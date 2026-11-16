@@ -15,7 +15,7 @@ defmodule DrawMusicWeb.EditorReadingAidsTest do
     refute has_element?(view, "#score .reading-aid")
 
     view |> element("#account-menu-settings") |> render_click()
-    view |> element("#settings-letter-staves") |> render_change(%{"value" => "true"})
+    prefer(view, letter_staves: "true")
 
     assert has_element?(view, "#score .reading-aid[data-aid=line]")
     assert has_element?(view, "#score .reading-aid[data-aid=middle_c]")
@@ -47,7 +47,7 @@ defmodule DrawMusicWeb.EditorReadingAidsTest do
     place(view, 0, 0, "C4")
 
     view |> element("#account-menu-settings") |> render_click()
-    view |> element("#settings-show-note-names") |> render_change(%{"value" => "false"})
+    prefer(view, show_note_names: "false")
     canvas_hook(view, "select", %{"ids" => note_ids(view), "add" => false})
 
     refute has_element?(view, "#score .reading-aid[data-aid=note]")
@@ -62,7 +62,7 @@ defmodule DrawMusicWeb.EditorReadingAidsTest do
     canvas_hook(view, "clear_selection", %{})
 
     view |> element("#account-menu-settings") |> render_click()
-    view |> element("#settings-note-names-in-edit-only") |> render_change(%{"value" => "false"})
+    prefer(view, note_names_in_edit_only: "false")
 
     assert count(view, "#score .reading-aid[data-aid=note]") == 2
   end
@@ -90,5 +90,10 @@ defmodule DrawMusicWeb.EditorReadingAidsTest do
 
   defp path(version) do
     LibraryComponents.version_path(version.key.composition.id, version.key, version.number)
+  end
+
+  # A change in the open Preferences panel, previewed (not saved).
+  defp prefer(view, fields) do
+    view |> form("#preferences-form", user: Map.new(fields)) |> render_change()
   end
 end
