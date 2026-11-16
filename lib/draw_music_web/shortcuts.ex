@@ -225,7 +225,7 @@ defmodule DrawMusicWeb.Shortcuts do
       keys: ["Insert"],
       modes: @edit,
       action:
-        "Switch between Insert (the default) and Overlay, like typing in a text editor (also the palette's Overlay/Insert button). Insert: the new item goes in front of the one you click before, everything after it on that staff moves right (only the rests at the very end shrink), a click past the music lands right after it, and deleting pulls later music left. Overlay: the new item replaces the time it covers on that staff, from the beat you click: a half replaces two beats of notes and rests, a note sounding into it is shortened, and what's left of a covered note becomes rests. Either way a note too long for the bar is tied over the bar line",
+        "Switch between Insert (the default) and Overlay, like typing in a text editor (also the palette's Overlay/Insert button). Insert: the new item goes in front of the note or rest you click before (rests are items like notes, the ones after the music too), everything after it on that staff moves right (the rests at the very end shrink, like trailing spaces, and a bar is added if notes are pushed past the last one), and deleting pulls later music left. Overlay: the new item replaces the time it covers on that staff, from the beat you click: a half replaces two beats of notes and rests, a note sounding into it is shortened, and what's left of a covered note becomes rests. Either way a note too long for the bar is tied over the bar line",
       diagram: :insert_shift
     },
     %Shortcut{

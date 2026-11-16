@@ -39,7 +39,8 @@ defmodule DrawMusicWeb.EditorPlacement do
   Places `armed` at `target`. The alteration is the user's modifier, else
   the palette's accidental, else the key's. Like typing in a text editor:
   in Insert mode the item lands without leaving a gap
-  (`Editing.insert_point/4`: a click past the music lands right after it)
+  (`Editing.insert_point/4`: in front of the note or rest it's put before,
+  the rests that end the piece included)
   and everything after it on the staff moves right; in Overlay it replaces
   the time it covers. Either way it may run over a bar line.
   """
