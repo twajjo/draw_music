@@ -42,6 +42,10 @@ piece stays exactly where it is.
 - **Drawing:** locked measures are tinted, with a closed lock, so the run is
   clear. Their + and − stay available.
 - **Overlay mode** is unchanged: it never moves anything anyway.
+- **After the run's last item:** the space after a bar's last note or rest
+  belongs to the next bar (like a text cursor, both modes act on what is to
+  its right). After the run's last bar there is no next bar to affect, so a
+  click there is refused with a message, in Insert and Overlay alike.
 
 ## Decided (2026-11-14)
 - **The lock belongs to the editing session only.** It isn't saved with the

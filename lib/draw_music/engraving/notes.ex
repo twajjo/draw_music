@@ -90,6 +90,29 @@ defmodule DrawMusic.Engraving.Notes do
   }
 
   @doc """
+  The staves `measure` shows as a single whole rest centred in the bar
+  (whatever the meter): a staff with nothing on it, or one rest filling the
+  bar in a single voice. The editor hit-tests those rests where they're
+  drawn, not at beat 1.
+  """
+  @spec bar_rest_staves(Measure.t(), pos_integer()) :: [:treble | :bass]
+  def bar_rest_staves(%Measure{} = measure, capacity) do
+    voice_counts = voice_counts(measure)
+
+    for staff <- [:treble, :bass],
+        not Map.has_key?(voice_counts, staff) or
+          Enum.any?(
+            measure.rests,
+            &(&1.staff == staff and bar_rest?(&1, capacity, voice_counts[staff]))
+          ),
+        do: staff
+  end
+
+  @doc "The width of the whole rest drawn for a bar rest (staff spaces)."
+  @spec bar_rest_width() :: float()
+  def bar_rest_width, do: Smufl.width(:restWhole)
+
+  @doc """
   Items for `measure` (number `index`) laid out in `geom` (see
   `DrawMusic.Engraving.MeasureGeometry.x_at/2` for where offsets go). `tied_in`
   holds the ids of notes continuing a tie from the previous measure.
@@ -428,10 +451,13 @@ defmodule DrawMusic.Engraving.Notes do
   # A rest filling the bar alone on its staff is drawn as a centered whole
   # rest, whatever the meter.
   defp rest(rest, %MeasureGeometry{capacity: capacity} = geom, voices) do
-    case {rest.offset, Duration.ticks(rest.value, rest.dots), voices} do
-      {0, ^capacity, 1} -> [bar_rest(rest.staff, geom, rest.id)]
-      _partial -> placed_rest(rest, geom, voice_shift(rest.voice, voices))
-    end
+    if bar_rest?(rest, capacity, voices),
+      do: [bar_rest(rest.staff, geom, rest.id)],
+      else: placed_rest(rest, geom, voice_shift(rest.voice, voices))
+  end
+
+  defp bar_rest?(rest, capacity, voices) do
+    match?({0, ^capacity, 1}, {rest.offset, Duration.ticks(rest.value, rest.dots), voices})
   end
 
   defp placed_rest(rest, geom, shift) do
@@ -456,8 +482,10 @@ defmodule DrawMusic.Engraving.Notes do
   defp rest_y(:whole, staff), do: Staff.top(staff) + @whole_rest_line
   defp rest_y(_value, staff), do: Staff.middle(staff)
 
+  # Centred in the bar; the editor's hit-testing mirrors this
+  # (`barRestX` in assets/js/score_editor/geometry.js).
   defp bar_rest(staff, geom, id) do
-    x = geom.x + (geom.width - Smufl.width(:restWhole)) / 2
+    x = geom.x + (geom.width - bar_rest_width()) / 2
     glyph(:rest, :restWhole, x, rest_y(:whole, staff), id)
   end
 

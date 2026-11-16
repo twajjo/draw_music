@@ -42,7 +42,9 @@ defmodule DrawMusicWeb.EditorPlacement do
   (`Editing.insert_point/4`: in front of the note or rest it's put before,
   the rests that end the piece included)
   and everything after it on the staff moves right; in Overlay it replaces
-  the time it covers. Either way it may run over a bar line.
+  the time it covers. Either way it may run over a bar line. A target in
+  the bar just after the last one (the browser sends that for a click
+  after the last bar's music) adds that bar first.
   """
   @spec place(Score.t(), Context.t(), Armed.t(), PlacementTarget.t(), boolean()) ::
           {:ok, Score.t(), Ecto.UUID.t() | [Ecto.UUID.t()]} | {:error, Editing.reason()}
@@ -55,12 +57,21 @@ defmodule DrawMusicWeb.EditorPlacement do
       ) do
     placement = %{placement(armed, target) | cross_bar: true, overwrite: not insert?}
 
-    with {:ok, start} <- start_of(score, ctx, target),
+    with {:ok, score} <- bar_for(score, ctx, target),
+         {:ok, start} <- start_of(score, ctx, target),
          {:ok, score, target, start} <- landing(score, ctx, target, start, insert?),
          {:ok, score} <- make_room(score, ctx, armed, target, start, insert?) do
       put(score, ctx, armed, %{placement | offset: target.offset}, target)
     end
   end
+
+  # The bar after the last one is added; any other bar must exist already.
+  defp bar_for(%Score{measures: measures} = score, ctx, %PlacementTarget{measure: measure})
+       when measure == length(measures) do
+    Editing.append_measure(score, ctx)
+  end
+
+  defp bar_for(score, _ctx, _target), do: {:ok, score}
 
   defp landing(score, _ctx, target, start, false = _insert?), do: {:ok, score, target, start}
 

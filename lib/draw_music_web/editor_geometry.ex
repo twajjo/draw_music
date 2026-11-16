@@ -6,7 +6,7 @@ defmodule DrawMusicWeb.EditorGeometry do
   and the armed item (`DrawMusicWeb.EditorGeometry.ArmedPayload`).
   """
 
-  alias DrawMusic.Engraving.{Engraved, Staff}
+  alias DrawMusic.Engraving.{Engraved, Notes, Staff}
   alias DrawMusic.Music.{Chords, Context, Duration, Pitch}
   alias DrawMusicWeb.{Armed, EditorPalette, ScoreComponents}
 
@@ -30,7 +30,8 @@ defmodule DrawMusicWeb.EditorGeometry do
       top_step: %StaffPositions{treble: Staff.top_step(:treble), bass: Staff.top_step(:bass)},
       padding: ScoreComponents.padding(),
       sf: ctx.sf,
-      ppq: Duration.ppq()
+      ppq: Duration.ppq(),
+      bar_rest_width: Notes.bar_rest_width()
     }
   end
 

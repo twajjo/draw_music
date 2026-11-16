@@ -72,16 +72,29 @@ export function xAt(measure, offset) {
   return from.x + ((offset - from.offset) / (to.offset - from.offset)) * (to.x - from.x)
 }
 
-// Overlay: the column on `staff` whose insertion gap or notehead (`head`
-// wide) is at x, or null.
-export function columnAt(measure, staff, x, head) {
-  return measure.columns.find((c) => c.staves.includes(staff) && x >= c.x - measure.gap && x < c.x + head) || null
+// The notes and rests on `staff` in the measure, as {offset, x}, where
+// they're drawn: its columns, except that a bar rest (a lone whole rest,
+// centred in the bar) is where it's drawn, not at beat 1.
+export function staffItems(geometry, measure, staff) {
+  if (measure.bar_rests.includes(staff)) return [{offset: 0, x: barRestX(geometry, measure)}]
+  return measure.columns.filter((c) => c.staves.includes(staff))
 }
 
-// Insert: the column on `staff` a click at x goes in front of (the first
-// whose notehead ends right of x), or null past the last one.
-export function insertColumn(measure, staff, x, head) {
-  return measure.columns.find((c) => c.staves.includes(staff) && x < c.x + head) || null
+// x of the measure's bar rest; mirrors Notes.bar_rest (lib/draw_music/engraving/notes.ex).
+function barRestX(geometry, measure) {
+  return measure.x + (measure.width - geometry.bar_rest_width) / 2
+}
+
+// Overlay: the item (staffItems) whose insertion gap or head (`head` wide)
+// is at x, or null.
+export function columnAt(items, gap, x, head) {
+  return items.find((c) => x >= c.x - gap && x < c.x + head) || null
+}
+
+// Insert: the item (staffItems) a click at x goes in front of (the first
+// whose head ends right of x), or null past the last one.
+export function insertColumn(items, x, head) {
+  return items.find((c) => x < c.x + head) || null
 }
 
 // y of the middle of the gap between the staves, relative to a system.

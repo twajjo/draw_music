@@ -181,7 +181,8 @@ defmodule DrawMusic.Engraving.Layout do
       content_end: content_end,
       scale: scale,
       gap: @insert_gap,
-      columns: columns
+      columns: columns,
+      bar_rests: Notes.bar_rest_staves(measure, capacity)
     }
   end
 
