@@ -103,34 +103,54 @@ Phases 5, 6 and 7 had 104, 53 and 57 files per PR. That is far too many to revie
 
 | PR | Contents |
 |---|---|
-| 8.1 | Fix: dropdown menus close when you click away or press Escape (see below) |
+| 8.1 | Fix: dropdown menus close when you click away or press Escape (see below). **Partly done** (#50): the Save menu closes on a pick and on a click away. Still to do: Escape, the shared `<.dropdown>`, the Chords menu and the library dropdown |
 | 8.2 | **Done differently** (#31, #35–#37): Preferences (panel or page) and Manage account, both in the account menu (see below) |
-| 8.3 | Score paper: a user default, independent of the interface theme (see below) |
+| 8.2a | The editor header shows the version's instrument, "For <instrument>" (see below) |
+| 8.2b | Preferences saved explicitly: one form, live preview, Save / Cancel / Defaults (see below) |
+| 8.3 | Score paper: a user default, independent of the interface theme, in the 8.2b form (see below) |
 | 8.4 | Score paper: a per-composition override (see below) |
 | 8.5 | The Save menu moves to the top bar (after 8.1, which fixes the dropdown it uses; see below) |
 | 8.6 | Import .mid from the top bar (see below) |
-| 8.7 | The DrawMusic wordmark opens an About dialog (see below) |
-| 8.8 | Style sweep in `lib/draw_music/music` (assigned `fn`s multiline, public functions first) |
-| 8.9 | Style sweep in `lib/draw_music/engraving`, the MIDI code and the library code |
-| 8.10 | Style sweep in `lib/draw_music_web` (non-generated) |
-| 8.11 | Style sweep in the tests |
+| 8.7 | **Deferred to the end of the app** (2026-11-15): the DrawMusic wordmark's target (see below) |
+| 8.8 | **Done** (#53): style sweep in `lib/draw_music/music` (all but `editing.ex`, sorted when it's split) |
+| 8.9 | **Done** (#54): style sweep in `lib/draw_music/engraving`, the MIDI code, the library and samples |
+| 8.10 | **Done** (#55): style sweep in `lib/draw_music_web` (non-generated) |
+| 8.11 | **Done** (#56): style sweep in the tests; component tests wait for messages |
 | 8.12 | `Editing`: pull out `Spans` and `Ties` |
 | 8.13 | `Editing`: pull out `Fillers` and `Rebuild`; fix the redundancies |
 | 8.14 | `Editing`: split the edit groups behind the facade |
 | 8.15 | Palette: sub-components and the shared `tool_button` |
 | 8.16 | Palette: split the module (edit tools, transport, glyphs) |
 | 8.17 | `EditorLive`: move the pure logic out |
-| 8.18 | `EditorLive`: the single `:dialog` assign |
-| 8.19 | `EditorLive`: the form dialogs as LiveComponents |
+| 8.18 | **Done** (component refactor, PRs 11–12): `EditorLive`: the single `:dialog` assign |
+| 8.19 | **Done** (component refactor, PRs 11–12): `EditorLive`: the form dialogs as LiveComponents |
 | 8.20 | `EditorLive`: the event modules with `attach_hook` |
-| 8.21 | `EditorLive`: grouped assigns, composed `render/1` |
+| 8.21 | **Done** (#49, #52): `EditorLive`: grouped assigns, composed `render/1` |
 | 8.22 | The insertion cursor (server, caret, cheat sheet) |
 | 8.23 | MIDI in the browser: WEBMIDI.js, the device menu, sounding the keys |
 | 8.24 | MIDI into the score: `KeyEntry`, `play_keys`, the `midi_length` preference (on the 8.2 Settings page), the cheat sheet |
 
-The sweeps (8.8–8.11) are split further if any area turns out to be over about 10 files.
+The sweeps (8.8–8.11) were one PR per area (agreed 2026-11-15, as they only move functions). The refactors still open (8.12–8.17, 8.20) wait until after the features below, and fit between them.
 
-## The wordmark opens About (requested 2026-11-06)
+## The version's instrument in the header (requested 2026-11-15)
+The header shows what the version is for, "For <instrument name>", on the name's row after the Details button, with some space before it (`EditorPage.editor_header/1`, `#version-instrument`). It's a label only. The version's instrument changes only by an explicit command: Score settings, or the transport's "Set as version instrument". The transport's own picker is for listening and changes nothing (as built already).
+
+## Preferences saved explicitly (requested 2026-11-15)
+**Now:** each preference control (the layout toggle, the ink picker, each reading-aid switch) saves the moment it changes.
+
+**Wanted:** saving is explicit, never implied.
+- One Preferences form, used by the panel over the editor and the `/users/preferences` page.
+- Changes preview live on the page while the form is open.
+- **Save** stores them; **Cancel** reverts the preview and closes; **Defaults** fills the form with the default values, which still need Save.
+- The form can only be left by Save or Cancel: no silent close on a click away or Escape.
+- The score paper (8.3) is added to this form, not as its own control.
+
+A plan for the form comes first (it replaces several standalone components).
+
+## The wordmark's target (deferred, 2026-11-15)
+**Decided:** leave the wordmark as it is now (a link to `/`) and choose its target when the rest of the app is done. It shouldn't be "new" or "compositions": **New** and **Compositions** already say those, and today the wordmark and **New** are redundant. Candidates: a site page where the installer can be downloaded, a donations page, or the GitHub README. The About dialog design below is kept for reference, but isn't the plan.
+
+## The wordmark opens About (requested 2026-11-06; superseded by the deferral above)
 **Now:** the DrawMusic wordmark in the header (`Layouts.app`) is a `<.link navigate={~p"/"}>`, the same as **New**. It opens a blank composition, and from the editor it throws away the score that's open. The user reports that it logs them out.
 - Nothing in the code logs out on that link. The only log-out is `DELETE /users/log-out` in the account menu.
 - So reproduce it first, with the user running the server: which page it was clicked from, and whether the log-in page appears.
