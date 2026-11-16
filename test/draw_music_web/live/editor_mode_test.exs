@@ -58,14 +58,23 @@ defmodule DrawMusicWeb.EditorModeTest do
 
   test "editing events change nothing in play mode", %{view: view, c: c, g: g} do
     canvas_hook(view, "select", %{"ids" => [g], "add" => false})
-    render_hook(view, "copy", %{})
+    canvas_hook(view, "copy")
     play_mode(view)
     before = {notes_of(view), session_of(view).undo, assigns(view).armed, assigns(view).insert?}
 
-    edits = [
+    palette_edits = [
       {"arm", %{"kind" => "note", "value" => "half"}},
       {"arm_value", %{"value" => "eighth"}},
       {"arm_tie", %{}},
+      {"undo", %{}},
+      {"redo", %{}},
+      {"toggle_dot", %{}},
+      {"set_accidental", %{"alter" => "1"}},
+      {"toggle_insert", %{}},
+      {"toggle_rest", %{}}
+    ]
+
+    canvas_edits = [
       {"place", %{"measure" => 0, "offset" => 1920, "staff" => "treble", "step" => 30}},
       {"move", %{"dir" => "up"}},
       {"move", %{"dir" => "right"}},
@@ -73,20 +82,17 @@ defmodule DrawMusicWeb.EditorModeTest do
       {"delete", %{}},
       {"cut", %{}},
       {"paste", %{"at" => 1920}},
-      {"undo", %{}},
-      {"redo", %{}},
       {"tie", %{"from" => c, "to" => g}},
-      {"toggle_dot", %{}},
-      {"set_accidental", %{"alter" => "1"}},
-      {"toggle_insert", %{}},
-      {"toggle_rest", %{}},
       {"open_menu", %{"id" => g, "x" => 1, "y" => 1}},
       {"insert_measure", %{"index" => 0}},
       {"delete_measure", %{"index" => 0}},
       {"add_measure", %{}}
     ]
 
-    for {event, params} <- edits, do: render_hook(view, event, params)
+    for {event, params} <- palette_edits,
+        do: view |> element("#palette") |> render_hook(event, params)
+
+    for {event, params} <- canvas_edits, do: canvas_hook(view, event, params)
 
     assert {notes_of(view), session_of(view).undo, assigns(view).armed, assigns(view).insert?} ==
              before

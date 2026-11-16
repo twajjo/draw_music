@@ -25,7 +25,6 @@ defmodule DrawMusicWeb.EditorLive do
 
   alias DrawMusic.Music.{
     Context,
-    Editing,
     KeySuggestion,
     Rekey,
     Score,
@@ -35,10 +34,7 @@ defmodule DrawMusicWeb.EditorLive do
 
   alias DrawMusicWeb.{
     DetailsDialog,
-    EditorCommands,
     EditorGeometry,
-    EditorPalette,
-    EditorPlacement,
     EditorSaving,
     EditorSettings,
     InkPicker,
@@ -63,12 +59,6 @@ defmodule DrawMusicWeb.EditorLive do
   }
 
   @draft_measures 4
-  # The score's events that change it; Play mode ignores them. (The
-  # palette's are its own, in `Editor.Palette`, and the play controls'
-  # in `Editor.Transport`.)
-  # (`Editor.ScoreCanvas` handles selecting, the tempo marks and the
-  # right-click menu.)
-  @edit_events ~w(place move delete cut paste drop tie insert_measure delete_measure add_measure)
 
   @impl true
   def render(assigns) do
@@ -176,9 +166,7 @@ defmodule DrawMusicWeb.EditorLive do
         <.live_component
           module={ScoreCanvas}
           id="score-canvas"
-          score={@session.score}
-          ctx={@session.ctx}
-          selection={@session.selection}
+          session={@session}
           engraved={@engraved}
           pieces={@pieces}
           geometry_json={@geometry_json}
@@ -259,7 +247,7 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign(:composition, composition)
      |> assign(:version, version)
      |> assign(:session, Session.new(version.score, Context.from_version(version)))
-     |> assign(armed: nil, row_kind: :note, insert?: true, last_click: nil)
+     |> assign(armed: nil, row_kind: :note, insert?: true)
      # At most one dialog (or the right-click menu) is open at a time.
      |> assign(:dialog, nil)
      |> assign(:editor_mode, :edit)
@@ -452,130 +440,9 @@ defmodule DrawMusicWeb.EditorLive do
     {composition, version, "#{composition.name} · #{Key.name(version.key)} v#{version.number}"}
   end
 
-  ## Modes
-
-  @impl true
-  def handle_event(event, _params, %{assigns: %{editor_mode: :play}} = socket)
-      when event in @edit_events do
-    {:noreply, socket}
-  end
-
-  ## Placing
-
-  def handle_event("place", params, %{assigns: %{armed: %{} = armed}} = socket) do
-    insert? = socket.assigns.insert?
-
-    case EditorPlacement.parse(params) do
-      # (A press on a note or rest itself selects it: the hook sends `select`.)
-      {:ok, target} ->
-        {:noreply,
-         placed(apply_edit(socket, &EditorPlacement.place(&1, &2, armed, target, insert?)))}
-
-      :error ->
-        {:noreply, put_flash(socket, :error, error_message(:invalid))}
-    end
-  end
-
-  def handle_event("place", _params, socket), do: {:noreply, socket}
-
-  ## Paste position
-
-  def handle_event("set_last_click", %{"at" => at}, socket) when is_integer(at) and at >= 0 do
-    {:noreply, assign(socket, :last_click, at)}
-  end
-
-  ## Changing the selection
-
-  # ↑/↓ by scale step (Shift: octave, Ctrl: semitone); ←/→ by beat.
-  def handle_event("move", %{"dir" => dir}, socket) when dir in ~w(left right) do
-    ids = selected_ids(socket)
-    beats = beats(dir)
-    {:noreply, edit_selection(socket, &Editing.shift(&1, &2, ids, beats))}
-  end
-
-  def handle_event("move", %{"dir" => dir} = params, socket) when dir in ~w(up down) do
-    fun = EditorCommands.transpose(selected_ids(socket), params["by"] || "step", dir)
-    {:noreply, edit_selection(socket, fun)}
-  end
-
-  def handle_event("delete", _params, socket) do
-    ids = selected_ids(socket)
-    {:noreply, edit_selection(socket, EditorCommands.delete(ids, socket.assigns.insert?))}
-  end
-
-  def handle_event("copy", _params, socket), do: {:noreply, copy(socket)}
-
-  def handle_event("cut", _params, socket) do
-    ids = selected_ids(socket)
-
-    {:noreply,
-     socket
-     |> copy()
-     |> edit_selection(EditorCommands.delete(ids, socket.assigns.insert?))}
-  end
-
-  def handle_event(
-        "paste",
-        params,
-        %{assigns: %{session: %{clipboard: %{} = clipboard}}} = socket
-      ) do
-    %{session: session, last_click: last_click} = socket.assigns
-    at = Session.paste_at(session, params["at"], last_click)
-    {:noreply, edit(socket, EditorCommands.paste(clipboard, at))}
-  end
-
-  def handle_event("paste", _params, socket), do: {:noreply, socket}
-
-  ## Pick-up and ties
-
-  def handle_event("drop", %{"ids" => ids, "steps" => steps} = params, socket)
-      when is_list(ids) and is_integer(steps) do
-    ids = Enum.filter(ids, &is_binary/1)
-    alter = EditorPalette.alter(to_string(params["alter"]))
-    {:noreply, edit_and_select(socket, EditorCommands.drop(ids, steps, alter))}
-  end
-
-  # One note dragged on its own lands on whichever staff it was let go over.
-  def handle_event("drop", %{"ids" => [id], "staff" => staff, "step" => step} = params, socket)
-      when is_binary(id) and is_integer(step) do
-    alter = EditorPalette.alter(to_string(params["alter"]))
-
-    case EditorPlacement.staff(staff) do
-      nil ->
-        {:noreply, socket}
-
-      staff ->
-        {:noreply, edit_and_select(socket, EditorCommands.drop_on_staff(id, staff, step, alter))}
-    end
-  end
-
-  def handle_event("tie", %{"from" => from, "to" => to}, socket)
-      when is_binary(from) and is_binary(to) do
-    {:noreply, placed(apply_edit(socket, &Editing.tie(&1, &2, from, to)))}
-  end
-
-  ## Measures
-
-  def handle_event("insert_measure", %{"index" => index}, socket) do
-    case parse_index(index) do
-      {:ok, index} -> {:noreply, edit(socket, &Editing.insert_measure(&1, &2, index))}
-      :error -> {:noreply, socket}
-    end
-  end
-
-  def handle_event("delete_measure", %{"index" => index}, socket) do
-    case parse_index(index) do
-      {:ok, index} -> {:noreply, edit(socket, &Editing.delete_measure(&1, &2, index))}
-      :error -> {:noreply, socket}
-    end
-  end
-
-  def handle_event("add_measure", _params, socket) do
-    {:noreply, edit(socket, &Editing.append_measure/2)}
-  end
-
   ## Composition details
 
+  @impl true
   def handle_event("edit_details", _params, socket) do
     {:noreply, assign(socket, :dialog, :details)}
   end
@@ -620,16 +487,6 @@ defmodule DrawMusicWeb.EditorLive do
     end
   end
 
-  # The armed item stays armed after a placement or tie, until another
-  # is picked or it's disarmed; `placed/1` just unwraps the outcome.
-  defp placed({:ok, socket, _extra}), do: socket
-  defp placed({:error, socket}), do: socket
-
-  # Edits the selection; with nothing selected there is nothing to do.
-  defp edit_selection(socket, fun) do
-    if MapSet.size(socket.assigns.session.selection) == 0, do: socket, else: edit(socket, fun)
-  end
-
   @messages %{
     measure_full: "That bar is full",
     overlap: "Something is already there",
@@ -652,18 +509,6 @@ defmodule DrawMusicWeb.EditorLive do
   @spec error_message(atom()) :: String.t()
   def error_message(reason), do: Map.get(@messages, reason, "That can't be done here")
 
-  defp beats("left"), do: -1
-  defp beats("right"), do: 1
-
-  defp parse_index(index) do
-    case Integer.parse(to_string(index)) do
-      {index, ""} -> {:ok, index}
-      _ -> :error
-    end
-  end
-
-  defp selected_ids(socket), do: Session.selection_ids(socket.assigns.session)
-
   defp history_step(session, :undo), do: Session.undo(session)
   defp history_step(session, :redo), do: Session.redo(session)
 
@@ -677,8 +522,6 @@ defmodule DrawMusicWeb.EditorLive do
     do: assign(socket, :dialog, nil)
 
   defp close_menu(socket), do: socket
-
-  defp copy(socket), do: update(socket, :session, &Session.copy/1)
 
   ## Settings helpers
 

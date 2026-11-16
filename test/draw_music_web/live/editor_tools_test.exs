@@ -47,7 +47,7 @@ defmodule DrawMusicWeb.EditorToolsTest do
     test "dropping moves the dragged notes by scale steps and selects them", %{view: view} do
       put_notes(view, [{0, "C4"}])
       id = id_at(view, 0)
-      render_hook(view, "drop", %{"ids" => [id], "steps" => 2})
+      canvas_hook(view, "drop", %{"ids" => [id], "steps" => 2})
       assert notes_of(view) == [{0, 0, "E4", :quarter, 0}]
       assert session_of(view).selection == MapSet.new([id])
     end
@@ -56,7 +56,7 @@ defmodule DrawMusicWeb.EditorToolsTest do
       put_notes(view, [{960, "C4"}])
       {step, _alter} = MusicHelpers.pitch!("G3")
 
-      render_hook(view, "drop", %{"ids" => [id_at(view, 960)], "staff" => "bass", "step" => step})
+      canvas_hook(view, "drop", %{"ids" => [id_at(view, 960)], "staff" => "bass", "step" => step})
 
       [note] = hd(session_of(view).score.measures).notes
       assert {note.staff, note.offset} == {:bass, 960}
@@ -66,13 +66,13 @@ defmodule DrawMusicWeb.EditorToolsTest do
 
     test "a drop naming an unknown staff changes nothing", %{view: view} do
       put_notes(view, [{0, "C4"}])
-      render_hook(view, "drop", %{"ids" => [id_at(view, 0)], "staff" => "alto", "step" => 20})
+      canvas_hook(view, "drop", %{"ids" => [id_at(view, 0)], "staff" => "alto", "step" => 20})
       assert notes_of(view) == [{0, 0, "C4", :quarter, 0}]
     end
 
     test "a modifier held while dropping sets the accidental", %{view: view} do
       put_notes(view, [{0, "C4"}])
-      render_hook(view, "drop", %{"ids" => [id_at(view, 0)], "steps" => 2, "alter" => 1})
+      canvas_hook(view, "drop", %{"ids" => [id_at(view, 0)], "steps" => 2, "alter" => 1})
       assert notes_of(view) == [{0, 0, "E♯4", :quarter, 0}]
     end
   end
@@ -83,7 +83,7 @@ defmodule DrawMusicWeb.EditorToolsTest do
       view |> element("#palette-tie") |> render_click()
       a = id_at(view, 0)
       b = id_at(view, 960)
-      render_hook(view, "tie", %{"from" => b, "to" => a})
+      canvas_hook(view, "tie", %{"from" => b, "to" => a})
 
       assert MusicHelpers.tie_chain(session_of(view).score, a) == [a, b]
       assert has_element?(view, "#palette-tie[aria-pressed=true]")
@@ -91,7 +91,7 @@ defmodule DrawMusicWeb.EditorToolsTest do
 
     test "other pairs are refused with an explanation", %{view: view} do
       put_notes(view, [{0, "C4"}, {960, "D4"}])
-      render_hook(view, "tie", %{"from" => id_at(view, 0), "to" => id_at(view, 960)})
+      canvas_hook(view, "tie", %{"from" => id_at(view, 0), "to" => id_at(view, 960)})
 
       assert has_element?(
                view,

@@ -9,8 +9,7 @@ defmodule DrawMusicWeb.ScoreCanvas.Surface do
   `overlay.js`) and dragged notes (`note_drag.js`) where they would land,
   sounds each new line or space while the button is down, runs the
   selection band (`band.js`), and sends semantic events (`place`, `drop`,
-  `select`, …). Those the canvas handles go to it (`pushEventTo`); the
-  editing ones still go to `DrawMusicWeb.EditorLive` (`pushEvent`).
+  `select`, …), all to the canvas component (`pushEventTo`).
   """
 
   use DrawMusicWeb, :html
@@ -83,12 +82,6 @@ defmodule DrawMusicWeb.ScoreCanvas.Surface do
         const PLACEMENT_TONE = 0.25
         // ↑/↓: a scale step (Shift: an octave, Ctrl: a semitone); ←/→: a beat.
         const ARROWS = {ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right"}
-        // The events Editor.ScoreCanvas handles; the rest are EditorLive's.
-        const CANVAS_EVENTS = new Set([
-          "select", "select_range", "preview_range", "clear_selection", "edit_tempo",
-          "move_tempo", "resize_tempo", "open_menu", "audition", "disarm", "open_settings",
-        ])
-
         export default {
           mounted() {
             this.overlay = new Overlay(this.el.querySelector("#score-overlay"))
@@ -115,9 +108,9 @@ defmodule DrawMusicWeb.ScoreCanvas.Surface do
             setPageCursor(this.el, null)
           },
 
+          // Every event goes to the canvas component.
           send(event, payload = {}, reply) {
-            if (CANVAS_EVENTS.has(event)) return this.pushEventTo(this.el, event, payload, reply)
-            this.pushEvent(event, payload, reply)
+            this.pushEventTo(this.el, event, payload, reply)
           },
 
           // A press anywhere on the paper counts, margins included: a rubber band
