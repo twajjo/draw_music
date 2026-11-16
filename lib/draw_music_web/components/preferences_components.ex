@@ -1,7 +1,7 @@
 defmodule DrawMusicWeb.PreferencesComponents do
   @moduledoc """
-  The user's preferences (appearance, then the score display and reading
-  aids in `DrawMusicWeb.PreferencesForm`), drawn on the Preferences page and
+  The user's preferences (appearance, the score display and the reading
+  aids, all in `DrawMusicWeb.PreferencesForm`), drawn on the Preferences page and
   in the editor's Preferences panel alike.
 
   The form previews its changes and stores them only on Save; it tells the
@@ -14,27 +14,11 @@ defmodule DrawMusicWeb.PreferencesComponents do
 
   alias DrawMusicWeb.PreferencesForm
 
-  @doc "Light, dark or the system's theme (kept in this browser)."
-  @spec appearance(map()) :: Phoenix.LiveView.Rendered.t()
-  def appearance(assigns) do
-    ~H"""
-    <section id="appearance" class="space-y-4">
-      <.header>
-        Appearance
-        <:subtitle>Follow your system, or always use light or dark (saved in this browser)</:subtitle>
-      </.header>
-      <Layouts.theme_toggle />
-    </section>
-    """
-  end
-
-  @doc "All the preference sections, one under the other."
+  @doc "All the preference sections, one under the other, as one form."
   attr :scope, :map, required: true
   @spec preference_sections(map()) :: Phoenix.LiveView.Rendered.t()
   def preference_sections(assigns) do
     ~H"""
-    <.appearance />
-    <div class="divider" />
     <.live_component module={PreferencesForm} id="preferences-form" scope={@scope} />
     """
   end

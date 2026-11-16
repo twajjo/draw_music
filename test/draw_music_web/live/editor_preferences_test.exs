@@ -65,6 +65,16 @@ defmodule DrawMusicWeb.EditorPreferencesTest do
     assert has_element?(view, "#preferences-panel #reading-aids")
   end
 
+  test "the theme is chosen in the form only, not the account menu", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/?panel=preferences")
+
+    for theme <- ~w(system light dark) do
+      assert has_element?(view, "#preferences-form #preferences-form-theme-#{theme}")
+    end
+
+    refute has_element?(view, "#account-menu [data-phx-theme]")
+  end
+
   defp change(view, fields) do
     view |> form("#preferences-form", user: fields) |> render_change()
   end
