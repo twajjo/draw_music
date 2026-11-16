@@ -1,6 +1,6 @@
 defmodule DrawMusicWeb.EditorGeometry.Payload do
   @moduledoc """
-  The score geometry the `ScoreEditor` browser hook maps the pointer with
+  The score geometry the `.ScoreCanvas` browser hook maps the pointer with
   (sent as JSON in `data-geometry`): each system's place and measures, the
   staves' positions and the key. Units are staff spaces.
   """

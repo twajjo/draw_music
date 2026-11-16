@@ -1,6 +1,6 @@
 defmodule DrawMusicWeb.EditorGeometry do
   @moduledoc """
-  What the `ScoreEditor` hook needs to turn a pointer position into a
+  What the score's `.ScoreCanvas` hook needs to turn a pointer position into a
   musical one, and to draw the armed item as the cursor: JSON payloads
   built from the engraved layout (`DrawMusicWeb.EditorGeometry.Payload`)
   and the armed item (`DrawMusicWeb.EditorGeometry.ArmedPayload`).

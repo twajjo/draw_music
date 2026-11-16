@@ -17,7 +17,7 @@ defmodule DrawMusicWeb.EditorToolsTest do
   defp put_notes(view, notes) do
     view |> element("#palette") |> render_hook("arm", %{"kind" => "note", "value" => "quarter"})
     for {offset, spn} <- notes, do: place(view, 0, offset, spn)
-    render_hook(view, "disarm", %{})
+    canvas_hook(view, "disarm", %{})
   end
 
   defp id_at(view, offset) do
@@ -32,7 +32,7 @@ defmodule DrawMusicWeb.EditorToolsTest do
     {step, _alter} = MusicHelpers.pitch!(spn)
     id = id_at(view, offset)
 
-    render_hook(view, "open_menu", %{
+    canvas_hook(view, "open_menu", %{
       "id" => id,
       "x" => 100,
       "y" => 100,
@@ -112,8 +112,8 @@ defmodule DrawMusicWeb.EditorToolsTest do
 
     test "one selected note: its menu, wherever the right-click lands", %{view: view} do
       put_notes(view, [{0, "C4"}, {960, "E4"}])
-      render_hook(view, "select", %{"ids" => [id_at(view, 960)], "add" => false})
-      render_hook(view, "open_menu", %{"id" => nil, "x" => 10, "y" => 10})
+      canvas_hook(view, "select", %{"ids" => [id_at(view, 960)], "add" => false})
+      canvas_hook(view, "open_menu", %{"id" => nil, "x" => 10, "y" => 10})
 
       view |> element("#menu-to-rest") |> render_click()
       assert notes_of(view) == [{0, 0, "C4", :quarter, 0}]
@@ -122,8 +122,8 @@ defmodule DrawMusicWeb.EditorToolsTest do
     test "two or more selected: the selection's menu, even on a note outside it",
          %{view: view} do
       put_notes(view, [{0, "C4"}, {960, "E4"}, {1920, "G4"}])
-      render_hook(view, "select", %{"ids" => [id_at(view, 0)], "add" => false})
-      render_hook(view, "select", %{"ids" => [id_at(view, 960)], "add" => true})
+      canvas_hook(view, "select", %{"ids" => [id_at(view, 0)], "add" => false})
+      canvas_hook(view, "select", %{"ids" => [id_at(view, 960)], "add" => true})
       open_menu(view, 1920)
 
       assert has_element?(view, "#menu-reverse")
@@ -132,8 +132,8 @@ defmodule DrawMusicWeb.EditorToolsTest do
 
     test "nothing selected and nothing under the pointer: no menu", %{view: view} do
       put_notes(view, [{0, "C4"}])
-      render_hook(view, "clear_selection", %{})
-      render_hook(view, "open_menu", %{"id" => nil, "x" => 10, "y" => 10})
+      canvas_hook(view, "clear_selection", %{})
+      canvas_hook(view, "open_menu", %{"id" => nil, "x" => 10, "y" => 10})
 
       refute has_element?(view, "#context-menu")
     end
@@ -159,7 +159,7 @@ defmodule DrawMusicWeb.EditorToolsTest do
       view |> element("#palette") |> render_hook("arm", %{"kind" => "note", "value" => "half"})
       place(view, 0, 0, "D4")
       place(view, 0, 1920, "A4")
-      render_hook(view, "disarm", %{})
+      canvas_hook(view, "disarm", %{})
 
       open_menu(view, 0)
       view |> element("#menu-split") |> render_click()
@@ -237,7 +237,7 @@ defmodule DrawMusicWeb.EditorToolsTest do
     end
 
     test "only opens for notes and rests in the score", %{view: view} do
-      render_hook(view, "open_menu", %{
+      canvas_hook(view, "open_menu", %{
         "id" => Ecto.UUID.generate(),
         "x" => 1,
         "y" => 1,

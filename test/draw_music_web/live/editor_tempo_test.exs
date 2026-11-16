@@ -12,7 +12,7 @@ defmodule DrawMusicWeb.EditorTempoTest do
     view |> element("#palette") |> render_hook("arm", %{"kind" => "note", "value" => "quarter"})
     place(view, 0, 0, "C4")
     place(view, 0, 960, "E4")
-    render_hook(view, "disarm", %{})
+    canvas_hook(view, "disarm", %{})
     %{view: view}
   end
 
@@ -29,8 +29,8 @@ defmodule DrawMusicWeb.EditorTempoTest do
   # Select the E4 and right-click it, "Tempo change here…", fill in the
   # dialog (ticking "Gradually" first shows its fields).
   defp add_tempo(view, params) do
-    render_hook(view, "select", %{"ids" => [e4_id(view)], "add" => false})
-    render_hook(view, "open_menu", %{"id" => e4_id(view), "x" => 10, "y" => 10})
+    canvas_hook(view, "select", %{"ids" => [e4_id(view)], "add" => false})
+    canvas_hook(view, "open_menu", %{"id" => e4_id(view), "x" => 10, "y" => 10})
     view |> element("#menu-tempo") |> render_click()
 
     if params[:gradual] == "true" do
@@ -60,7 +60,7 @@ defmodule DrawMusicWeb.EditorTempoTest do
   end
 
   test "a note's menu adds a tempo mark where the note starts, drawn and selected", %{view: view} do
-    render_hook(view, "open_menu", %{"id" => e4_id(view), "x" => 10, "y" => 10})
+    canvas_hook(view, "open_menu", %{"id" => e4_id(view), "x" => 10, "y" => 10})
     view |> element("#menu-tempo") |> render_click()
 
     # The dialog starts at the tempo in force there.
@@ -83,7 +83,7 @@ defmodule DrawMusicWeb.EditorTempoTest do
 
   test "a gradual change shows rit. or accel., and must reach a different tempo",
        %{view: view} do
-    render_hook(view, "open_menu", %{"id" => e4_id(view), "x" => 10, "y" => 10})
+    canvas_hook(view, "open_menu", %{"id" => e4_id(view), "x" => 10, "y" => 10})
     view |> element("#menu-tempo") |> render_click()
     view |> form("#tempo-form", tempo: %{gradual: "true"}) |> render_change()
 
@@ -98,7 +98,7 @@ defmodule DrawMusicWeb.EditorTempoTest do
   test "a gradual change reaches at most the next change", %{view: view} do
     view |> element("#palette") |> render_hook("arm", %{"kind" => "note", "value" => "quarter"})
     place(view, 0, 1920, "G4")
-    render_hook(view, "disarm", %{})
+    canvas_hook(view, "disarm", %{})
 
     g4_id =
       session_of(view).score.measures
@@ -107,7 +107,7 @@ defmodule DrawMusicWeb.EditorTempoTest do
       |> Enum.find(&(&1.offset == 1920))
       |> Map.fetch!(:id)
 
-    render_hook(view, "open_menu", %{"id" => g4_id, "x" => 10, "y" => 10})
+    canvas_hook(view, "open_menu", %{"id" => g4_id, "x" => 10, "y" => 10})
     view |> element("#menu-tempo") |> render_click()
     view |> form("#tempo-form", tempo: %{bpm: "60"}) |> render_submit()
 
@@ -132,12 +132,12 @@ defmodule DrawMusicWeb.EditorTempoTest do
     add_tempo(view, %{bpm: "60"})
     [%{id: id}] = tempos(view)
 
-    render_hook(view, "edit_tempo", %{"id" => id})
+    canvas_hook(view, "edit_tempo", %{"id" => id})
     assert has_element?(view, "#tempo-form input[name='tempo[bpm]'][value='60']")
     view |> form("#tempo-form", tempo: %{bpm: "72"}) |> render_submit()
     assert [%{id: ^id, bpm: 72}] = tempos(view)
 
-    render_hook(view, "edit_tempo", %{"id" => id})
+    canvas_hook(view, "edit_tempo", %{"id" => id})
     view |> element("#tempo-delete") |> render_click()
     assert tempos(view) == []
   end
@@ -146,10 +146,10 @@ defmodule DrawMusicWeb.EditorTempoTest do
     add_tempo(view, %{bpm: "80", gradual: "true", to_bpm: "50", beats: "1"})
     [%{id: id}] = tempos(view)
 
-    render_hook(view, "move_tempo", %{"id" => id, "tick" => 1920})
+    canvas_hook(view, "move_tempo", %{"id" => id, "tick" => 1920})
     assert [%{tick: 1920, to_tick: 2880}] = tempos(view)
 
-    render_hook(view, "resize_tempo", %{"id" => id, "tick" => 3840})
+    canvas_hook(view, "resize_tempo", %{"id" => id, "tick" => 3840})
     assert [%{tick: 1920, to_tick: 3840}] = tempos(view)
   end
 
@@ -162,7 +162,7 @@ defmodule DrawMusicWeb.EditorTempoTest do
       |> Enum.find(&(&1.offset == 0))
       |> Map.fetch!(:id)
 
-    render_hook(view, "open_menu", %{"id" => c4_id, "x" => 10, "y" => 10})
+    canvas_hook(view, "open_menu", %{"id" => c4_id, "x" => 10, "y" => 10})
     assert has_element?(view, "#menu-split")
     refute has_element?(view, "#menu-tempo")
     view |> element("#context-menu") |> render_keydown(%{"key" => "Escape"})
@@ -170,7 +170,7 @@ defmodule DrawMusicWeb.EditorTempoTest do
     add_tempo(view, %{bpm: "60"})
     [%{id: id}] = tempos(view)
 
-    render_hook(view, "move_tempo", %{"id" => id, "tick" => 0})
+    canvas_hook(view, "move_tempo", %{"id" => id, "tick" => 0})
     assert [%{tick: 960}] = tempos(view)
     assert has_element?(view, "#flash-error", "The opening tempo is set in Score settings")
   end
@@ -189,7 +189,7 @@ defmodule DrawMusicWeb.EditorTempoTest do
   test "Select all takes in tempo marks", %{view: view} do
     add_tempo(view, %{bpm: "60"})
     [%{id: id}] = tempos(view)
-    render_hook(view, "clear_selection", %{})
+    canvas_hook(view, "clear_selection", %{})
 
     view |> element("#palette") |> render_hook("select_all", %{})
     assert has_element?(view, "[data-tempo-id='#{id}'].selected")

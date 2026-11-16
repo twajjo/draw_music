@@ -2,6 +2,7 @@ defmodule DrawMusicWeb.EditorPaletteTest do
   use DrawMusicWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
+  import DrawMusicWeb.EditorHelpers, only: [canvas_hook: 3]
 
   setup :register_and_log_in_user
 
@@ -32,7 +33,7 @@ defmodule DrawMusicWeb.EditorPaletteTest do
 
   test "disarm clears the armed item", %{view: view} do
     view |> element("#palette-quarter") |> render_click()
-    render_hook(view, "disarm", %{})
+    canvas_hook(view, "disarm", %{})
     refute has_element?(view, "#palette [aria-pressed=true][data-value]")
   end
 

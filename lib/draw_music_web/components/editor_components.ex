@@ -143,14 +143,53 @@ defmodule DrawMusicWeb.EditorComponents do
     """
   end
 
+  attr :dirty?, :boolean, required: true, doc: "whether there are unsaved changes"
+
   @doc """
-  The question asked before leaving the editor with unsaved changes (a link
-  out, New, Compositions, Back). The score hook's `PageGuard` opens it and
-  answers it in the browser: Stay (the default, also Esc) or Leave without
-  saving. Nothing is sent to the server.
+  The unsaved-changes guard: while there are changes, leaving the editor (a
+  link out, New, Compositions, Back) asks first, in its dialog. Its
+  colocated `.UnsavedGuard` hook (on `PageGuard`, `page_guard.js`) opens it
+  and answers it in the browser: Stay (the default, also Esc) or Leave
+  without saving. Nothing is sent to the server.
   """
-  @spec unsaved_dialog(map()) :: Phoenix.LiveView.Rendered.t()
-  def unsaved_dialog(assigns) do
+  @spec unsaved_guard(map()) :: Phoenix.LiveView.Rendered.t()
+  def unsaved_guard(assigns) do
+    ~H"""
+    <div id="unsaved-guard" phx-hook=".UnsavedGuard" data-dirty={to_string(@dirty?)}>
+      <.unsaved_dialog />
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".UnsavedGuard">
+        import {PageGuard} from "@/js/score_editor/page_guard"
+
+        export default {
+          mounted() {
+            this.guard = new PageGuard(() => this.el.dataset.dirty === "true")
+            this.guard.attach()
+          },
+
+          updated() {
+            this.guard.sync()
+          },
+
+          destroyed() {
+            this.guard.detach()
+          },
+        }
+      </script>
+    </div>
+    """
+  end
+
+  defp filled_bars(score) do
+    for {m, i} <- Enum.with_index(score.measures),
+        m.notes != [] or Enum.any?(m.rests, &(not &1.filler)),
+        into: MapSet.new() do
+      i
+    end
+  end
+
+  defp percent(part, whole), do: part / whole * 100
+
+  defp unsaved_dialog(assigns) do
     ~H"""
     <dialog
       id="unsaved-dialog"
@@ -176,15 +215,5 @@ defmodule DrawMusicWeb.EditorComponents do
       </div>
     </dialog>
     """
-  end
-
-  defp percent(part, whole), do: part / whole * 100
-
-  defp filled_bars(score) do
-    for {m, i} <- Enum.with_index(score.measures),
-        m.notes != [] or Enum.any?(m.rests, &(not &1.filler)),
-        into: MapSet.new() do
-      i
-    end
   end
 end

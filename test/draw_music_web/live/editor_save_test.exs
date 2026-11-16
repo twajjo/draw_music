@@ -92,10 +92,10 @@ defmodule DrawMusicWeb.EditorSaveTest do
     end
   end
 
-  test "the score editor carries the unsaved flag for the leave guard", %{conn: conn} do
+  test "the leave guard carries the unsaved flag", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/")
-    assert has_element?(view, "#score-editor[data-dirty=false]")
+    assert has_element?(view, "#unsaved-guard[data-dirty=false]")
     add_note(view)
-    assert has_element?(view, "#score-editor[data-dirty=true]")
+    assert has_element?(view, "#unsaved-guard[data-dirty=true]")
   end
 end

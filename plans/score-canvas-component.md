@@ -86,6 +86,15 @@ events (`place`, `drop`, `tie`, `move`, `delete`, `copy`, `cut`, `paste`, the
 measure events) to the LiveView with `pushEvent`, as 9b did with `disarm`.
 `last_click` stays in `EditorLive` until paste moves.
 
+**As built:** the component's root is `#score-canvas` (`display: contents`,
+so the page's layout is unchanged), holding the two notes and
+`#score-editor`. The hooked element and its JS are in their own function
+component, `DrawMusicWeb.ScoreCanvas.Surface`, so neither module passes 500
+lines. The hook routes each event with one `send`: the canvas's go to it,
+the rest still to `EditorLive` (11c removes that split). The guard is
+`unsaved_guard/1` in `EditorComponents`, with the dialog it opens. Tests use
+`EditorHelpers.canvas_hook/3`.
+
 ## 11c: the editing events move into `Editor.ScoreCanvas`
 `place`, `drop`, `tie`, `move`, `delete`, `copy`, `cut`, `paste`,
 `insert_measure`, `delete_measure` and `add_measure` leave `EditorLive`, with

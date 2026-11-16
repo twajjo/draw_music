@@ -314,9 +314,9 @@ defmodule DrawMusicWeb.EditorPlaceTest do
       arm(view, "quarter")
       place(view, 0, 0, "C4")
       place(view, 0, 960, "D4")
-      render_hook(view, "disarm", %{})
+      canvas_hook(view, "disarm", %{})
 
-      render_hook(view, "select_range", %{"from" => 0, "to" => 1920})
+      canvas_hook(view, "select_range", %{"from" => 0, "to" => 1920})
       view |> element("#palette-chord-major") |> render_click()
 
       assert notes_of(view) == [

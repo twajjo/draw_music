@@ -14,7 +14,7 @@ defmodule DrawMusicWeb.EditorPlayTest do
     place(view, 0, 0, "C4")
     place(view, 0, 960, "E4")
     place(view, 0, 1920, "G4")
-    render_hook(view, "disarm", %{})
+    canvas_hook(view, "disarm", %{})
     play_mode(view)
     %{view: view}
   end
@@ -30,7 +30,7 @@ defmodule DrawMusicWeb.EditorPlayTest do
   end
 
   defp select(view, offsets) do
-    render_hook(view, "select", %{"ids" => Enum.map(offsets, &id_at(view, &1)), "add" => false})
+    canvas_hook(view, "select", %{"ids" => Enum.map(offsets, &id_at(view, &1)), "add" => false})
   end
 
   defp play(view), do: view |> element("#palette-play") |> render_click()
@@ -66,7 +66,7 @@ defmodule DrawMusicWeb.EditorPlayTest do
     assert_in_delta span, 1.2, 1.0e-9
 
     transport(view, "stop")
-    render_hook(view, "clear_selection", %{})
+    canvas_hook(view, "clear_selection", %{})
     play(view)
     # Four empty-ending bars of 4/4: the whole score, not just to the G4.
     assert_push_event(view, "play", %{span: whole})
@@ -204,7 +204,7 @@ defmodule DrawMusicWeb.EditorPlayTest do
     play(view)
     assert_push_event(view, "pause", %{})
 
-    render_hook(view, "select_range", %{"from" => 0, "to" => 1000})
+    canvas_hook(view, "select_range", %{"from" => 0, "to" => 1000})
     assert_push_event(view, "stop", %{})
     assert has_element?(view, "#palette-play", "Play")
 
