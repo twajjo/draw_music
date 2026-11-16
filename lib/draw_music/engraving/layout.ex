@@ -134,16 +134,183 @@ defmodule DrawMusic.Engraving.Layout do
     }
   end
 
+  @doc "Absolute tick at `x` in the measure laid out as `geom` (not snapped to a grid)."
+  @spec tick_at(MeasureGeometry.t(), number()) :: float()
+  def tick_at(%MeasureGeometry{} = geom, x) do
+    geom.start_tick + MeasureGeometry.offset_at(geom, x)
+  end
+
   @doc "x of absolute tick `tick` in the measure laid out as `geom`."
   @spec x_of(MeasureGeometry.t(), number()) :: float()
   def x_of(%MeasureGeometry{} = geom, tick) do
     MeasureGeometry.x_at(geom, tick - geom.start_tick)
   end
 
-  @doc "Absolute tick at `x` in the measure laid out as `geom` (not snapped to a grid)."
-  @spec tick_at(MeasureGeometry.t(), number()) :: float()
-  def tick_at(%MeasureGeometry{} = geom, x) do
-    geom.start_tick + MeasureGeometry.offset_at(geom, x)
+  defp add_measure([current | done], measure, used, width) when used <= width do
+    [current ++ [measure] | done]
+  end
+
+  defp add_measure(systems, measure, _used, _width), do: [[measure] | systems]
+
+  # Each tempo change goes above the system it falls in, clear of whatever
+  # rises above the treble staff; marks that would overlap go up a row.
+  # The opening marking goes over the first beat, like a change there.
+  defp add_tempos(systems, %Score{tempos: []}, nil), do: systems
+
+  defp add_tempos(systems, %Score{tempos: tempos}, opening) do
+    by_system =
+      tempos
+      |> Enum.sort_by(& &1.tick)
+      |> Enum.flat_map(&tempo_pieces(&1, systems))
+      |> Kernel.++(opening_piece(opening, systems))
+      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+
+    Enum.map(systems, fn system ->
+      case Map.get(by_system, system.index) do
+        nil -> system
+        marks -> %{system | items: system.items ++ rows(marks, tempo_baseline(system))}
+      end
+    end)
+  end
+
+  defp add_ties(systems, score, anchors) do
+    by_system =
+      for m <- score.measures,
+          n <- m.notes,
+          from = n.tie_to && anchors[n.id],
+          to = from && anchors[n.tie_to],
+          to,
+          tie <- tie_items(from, to, systems) do
+        tie
+      end
+
+    by_system = Enum.group_by(by_system, &elem(&1, 0), &elem(&1, 1))
+    Enum.map(systems, fn s -> %{s | items: s.items ++ Map.get(by_system, s.index, [])} end)
+  end
+
+  defp away_from(:up), do: :down
+  defp away_from(_stem_dir), do: :up
+
+  defp barline(x, thickness) do
+    %Line{role: :barline, x1: x, y1: 0, x2: x, y2: Staff.bottom(), thickness: thickness}
+  end
+
+  defp barline_items(%MeasureGeometry{index: last} = geom, last) do
+    thin = Smufl.default("thinBarlineThickness")
+    thick = Smufl.default("thickBarlineThickness")
+    separation = Smufl.default("thinThickBarlineSeparation")
+    right = geom.x + geom.width
+
+    [
+      barline(right - thick - separation - thin / 2, thin),
+      barline(right - thick / 2, thick)
+    ]
+  end
+
+  defp barline_items(geom, _last) do
+    thin = Smufl.default("thinBarlineThickness")
+    [barline(geom.x + geom.width - thin / 2, thin)]
+  end
+
+  # A thin bar line after each measure; a thin-thick final bar after the last.
+  defp barlines(geoms, last), do: Enum.flat_map(geoms, &barline_items(&1, last))
+
+  # The brace glyph is one staff tall; it is stretched to span the grand staff.
+  defp brace_width, do: Smufl.width(:brace) * Staff.bottom() / Staff.height()
+
+  defp break(measures, :infinity, _ctx), do: [measures]
+
+  defp break(measures, width, ctx) do
+    measures
+    |> Enum.reduce([], fn
+      measure, [] ->
+        [[measure]]
+
+      {_m, geom} = measure, [current | _done] = systems ->
+        used = header(ctx, length(systems) == 1).width + natural_width(current) + geom.width
+        add_measure(systems, measure, used, width)
+    end)
+    |> Enum.reverse()
+  end
+
+  defp digit_items(glyphs, x, y) do
+    glyphs
+    |> Enum.map_reduce(x, fn glyph, x -> {glyph(:time, glyph, x, y), x + Smufl.width(glyph)} end)
+    |> elem(0)
+  end
+
+  defp digits(n) do
+    n
+    |> Integer.digits()
+    |> Enum.map(&elem(@digit_glyphs, &1))
+  end
+
+  defp digits_width(glyphs), do: Enum.sum_by(glyphs, &Smufl.width/1)
+
+  defp end_place(system) do
+    geom = List.last(system.measures)
+    {system, MeasureGeometry.x_at(geom, geom.capacity)}
+  end
+
+  defp fill(natural, available, true = _last?) when natural / available < @min_stretch_fill do
+    1.0
+  end
+
+  defp fill(natural, available, _last?), do: available / natural
+
+  defp glyph(role, glyph, x, y), do: %Glyph{role: role, glyph: glyph, x: x, y: y}
+
+  defp header(ctx, first?) do
+    line_x = brace_width() + @brace_gap
+    clef_x = line_x + @clef_pad
+
+    clefs = [
+      glyph(:clef, :gClef, clef_x, Staff.y(:treble, Staff.clef_step(:treble))),
+      glyph(:clef, :fClef, clef_x, Staff.y(:bass, Staff.clef_step(:bass)))
+    ]
+
+    key_x = clef_x + max(Smufl.width(:gClef), Smufl.width(:fClef)) + @clef_pad
+    {key, key_end} = key_signature(ctx.sf, key_x)
+    {time, time_end} = header_time(ctx, key_end, first?)
+
+    %Header{
+      items:
+        [
+          %Brace{x: 0, y1: 0, y2: Staff.bottom()},
+          barline(line_x, Smufl.default("thinBarlineThickness"))
+        ] ++ clefs ++ key ++ time,
+      line_x: line_x,
+      width: time_end + @header_pad
+    }
+  end
+
+  # Only the first system shows the time signature.
+  defp header_time(ctx, x, true = _first?), do: time_signature(ctx, x)
+  defp header_time(_ctx, x, false), do: {[], x}
+
+  defp key_glyph(sf) when sf > 0, do: :accidentalSharp
+  defp key_glyph(_sf), do: :accidentalFlat
+
+  defp key_signature(0, x), do: {[], x}
+
+  defp key_signature(sf, x) do
+    glyph = key_glyph(sf)
+    step = Smufl.width(glyph) + @key_sign_gap
+
+    items =
+      for staff <- [:treble, :bass],
+          {position, i} <- Enum.with_index(Staff.key_signature_steps(staff, sf)) do
+        glyph(:key, glyph, x + i * step, Staff.y(staff, position))
+      end
+
+    {items, x + abs(sf) * step + @key_signature_pad}
+  end
+
+  defp mark_end(%TempoMark{line_to: nil} = mark), do: mark.x + mark.width
+
+  defp mark_end(%TempoMark{} = mark) do
+    end_width = if mark.end?, do: TempoMark.text_width(TempoMark.end_label(mark)), else: 0.0
+    max(mark.x + mark.width, mark.line_to + end_width)
   end
 
   # A measure at its natural width, x from its left edge: a column for each
@@ -158,7 +325,10 @@ defmodule DrawMusic.Engraving.Layout do
       end)
       |> Enum.sort()
 
-    room = fn ticks -> max(@min_note_space, ticks * scale) end
+    room = fn ticks ->
+      max(@min_note_space, ticks * scale)
+    end
+
     nexts = Enum.map(tl(starts), &elem(&1, 0)) ++ [capacity]
 
     {columns, content_end} =
@@ -186,30 +356,84 @@ defmodule DrawMusic.Engraving.Layout do
     }
   end
 
-  ## Systems
-
-  defp break(measures, :infinity, _ctx), do: [measures]
-
-  defp break(measures, width, ctx) do
-    measures
-    |> Enum.reduce([], fn
-      measure, [] ->
-        [[measure]]
-
-      {_m, geom} = measure, [current | _done] = systems ->
-        used = header(ctx, length(systems) == 1).width + natural_width(current) + geom.width
-        add_measure(systems, measure, used, width)
-    end)
-    |> Enum.reverse()
-  end
-
-  defp add_measure([current | done], measure, used, width) when used <= width do
-    [current ++ [measure] | done]
-  end
-
-  defp add_measure(systems, measure, _used, _width), do: [[measure] | systems]
-
   defp natural_width(group), do: Enum.sum_by(group, fn {_m, geom} -> geom.width end)
+
+  defp opening_piece(nil, _systems), do: []
+
+  defp opening_piece({words, bpm}, systems) do
+    {system, x} = tick_place(systems, 0)
+    mark = %TempoMark{id: nil, x: x, y: 0.0, bpm: bpm, words: words, width: 0.0}
+    [{system.index, %{mark | width: TempoMark.width(mark)}}]
+  end
+
+  # The opening marking's words and tempo, or nil when none is drawn.
+  defp opening_tempo(nil, _ctx), do: nil
+  defp opening_tempo(words, %Context{tempo_bpm: bpm}), do: {words, bpm}
+
+  defp place_in(system, tick) do
+    case Enum.find(
+           system.measures,
+           &(tick >= &1.start_tick and tick < &1.start_tick + &1.capacity)
+         ) do
+      nil -> nil
+      geom -> {system, x_of(geom, tick)}
+    end
+  end
+
+  # Left to right, each mark takes the lowest row it fits in.
+  defp rows(marks, baseline) do
+    {placed, _row_ends} =
+      marks
+      |> Enum.sort_by(& &1.x)
+      |> Enum.map_reduce(%{}, fn mark, row_ends ->
+        row =
+          Enum.find(
+            0..@max_tempo_row,
+            @max_tempo_row,
+            &(Map.get(row_ends, &1, :none) == :none or mark.x >= row_ends[&1])
+          )
+
+        reaches = mark_end(mark) + @tempo_gap
+        {%{mark | y: baseline - row * @tempo_row}, Map.put(row_ends, row, reaches)}
+      end)
+
+    placed
+  end
+
+  # Each system gets room above and below for whatever sticks out of the
+  # grand staff.
+  # Each system's band runs from where the one above ended to past its gap;
+  # the last one's ends with its own ink, at the page's height.
+  defp stack(systems) do
+    {systems, bottom} =
+      Enum.map_reduce(systems, 0.0, fn system, y ->
+        {top, bottom} =
+          system.items
+          |> Enum.flat_map(&y_range/1)
+          |> Enum.min_max()
+
+        above = max(@margin, -top + @clearance)
+        below = max(@margin, bottom - Staff.bottom() + @clearance)
+        system_y = y + above
+        next = system_y + Staff.bottom() + below + @system_gap
+        {%{system | y: system_y, top: y, bottom: next}, next}
+      end)
+
+    height = bottom - @system_gap
+    {List.update_at(systems, -1, &%{&1 | bottom: height}), height}
+  end
+
+  defp staff_lines(x1, x2) do
+    thickness = Smufl.default("staffLineThickness")
+
+    for staff <- [:treble, :bass], line <- 0..Staff.height() do
+      y = Staff.top(staff) + line
+      %Line{role: :staff, x1: x1, y1: y, x2: x2, y2: y, thickness: thickness}
+    end
+  end
+
+  defp stretch(:infinity, _header, _natural, _last?), do: 1.0
+  defp stretch(width, header, natural, last?), do: fill(natural, width - header, last?)
 
   defp system(group, index, width, ctx, tied_in, last) do
     header = header(ctx, index == 0)
@@ -251,65 +475,89 @@ defmodule DrawMusic.Engraving.Layout do
     {%System{index: index, width: system_width, measures: geoms, items: items}, anchors}
   end
 
-  defp stretch(:infinity, _header, _natural, _last?), do: 1.0
-  defp stretch(width, header, natural, last?), do: fill(natural, width - header, last?)
+  # The bottom row's baseline: above everything over the treble staff.
+  defp tempo_baseline(system) do
+    top =
+      system.items
+      |> Enum.flat_map(&y_range/1)
+      |> Enum.min(fn -> 0.0 end)
 
-  defp fill(natural, available, true = _last?) when natural / available < @min_stretch_fill do
-    1.0
+    min(top, 0.0) - @tempo_clearance
   end
 
-  defp fill(natural, available, _last?), do: available / natural
-
-  ## Header: brace, clefs, key and time signatures
-
-  defp header(ctx, first?) do
-    line_x = brace_width() + @brace_gap
-    clef_x = line_x + @clef_pad
-
-    clefs = [
-      glyph(:clef, :gClef, clef_x, Staff.y(:treble, Staff.clef_step(:treble))),
-      glyph(:clef, :fClef, clef_x, Staff.y(:bass, Staff.clef_step(:bass)))
-    ]
-
-    key_x = clef_x + max(Smufl.width(:gClef), Smufl.width(:fClef)) + @clef_pad
-    {key, key_end} = key_signature(ctx.sf, key_x)
-    {time, time_end} = header_time(ctx, key_end, first?)
-
-    %Header{
-      items:
-        [
-          %Brace{x: 0, y1: 0, y2: Staff.bottom()},
-          barline(line_x, Smufl.default("thinBarlineThickness"))
-        ] ++ clefs ++ key ++ time,
-      line_x: line_x,
-      width: time_end + @header_pad
+  defp tempo_mark(change, x, ramp) do
+    mark = %TempoMark{
+      id: change.id,
+      x: x,
+      y: 0.0,
+      bpm: change.bpm,
+      to_bpm: change.to_bpm,
+      ramp: ramp,
+      width: 0.0
     }
+
+    %{mark | width: TempoMark.width(mark)}
   end
 
-  # The brace glyph is one staff tall; it is stretched to span the grand staff.
-  defp brace_width, do: Smufl.width(:brace) * Staff.bottom() / Staff.height()
-
-  defp key_signature(0, x), do: {[], x}
-
-  defp key_signature(sf, x) do
-    glyph = key_glyph(sf)
-    step = Smufl.width(glyph) + @key_sign_gap
-
-    items =
-      for staff <- [:treble, :bass],
-          {position, i} <- Enum.with_index(Staff.key_signature_steps(staff, sf)) do
-        glyph(:key, glyph, x + i * step, Staff.y(staff, position))
-      end
-
-    {items, x + abs(sf) * step + @key_signature_pad}
+  # {system index, mark} for each system a change is drawn in.
+  defp tempo_pieces(%TempoChange{to_tick: nil} = change, systems) do
+    {system, x} = tick_place(systems, change.tick)
+    [{system.index, tempo_mark(change, x, nil)}]
   end
 
-  defp key_glyph(sf) when sf > 0, do: :accidentalSharp
-  defp key_glyph(_sf), do: :accidentalFlat
+  defp tempo_pieces(%TempoChange{} = change, systems) do
+    {first, x} = tick_place(systems, change.tick)
+    {last, to_x} = tick_place(systems, change.to_tick)
+    ramp = if change.to_bpm < change.bpm, do: :rit, else: :accel
 
-  # Only the first system shows the time signature.
-  defp header_time(ctx, x, true = _first?), do: time_signature(ctx, x)
-  defp header_time(_ctx, x, false), do: {[], x}
+    for system <- Enum.slice(systems, first.index..last.index) do
+      start? = system.index == first.index
+      end? = system.index == last.index
+      from = if start?, do: x, else: hd(system.measures).content_x - @tie_lead_in
+      line_to = if end?, do: to_x, else: system.width
+
+      mark = %{tempo_mark(change, from, ramp) | line_to: line_to, start?: start?, end?: end?}
+      {system.index, mark}
+    end
+  end
+
+  # The system and x of an absolute tick (past the end: the end).
+  defp tick_place(systems, tick) do
+    Enum.find_value(systems, &place_in(&1, tick)) || end_place(List.last(systems))
+  end
+
+  defp tie(x1, x2, note_y, :down), do: %Tie{x1: x1, x2: x2, y: note_y + @tie_offset, dir: :down}
+  defp tie(x1, x2, note_y, :up), do: %Tie{x1: x1, x2: x2, y: note_y - @tie_offset, dir: :up}
+
+  # Ties curve away from the stem. One crossing a system break is drawn as
+  # two halves: to the end of the first system, and from the start of the
+  # next system's first measure.
+  defp tie_items(%Anchor{system: system} = from, %Anchor{system: system} = to, _systems) do
+    dir = away_from(from.dir)
+    [{system, tie(from.x1 + @tie_gap, to.x0 - @tie_gap, from.y, dir)}]
+  end
+
+  defp tie_items(%Anchor{} = from, %Anchor{} = to, systems) do
+    dir = away_from(from.dir)
+    source = Enum.at(systems, from.system)
+    target = Enum.at(systems, to.system)
+    continued_x = hd(target.measures).content_x - @tie_lead_in
+
+    [
+      {from.system, tie(from.x1 + @tie_gap, source.width, from.y, dir)},
+      {to.system, tie(continued_x, to.x0 - @tie_gap, to.y, dir)}
+    ]
+  end
+
+  # Measure index => ids of notes continuing a tie from the measure before.
+  defp tied_in(score) do
+    indexed = Enum.with_index(score.measures)
+    measure_of = for {m, i} <- indexed, n <- m.notes, into: %{}, do: {n.id, i}
+
+    for {m, i} <- indexed, n <- m.notes, n.tie_to, measure_of[n.tie_to] == i + 1, reduce: %{} do
+      acc -> Map.update(acc, i + 1, MapSet.new([n.tie_to]), &MapSet.put(&1, n.tie_to))
+    end
+  end
 
   defp time_signature(%Context{time_symbol: :common}, x), do: time_symbol(:timeSigCommon, x)
   defp time_signature(%Context{time_symbol: :cut}, x), do: time_symbol(:timeSigCutCommon, x)
@@ -335,261 +583,6 @@ defmodule DrawMusic.Engraving.Layout do
     {items, x + Smufl.width(glyph)}
   end
 
-  defp digits(n) do
-    n
-    |> Integer.digits()
-    |> Enum.map(&elem(@digit_glyphs, &1))
-  end
-
-  defp digits_width(glyphs), do: Enum.sum_by(glyphs, &Smufl.width/1)
-
-  defp digit_items(glyphs, x, y) do
-    glyphs
-    |> Enum.map_reduce(x, fn glyph, x -> {glyph(:time, glyph, x, y), x + Smufl.width(glyph)} end)
-    |> elem(0)
-  end
-
-  ## Staff lines and bar lines
-
-  defp staff_lines(x1, x2) do
-    thickness = Smufl.default("staffLineThickness")
-
-    for staff <- [:treble, :bass], line <- 0..Staff.height() do
-      y = Staff.top(staff) + line
-      %Line{role: :staff, x1: x1, y1: y, x2: x2, y2: y, thickness: thickness}
-    end
-  end
-
-  # A thin bar line after each measure; a thin-thick final bar after the last.
-  defp barlines(geoms, last), do: Enum.flat_map(geoms, &barline_items(&1, last))
-
-  defp barline_items(%MeasureGeometry{index: last} = geom, last) do
-    thin = Smufl.default("thinBarlineThickness")
-    thick = Smufl.default("thickBarlineThickness")
-    separation = Smufl.default("thinThickBarlineSeparation")
-    right = geom.x + geom.width
-
-    [
-      barline(right - thick - separation - thin / 2, thin),
-      barline(right - thick / 2, thick)
-    ]
-  end
-
-  defp barline_items(geom, _last) do
-    thin = Smufl.default("thinBarlineThickness")
-    [barline(geom.x + geom.width - thin / 2, thin)]
-  end
-
-  defp barline(x, thickness) do
-    %Line{role: :barline, x1: x, y1: 0, x2: x, y2: Staff.bottom(), thickness: thickness}
-  end
-
-  ## Ties
-
-  # Measure index => ids of notes continuing a tie from the measure before.
-  defp tied_in(score) do
-    indexed = Enum.with_index(score.measures)
-    measure_of = for {m, i} <- indexed, n <- m.notes, into: %{}, do: {n.id, i}
-
-    for {m, i} <- indexed, n <- m.notes, n.tie_to, measure_of[n.tie_to] == i + 1, reduce: %{} do
-      acc -> Map.update(acc, i + 1, MapSet.new([n.tie_to]), &MapSet.put(&1, n.tie_to))
-    end
-  end
-
-  defp add_ties(systems, score, anchors) do
-    by_system =
-      for m <- score.measures,
-          n <- m.notes,
-          from = n.tie_to && anchors[n.id],
-          to = from && anchors[n.tie_to],
-          to,
-          tie <- tie_items(from, to, systems) do
-        tie
-      end
-
-    by_system = Enum.group_by(by_system, &elem(&1, 0), &elem(&1, 1))
-    Enum.map(systems, fn s -> %{s | items: s.items ++ Map.get(by_system, s.index, [])} end)
-  end
-
-  # Ties curve away from the stem. One crossing a system break is drawn as
-  # two halves: to the end of the first system, and from the start of the
-  # next system's first measure.
-  defp tie_items(%Anchor{system: system} = from, %Anchor{system: system} = to, _systems) do
-    dir = away_from(from.dir)
-    [{system, tie(from.x1 + @tie_gap, to.x0 - @tie_gap, from.y, dir)}]
-  end
-
-  defp tie_items(%Anchor{} = from, %Anchor{} = to, systems) do
-    dir = away_from(from.dir)
-    source = Enum.at(systems, from.system)
-    target = Enum.at(systems, to.system)
-    continued_x = hd(target.measures).content_x - @tie_lead_in
-
-    [
-      {from.system, tie(from.x1 + @tie_gap, source.width, from.y, dir)},
-      {to.system, tie(continued_x, to.x0 - @tie_gap, to.y, dir)}
-    ]
-  end
-
-  defp away_from(:up), do: :down
-  defp away_from(_stem_dir), do: :up
-
-  defp tie(x1, x2, note_y, :down), do: %Tie{x1: x1, x2: x2, y: note_y + @tie_offset, dir: :down}
-  defp tie(x1, x2, note_y, :up), do: %Tie{x1: x1, x2: x2, y: note_y - @tie_offset, dir: :up}
-
-  ## Tempo marks
-
-  # Each tempo change goes above the system it falls in, clear of whatever
-  # rises above the treble staff; marks that would overlap go up a row.
-  # The opening marking goes over the first beat, like a change there.
-  defp add_tempos(systems, %Score{tempos: []}, nil), do: systems
-
-  defp add_tempos(systems, %Score{tempos: tempos}, opening) do
-    by_system =
-      tempos
-      |> Enum.sort_by(& &1.tick)
-      |> Enum.flat_map(&tempo_pieces(&1, systems))
-      |> Kernel.++(opening_piece(opening, systems))
-      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
-
-    Enum.map(systems, fn system ->
-      case Map.get(by_system, system.index) do
-        nil -> system
-        marks -> %{system | items: system.items ++ rows(marks, tempo_baseline(system))}
-      end
-    end)
-  end
-
-  # The opening marking's words and tempo, or nil when none is drawn.
-  defp opening_tempo(nil, _ctx), do: nil
-  defp opening_tempo(words, %Context{tempo_bpm: bpm}), do: {words, bpm}
-
-  defp opening_piece(nil, _systems), do: []
-
-  defp opening_piece({words, bpm}, systems) do
-    {system, x} = tick_place(systems, 0)
-    mark = %TempoMark{id: nil, x: x, y: 0.0, bpm: bpm, words: words, width: 0.0}
-    [{system.index, %{mark | width: TempoMark.width(mark)}}]
-  end
-
-  # {system index, mark} for each system a change is drawn in.
-  defp tempo_pieces(%TempoChange{to_tick: nil} = change, systems) do
-    {system, x} = tick_place(systems, change.tick)
-    [{system.index, tempo_mark(change, x, nil)}]
-  end
-
-  defp tempo_pieces(%TempoChange{} = change, systems) do
-    {first, x} = tick_place(systems, change.tick)
-    {last, to_x} = tick_place(systems, change.to_tick)
-    ramp = if change.to_bpm < change.bpm, do: :rit, else: :accel
-
-    for system <- Enum.slice(systems, first.index..last.index) do
-      start? = system.index == first.index
-      end? = system.index == last.index
-      from = if start?, do: x, else: hd(system.measures).content_x - @tie_lead_in
-      line_to = if end?, do: to_x, else: system.width
-
-      mark = %{tempo_mark(change, from, ramp) | line_to: line_to, start?: start?, end?: end?}
-      {system.index, mark}
-    end
-  end
-
-  defp tempo_mark(change, x, ramp) do
-    mark = %TempoMark{
-      id: change.id,
-      x: x,
-      y: 0.0,
-      bpm: change.bpm,
-      to_bpm: change.to_bpm,
-      ramp: ramp,
-      width: 0.0
-    }
-
-    %{mark | width: TempoMark.width(mark)}
-  end
-
-  # The system and x of an absolute tick (past the end: the end).
-  defp tick_place(systems, tick) do
-    Enum.find_value(systems, &place_in(&1, tick)) || end_place(List.last(systems))
-  end
-
-  defp place_in(system, tick) do
-    case Enum.find(
-           system.measures,
-           &(tick >= &1.start_tick and tick < &1.start_tick + &1.capacity)
-         ) do
-      nil -> nil
-      geom -> {system, x_of(geom, tick)}
-    end
-  end
-
-  defp end_place(system) do
-    geom = List.last(system.measures)
-    {system, MeasureGeometry.x_at(geom, geom.capacity)}
-  end
-
-  # The bottom row's baseline: above everything over the treble staff.
-  defp tempo_baseline(system) do
-    top =
-      system.items
-      |> Enum.flat_map(&y_range/1)
-      |> Enum.min(fn -> 0.0 end)
-
-    min(top, 0.0) - @tempo_clearance
-  end
-
-  # Left to right, each mark takes the lowest row it fits in.
-  defp rows(marks, baseline) do
-    {placed, _row_ends} =
-      marks
-      |> Enum.sort_by(& &1.x)
-      |> Enum.map_reduce(%{}, fn mark, row_ends ->
-        row =
-          Enum.find(
-            0..@max_tempo_row,
-            @max_tempo_row,
-            &(Map.get(row_ends, &1, :none) == :none or mark.x >= row_ends[&1])
-          )
-
-        reaches = mark_end(mark) + @tempo_gap
-        {%{mark | y: baseline - row * @tempo_row}, Map.put(row_ends, row, reaches)}
-      end)
-
-    placed
-  end
-
-  defp mark_end(%TempoMark{line_to: nil} = mark), do: mark.x + mark.width
-
-  defp mark_end(%TempoMark{} = mark) do
-    end_width = if mark.end?, do: TempoMark.text_width(TempoMark.end_label(mark)), else: 0.0
-    max(mark.x + mark.width, mark.line_to + end_width)
-  end
-
-  ## Vertical stacking
-
-  # Each system gets room above and below for whatever sticks out of the
-  # grand staff.
-  # Each system's band runs from where the one above ended to past its gap;
-  # the last one's ends with its own ink, at the page's height.
-  defp stack(systems) do
-    {systems, bottom} =
-      Enum.map_reduce(systems, 0.0, fn system, y ->
-        {top, bottom} =
-          system.items
-          |> Enum.flat_map(&y_range/1)
-          |> Enum.min_max()
-
-        above = max(@margin, -top + @clearance)
-        below = max(@margin, bottom - Staff.bottom() + @clearance)
-        system_y = y + above
-        next = system_y + Staff.bottom() + below + @system_gap
-        {%{system | y: system_y, top: y, bottom: next}, next}
-      end)
-
-    height = bottom - @system_gap
-    {List.update_at(systems, -1, &%{&1 | bottom: height}), height}
-  end
-
   @spec y_range(Item.t()) :: [number()]
   defp y_range(%Glyph{glyph: glyph, y: y}) do
     {_x0, y0, _x1, y1} = Smufl.bbox(glyph)
@@ -601,6 +594,4 @@ defmodule DrawMusic.Engraving.Layout do
   defp y_range(%Tie{y: y}), do: [y - @tie_extent, y + @tie_extent]
   defp y_range(%Brace{y1: y1, y2: y2}), do: [y1, y2]
   defp y_range(%TempoMark{y: y}), do: [y - @tempo_height, y]
-
-  defp glyph(role, glyph, x, y), do: %Glyph{role: role, glyph: glyph, x: x, y: y}
 end

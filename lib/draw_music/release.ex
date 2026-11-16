@@ -18,13 +18,13 @@ defmodule DrawMusic.Release do
     {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :down, to: version))
   end
 
-  defp repos do
-    Application.fetch_env!(@app, :ecto_repos)
-  end
-
   defp load_app do
     # Many platforms require SSL when connecting to the database
     Application.ensure_all_started(:ssl)
     Application.ensure_loaded(@app)
+  end
+
+  defp repos do
+    Application.fetch_env!(@app, :ecto_repos)
   end
 end

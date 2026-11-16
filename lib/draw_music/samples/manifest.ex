@@ -56,9 +56,6 @@ defmodule DrawMusic.Samples.Manifest do
     end)
   end
 
-  defp optional_entry(nil), do: {:ok, nil}
-  defp optional_entry(raw), do: entry(raw)
-
   defp entry(%{"bytes" => bytes, "fetched_at" => at})
        when is_integer(bytes) and bytes >= 0 and is_binary(at) do
     case DateTime.from_iso8601(at) do
@@ -68,4 +65,7 @@ defmodule DrawMusic.Samples.Manifest do
   end
 
   defp entry(_raw), do: :error
+
+  defp optional_entry(nil), do: {:ok, nil}
+  defp optional_entry(raw), do: entry(raw)
 end

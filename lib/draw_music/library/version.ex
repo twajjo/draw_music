@@ -113,27 +113,6 @@ defmodule DrawMusic.Library.Version do
     |> unique_constraint([:key_id, :number], name: :composition_versions_key_id_number_index)
   end
 
-  # Common time (𝄴) only stands for 4/4 and cut time (𝄵) only for 2/2.
-  defp validate_time_symbol(changeset) do
-    symbol = get_field(changeset, :time_symbol)
-    meter = {get_field(changeset, :time_num), get_field(changeset, :time_den)}
-
-    case {symbol, meter} do
-      {:common, m} when m != {4, 4} -> add_error(changeset, :time_symbol, "common time is 4/4")
-      {:cut, m} when m != {2, 2} -> add_error(changeset, :time_symbol, "cut time is 2/2")
-      _ -> changeset
-    end
-  end
-
-  defp validate_pickup(changeset) do
-    pickup_error(
-      changeset,
-      get_field(changeset, :pickup_ticks),
-      get_field(changeset, :time_num),
-      get_field(changeset, :time_den)
-    )
-  end
-
   # A pickup bar is shorter than a full measure of a valid meter.
   defp pickup_error(changeset, pickup, num, den)
        when is_integer(pickup) and pickup > 0 and is_integer(num) and den in @time_denominators do
@@ -150,6 +129,27 @@ defmodule DrawMusic.Library.Version do
     case Map.get(attrs, :score, attrs["score"]) do
       %Score{} = score -> put_embed(changeset, :score, score)
       _params -> cast_embed(changeset, :score)
+    end
+  end
+
+  defp validate_pickup(changeset) do
+    pickup_error(
+      changeset,
+      get_field(changeset, :pickup_ticks),
+      get_field(changeset, :time_num),
+      get_field(changeset, :time_den)
+    )
+  end
+
+  # Common time (𝄴) only stands for 4/4 and cut time (𝄵) only for 2/2.
+  defp validate_time_symbol(changeset) do
+    symbol = get_field(changeset, :time_symbol)
+    meter = {get_field(changeset, :time_num), get_field(changeset, :time_den)}
+
+    case {symbol, meter} do
+      {:common, m} when m != {4, 4} -> add_error(changeset, :time_symbol, "common time is 4/4")
+      {:cut, m} when m != {2, 2} -> add_error(changeset, :time_symbol, "cut time is 2/2")
+      _ -> changeset
     end
   end
 end
