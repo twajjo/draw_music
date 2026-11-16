@@ -8,6 +8,7 @@ defmodule DrawMusicWeb.EditorSettings do
 
   alias DrawMusic.Library.{Key, Version}
   alias DrawMusic.Music.{Context, Editing, Session, TempoMarking}
+  alias DrawMusicWeb.Editor.VersionExtras
 
   @fields [
     :time_num,
@@ -186,9 +187,15 @@ defmodule DrawMusicWeb.EditorSettings do
     end
   end
 
-  @doc "What a save stores: the score, the settings it is read against, and its instrument."
-  @spec version_attrs(Session.t(), String.t() | nil, 0..127) :: map()
-  def version_attrs(%Session{score: score, ctx: ctx}, tempo_text, instrument) do
+  @doc """
+  What a save stores: the score, the settings it is read against, and what
+  is saved beside it (the tempo marking and instrument).
+  """
+  @spec version_attrs(Session.t(), VersionExtras.t()) :: map()
+  def version_attrs(%Session{score: score, ctx: ctx}, %VersionExtras{
+        tempo_text: tempo_text,
+        instrument: instrument
+      }) do
     %{
       score: score,
       time_num: ctx.time_num,

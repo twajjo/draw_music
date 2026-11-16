@@ -401,7 +401,7 @@ defmodule DrawMusicWeb.EditorPlayTest do
       hear_as(view, 73)
 
       assert has_element?(view, ~s(#transport[data-instrument*='"program":73']))
-      assert assigns(view).instrument == 0
+      assert assigns(view).extras.instrument == 0
       refute has_element?(view, "#dirty-marker")
       refute has_element?(view, "#use-playback-instrument[disabled]")
     end
@@ -420,7 +420,7 @@ defmodule DrawMusicWeb.EditorPlayTest do
 
       view |> element("#use-playback-instrument") |> render_click()
 
-      assert assigns(view).instrument == 73
+      assert assigns(view).extras.instrument == 73
       assert has_element?(view, "#dirty-marker")
       assert has_element?(view, "#use-playback-instrument[disabled]")
     end

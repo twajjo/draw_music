@@ -136,7 +136,7 @@ defmodule DrawMusicWeb.EditorSettingsTest do
       |> render_submit(%{"settings" => Map.put(@settings, "instrument", "128")})
 
       assert has_element?(view, "#settings-form", "must be less than or equal to 127")
-      assert :sys.get_state(view.pid).socket.assigns.instrument == 0
+      assert :sys.get_state(view.pid).socket.assigns.extras.instrument == 0
     end
 
     test "playback follows the version's new instrument", %{conn: conn} do

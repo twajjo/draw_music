@@ -36,7 +36,7 @@ defmodule DrawMusicWeb.EditorModeTest do
     canvas_hook(view, "select", %{"ids" => [g], "add" => false})
     play_mode(view)
 
-    assert assigns(view).armed == nil
+    assert assigns(view).palette.armed == nil
     assert MapSet.to_list(session_of(view).selection) == [g]
     assert has_element?(view, "#score-editor[data-mode=play]")
     assert has_element?(view, "#palette-mode-play[aria-pressed=true]")
@@ -60,7 +60,7 @@ defmodule DrawMusicWeb.EditorModeTest do
     canvas_hook(view, "select", %{"ids" => [g], "add" => false})
     canvas_hook(view, "copy")
     play_mode(view)
-    before = {notes_of(view), session_of(view).undo, assigns(view).armed, assigns(view).insert?}
+    before = {notes_of(view), session_of(view).undo, assigns(view).palette}
 
     palette_edits = [
       {"arm", %{"kind" => "note", "value" => "half"}},
@@ -94,8 +94,7 @@ defmodule DrawMusicWeb.EditorModeTest do
 
     for {event, params} <- canvas_edits, do: canvas_hook(view, event, params)
 
-    assert {notes_of(view), session_of(view).undo, assigns(view).armed, assigns(view).insert?} ==
-             before
+    assert {notes_of(view), session_of(view).undo, assigns(view).palette} == before
 
     assert assigns(view).dialog == nil
   end

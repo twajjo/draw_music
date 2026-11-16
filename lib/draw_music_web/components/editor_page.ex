@@ -59,8 +59,7 @@ defmodule DrawMusicWeb.EditorPage do
   attr :composition, :map, required: true
   attr :version, :map, required: true
   attr :insert?, :boolean, required: true
-  attr :tempo_text, :string, default: nil
-  attr :instrument, :integer, default: nil
+  attr :extras, :map, required: true, doc: "the `DrawMusicWeb.Editor.VersionExtras`"
 
   @doc """
   The one dialog (or the right-click menu) that is open, if any: at most
@@ -106,7 +105,7 @@ defmodule DrawMusicWeb.EditorPage do
       composition={@composition}
       version={@version}
       key={%{sf: @session.ctx.sf, mode: @session.ctx.mode}}
-      version_attrs={EditorSettings.version_attrs(@session, @tempo_text, @instrument)}
+      version_attrs={EditorSettings.version_attrs(@session, @extras)}
     />
     """
   end
@@ -117,8 +116,8 @@ defmodule DrawMusicWeb.EditorPage do
       module={SettingsDialog}
       id="settings"
       ctx={@session.ctx}
-      tempo_text={@tempo_text}
-      instrument={@instrument}
+      tempo_text={@extras.tempo_text}
+      instrument={@extras.instrument}
     />
     """
   end
