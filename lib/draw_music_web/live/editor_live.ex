@@ -47,7 +47,15 @@ defmodule DrawMusicWeb.EditorLive do
     VersionLookup
   }
 
-  alias DrawMusicWeb.Editor.{Palette, SaveMenu, ScoreCanvas, Transport}
+  alias DrawMusicWeb.Editor.{
+    Drawing,
+    Palette,
+    PaletteState,
+    SaveMenu,
+    ScoreCanvas,
+    Transport,
+    VersionExtras
+  }
 
   @draft_measures 4
 
@@ -65,15 +73,15 @@ defmodule DrawMusicWeb.EditorLive do
       <.live_component
         module={Palette}
         id="editor-palette"
-        armed={@armed}
-        row_kind={@row_kind}
-        insert?={@insert?}
+        armed={@palette.armed}
+        row_kind={@palette.row_kind}
+        insert?={@palette.insert?}
         selection={Session.selection_ids(@session)}
         can_undo?={@session.undo != []}
         can_redo?={@session.redo != []}
         mode={@session.ctx.mode}
         editor_mode={@editor_mode}
-        key_suggestion={@key_suggestion}
+        key_suggestion={@drawing.key_suggestion}
       >
         <:play_controls>
           <.live_component
@@ -82,9 +90,9 @@ defmodule DrawMusicWeb.EditorLive do
             score={@session.score}
             ctx={@session.ctx}
             selection={@session.selection}
-            engraved={@engraved}
+            engraved={@drawing.engraved}
             editor_mode={@editor_mode}
-            instrument={@instrument}
+            instrument={@extras.instrument}
             lines?={@current_scope.user.score_layout == :page}
           />
         </:play_controls>
@@ -105,7 +113,7 @@ defmodule DrawMusicWeb.EditorLive do
             id="saving"
             scope={@current_scope}
             version={@version}
-            version_attrs={EditorSettings.version_attrs(@session, @tempo_text, @instrument)}
+            version_attrs={EditorSettings.version_attrs(@session, @extras)}
             dirty?={@session.dirty?}
           />
         </:trailing>
@@ -116,14 +124,14 @@ defmodule DrawMusicWeb.EditorLive do
           module={ScoreCanvas}
           id="score-canvas"
           session={@session}
-          engraved={@engraved}
-          pieces={@pieces}
-          geometry_json={@geometry_json}
-          armed={@armed}
-          insert?={@insert?}
+          engraved={@drawing.engraved}
+          pieces={@drawing.pieces}
+          geometry_json={@drawing.geometry_json}
+          armed={@palette.armed}
+          insert?={@palette.insert?}
           editor_mode={@editor_mode}
           layout={@current_scope.user.score_layout}
-          loading?={@score_loading?}
+          loading?={@drawing.loading?}
           show_note_names?={@current_scope.user.show_note_names}
         />
         <.unsaved_guard dirty?={@session.dirty?} />
@@ -134,9 +142,8 @@ defmodule DrawMusicWeb.EditorLive do
           scope={@current_scope}
           composition={@composition}
           version={@version}
-          insert?={@insert?}
-          tempo_text={@tempo_text}
-          instrument={@instrument}
+          insert?={@palette.insert?}
+          extras={@extras}
         />
         <.preferences_panel :if={@preferences?} scope={@current_scope} close={@path} />
       </.score_paper>
@@ -155,14 +162,11 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign(:composition, composition)
      |> assign(:version, version)
      |> assign(:session, Session.new(version.score, Context.from_version(version)))
-     |> assign(armed: nil, row_kind: :note, insert?: true)
+     |> assign(:palette, %PaletteState{})
      # At most one dialog (or the right-click menu) is open at a time.
      |> assign(:dialog, nil)
      |> assign(:editor_mode, :edit)
-     # The tempo marking and instrument aren't part of the score's Context;
-     # they're saved beside it.
-     |> assign(:tempo_text, version.tempo_text)
-     |> assign(:instrument, version.instrument)
+     |> assign(:extras, VersionExtras.from_version(version))
      |> assign_placeholder()
      |> lay_out_after_join()}
   end
@@ -233,7 +237,7 @@ defmodule DrawMusicWeb.EditorLive do
     do: {:noreply, assign(socket, :dialog, dialog)}
 
   def handle_info({:editor, {:palette, changes}}, socket) do
-    {:noreply, assign(socket, Map.take(changes, [:armed, :row_kind, :insert?]))}
+    {:noreply, update(socket, :palette, &PaletteState.change(&1, changes))}
   end
 
   # (Leaving Play mode stops playback: `Editor.Transport` sees the mode.) A
@@ -242,7 +246,8 @@ defmodule DrawMusicWeb.EditorLive do
   def handle_info({:editor, {:mode, mode}}, socket) when mode in [:edit, :play] do
     {:noreply,
      socket
-     |> assign(editor_mode: mode, armed: nil)
+     |> assign(:editor_mode, mode)
+     |> update(:palette, &PaletteState.change(&1, %{armed: nil}))
      |> close_menu()
      |> narrow_selection_for(mode)}
   end
@@ -256,9 +261,13 @@ defmodule DrawMusicWeb.EditorLive do
 
   # The playback instrument, made the version's: unsaved work until saved.
   def handle_info({:editor, {:instrument, program}}, socket) do
-    %{session: session, instrument: old} = socket.assigns
+    %{session: session, extras: extras} = socket.assigns
 
-    {:noreply, assign(socket, session: touched(session, program, old), instrument: program)}
+    {:noreply,
+     assign(socket,
+       session: touched(session, program, extras.instrument),
+       extras: %{extras | instrument: program}
+     )}
   end
 
   # The version being edited was stored: carry on with it.
@@ -436,17 +445,15 @@ defmodule DrawMusicWeb.EditorLive do
   defp apply_settings(socket, key, fields) do
     case EditorSettings.apply(socket.assigns.session, fields) do
       {:ok, session} ->
-        %{tempo_text: old_text, instrument: old_instrument} = socket.assigns
-
-        session =
-          session
-          |> touched(fields.tempo_text, old_text)
-          |> touched(fields.instrument, old_instrument)
+        %{extras: old} = socket.assigns
+        extras = %VersionExtras{tempo_text: fields.tempo_text, instrument: fields.instrument}
 
         socket
-        |> assign(session: session, dialog: transpose_prompt(key, session.ctx))
-        |> assign(:tempo_text, fields.tempo_text)
-        |> assign(:instrument, fields.instrument)
+        |> assign(
+          session: touched(session, extras, old),
+          dialog: transpose_prompt(key, session.ctx)
+        )
+        |> assign(:extras, extras)
         |> assign_layout()
 
       {:error, reason} ->
@@ -466,9 +473,8 @@ defmodule DrawMusicWeb.EditorLive do
 
   ## Saving helpers
 
-  defp version_attrs(socket) do
-    %{session: session, tempo_text: tempo_text, instrument: instrument} = socket.assigns
-    EditorSettings.version_attrs(session, tempo_text, instrument)
+  defp version_attrs(%{assigns: %{session: session, extras: extras}}) do
+    EditorSettings.version_attrs(session, extras)
   end
 
   # A key change on a saved version is stored as a new version in that key;
@@ -500,7 +506,8 @@ defmodule DrawMusicWeb.EditorLive do
     |> push_navigate(to: version_path(saved.key.composition.id, saved.key, saved.number))
   end
 
-  # `:engraved`, not `:layout`: LiveView reserves the `layout` assign.
+  # Lays the score out again (`:drawing`; LiveView reserves the `layout`
+  # assign).
   defp assign_layout(socket) do
     %{session: session, current_scope: scope} = socket.assigns
     lay_out(socket, session.score, layout_width(scope.user.score_layout), false)
@@ -514,26 +521,32 @@ defmodule DrawMusicWeb.EditorLive do
   end
 
   defp lay_out(socket, score, width, loading?) do
-    ctx = socket.assigns.session.ctx
-    engraved = Layout.layout(score, ctx, width: width, marking: socket.assigns.tempo_text)
+    %{session: %{ctx: ctx}, extras: extras, current_scope: %{user: user}} = socket.assigns
+    engraved = Layout.layout(score, ctx, width: width, marking: extras.tempo_text)
 
     # The score goes to the browser in pieces, each one finished piece of
     # SVG, not as a LiveView diff of every glyph and line: a long piece has
     # tens of thousands, and building those one by one in the browser takes
     # long enough for the connection to time out. Parsed whole, it's quick,
     # and only the pieces an edit changes are sent again.
-    socket
-    |> assign(:engraved, engraved)
-    |> assign_pieces()
-    |> assign(:geometry_json, Jason.encode!(EditorGeometry.encode(engraved, ctx)))
-    |> assign(:score_loading?, loading?)
-    |> assign(:key_suggestion, KeySuggestion.suggest(score, {ctx.sf, ctx.mode}))
+    assign(socket, :drawing, %Drawing{
+      engraved: engraved,
+      pieces: pieces(engraved, user),
+      geometry_json: Jason.encode!(EditorGeometry.encode(engraved, ctx)),
+      loading?: loading?,
+      key_suggestion: KeySuggestion.suggest(score, {ctx.sf, ctx.mode})
+    })
   end
 
-  # The pieces drawn from the engraving, with the user's reading aids (only
-  # here: the export draws the engraving without them).
+  # The pieces drawn again, for a new reading-aid preference.
   defp assign_pieces(socket) do
-    %{engraved: engraved, current_scope: %{user: user}} = socket.assigns
-    assign(socket, :pieces, ScoreSvg.pieces(ReadingAids.add(engraved, user), user.score_layout))
+    %{drawing: drawing, current_scope: %{user: user}} = socket.assigns
+    assign(socket, :drawing, %{drawing | pieces: pieces(drawing.engraved, user)})
+  end
+
+  # The engraving drawn, with the user's reading aids (only here: the export
+  # draws the engraving without them).
+  defp pieces(engraved, user) do
+    ScoreSvg.pieces(ReadingAids.add(engraved, user), user.score_layout)
   end
 end

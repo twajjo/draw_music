@@ -34,6 +34,12 @@ and save menu slots), and the paper holding the canvas, the guard, help,
 `preferences?` stay as they are. The tests that read `assigns(view).armed`,
 `.insert?` and `.instrument` read them through the new structs.
 
+As built: the structs live in `lib/draw_music_web/live/editor/`.
+`PaletteState.change/2` applies a `{:palette, changes}` intent;
+`EditorSettings.version_attrs/2` and `EditorPage.open_dialog/1` take the
+`VersionExtras`. The settings and play tests read `extras.instrument`, the
+mode tests `palette`.
+
 ## Afterwards
 PR 13, the function-order sweep (`editing.ex`, `transport.ex` and the rest),
 then measure locks.
