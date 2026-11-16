@@ -1,7 +1,8 @@
 defmodule DrawMusicWeb.EditorLive do
   @moduledoc """
   The score editor, in the user's preferred layout (one long staff or
-  page-style systems). `:show` opens a saved version; `:new` (the main
+  page-style systems) to start with; the palette switches it for the
+  session (`DrawMusicWeb.Editor.View`). `:show` opens a saved version; `:new` (the main
   page) starts a blank, unsaved composition: C major, 4/4, four empty
   measures.
 
@@ -54,7 +55,8 @@ defmodule DrawMusicWeb.EditorLive do
     SaveMenu,
     ScoreCanvas,
     Transport,
-    VersionExtras
+    VersionExtras,
+    View
   }
 
   @draft_measures 4
@@ -224,11 +226,12 @@ defmodule DrawMusicWeb.EditorLive do
     end
   end
 
-  # A new layout preference: the score is laid out again in it.
-  def handle_info({LayoutToggle, {:updated, user}}, socket) do
+  # The palette's Page / Strip: the score in that layout, for this session
+  # only (the preference stays as it is).
+  def handle_info({LayoutToggle, {:chosen, layout}}, socket) do
     {:noreply,
      socket
-     |> assign(:current_scope, %{socket.assigns.current_scope | user: user})
+     |> update(:view, &%{&1 | layout: layout})
      |> assign_layout()}
   end
 
@@ -276,6 +279,7 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign(:dialog, nil)
      |> assign(:editor_mode, :edit)
      |> assign(:extras, VersionExtras.from_version(version))
+     |> assign(:view, View.from_user(socket.assigns.current_scope.user))
      |> assign_placeholder()
      |> lay_out_after_join()}
   end
@@ -314,7 +318,7 @@ defmodule DrawMusicWeb.EditorLive do
             engraved={@drawing.engraved}
             editor_mode={@editor_mode}
             instrument={@extras.instrument}
-            lines?={@current_scope.user.score_layout == :page}
+            lines?={@view.layout == :page}
           />
         </:play_controls>
         <:below_mode>
@@ -323,7 +327,7 @@ defmodule DrawMusicWeb.EditorLive do
           <.live_component
             module={LayoutToggle}
             id="score-layout"
-            scope={@current_scope}
+            layout={@view.layout}
             class="contents"
             button_class="row-start-2 h-auto w-full"
           />
@@ -340,7 +344,7 @@ defmodule DrawMusicWeb.EditorLive do
         </:trailing>
       </.live_component>
 
-      <.score_paper layout={@current_scope.user.score_layout}>
+      <.score_paper layout={@view.layout}>
         <.live_component
           module={ScoreCanvas}
           id="score-canvas"
@@ -351,7 +355,7 @@ defmodule DrawMusicWeb.EditorLive do
           armed={@palette.armed}
           insert?={@palette.insert?}
           editor_mode={@editor_mode}
-          layout={@current_scope.user.score_layout}
+          layout={@view.layout}
           loading?={@drawing.loading?}
           show_note_names?={@current_scope.user.show_note_names}
         />
@@ -410,21 +414,20 @@ defmodule DrawMusicWeb.EditorLive do
   # Lays the score out again (`:drawing`; LiveView reserves the `layout`
   # assign).
   defp assign_layout(socket) do
-    %{session: session, current_scope: scope} = socket.assigns
-    lay_out(socket, session.score, layout_width(scope.user.score_layout), false)
+    %{session: session, view: view} = socket.assigns
+    lay_out(socket, session.score, layout_width(view.layout), false)
   end
 
   # The pieces drawn again, for a new reading-aid preference.
   defp assign_pieces(socket) do
-    %{drawing: drawing, current_scope: %{user: user}} = socket.assigns
-    assign(socket, :drawing, %{drawing | pieces: pieces(drawing.engraved, user)})
+    %{drawing: drawing, current_scope: %{user: user}, view: view} = socket.assigns
+    assign(socket, :drawing, %{drawing | pieces: pieces(drawing.engraved, user, view)})
   end
 
   # Until the score is engraved (the static page, and the join), an empty
   # bar stands in, with a note that the score is loading.
   defp assign_placeholder(socket) do
-    width = layout_width(socket.assigns.current_scope.user.score_layout)
-    lay_out(socket, Score.new(), width, true)
+    lay_out(socket, Score.new(), layout_width(socket.assigns.view.layout), true)
   end
 
   # Switching modes closes a right-click menu, but not a dialog.
@@ -458,13 +461,15 @@ defmodule DrawMusicWeb.EditorLive do
     end
   end
 
-  # The editor in `user`'s preferences (stored or previewed).
+  # The editor in `user`'s preferences (stored or previewed); the view
+  # follows a changed layout preference.
   defp follow_user(socket, user) do
-    %{current_scope: scope} = socket.assigns
+    %{current_scope: scope, view: view} = socket.assigns
+    new_view = View.follow(view, scope.user, user)
 
     socket
-    |> assign(:current_scope, %{scope | user: user})
-    |> redraw_for(scope.user, user)
+    |> assign(current_scope: %{scope | user: user}, view: new_view)
+    |> redraw_for({scope.user, view}, {user, new_view})
   end
 
   defp history_step(session, :undo), do: Session.undo(session)
@@ -493,7 +498,9 @@ defmodule DrawMusicWeb.EditorLive do
   end
 
   defp lay_out(socket, score, width, loading?) do
-    %{session: %{ctx: ctx}, extras: extras, current_scope: %{user: user}} = socket.assigns
+    %{session: %{ctx: ctx}, extras: extras, current_scope: %{user: user}, view: view} =
+      socket.assigns
+
     engraved = Layout.layout(score, ctx, width: width, marking: extras.tempo_text)
 
     # The score goes to the browser in pieces, each one finished piece of
@@ -503,7 +510,7 @@ defmodule DrawMusicWeb.EditorLive do
     # and only the pieces an edit changes are sent again.
     assign(socket, :drawing, %Drawing{
       engraved: engraved,
-      pieces: pieces(engraved, user),
+      pieces: pieces(engraved, user, view),
       geometry_json: Jason.encode!(EditorGeometry.encode(engraved, ctx)),
       loading?: loading?,
       key_suggestion: KeySuggestion.suggest(score, {ctx.sf, ctx.mode})
@@ -537,15 +544,16 @@ defmodule DrawMusicWeb.EditorLive do
 
   # The engraving drawn, with the user's reading aids (only here: the export
   # draws the engraving without them).
-  defp pieces(engraved, user) do
-    ScoreSvg.pieces(ReadingAids.add(engraved, user), user.score_layout)
+  defp pieces(engraved, user, %View{layout: layout}) do
+    ScoreSvg.pieces(ReadingAids.add(engraved, user), layout)
   end
 
-  # A new layout lays the score out again; other preferences redraw its
-  # pieces (the reading aids are in them; the ink is read when drawn).
+  # From `{user, view}` to another: a new layout lays the score out again;
+  # other preferences redraw its pieces (the reading aids are in them; the
+  # ink is read when drawn).
   defp redraw_for(socket, same, same), do: socket
 
-  defp redraw_for(socket, %{score_layout: layout}, %{score_layout: layout}),
+  defp redraw_for(socket, {_old, %View{layout: layout}}, {_new, %View{layout: layout}}),
     do: assign_pieces(socket)
 
   defp redraw_for(socket, _old, _new), do: assign_layout(socket)

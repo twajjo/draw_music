@@ -420,6 +420,13 @@ defmodule DrawMusicWeb.Shortcuts do
       action:
         "Switch between Edit and Play: each has its own palette, in Play mode nothing can change the score, and going back to Edit narrows a selected range to its first note"
     },
+    %Shortcut{
+      group: "Modes",
+      mouse: "Page / Strip, under Edit and Play",
+      modes: @both,
+      action:
+        "Show the score in rows like sheet music (Page) or as one long staff (Strip), for now only: each score opens in the layout set in Preferences"
+    },
     %Shortcut{group: "Modes", keys: ["?"], modes: @both, action: "Show this cheat-sheet"}
   ]
 

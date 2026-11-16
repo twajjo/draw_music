@@ -1,24 +1,23 @@
 defmodule DrawMusicWeb.LayoutToggle do
   @moduledoc """
-  Switches the user's score layout between page-style systems ("Page") and
-  one long staff ("Strip"), and saves the choice as their preference.
+  Switches a score's layout between page-style systems ("Page") and one long
+  staff ("Strip"). It's a view choice: it stores nothing, and the parent
+  decides how long it lasts (the editor: the session).
 
-  A standalone LiveComponent: it saves the preference itself and works in
-  any LiveView.
+  A standalone LiveComponent that works in any LiveView.
 
   ## Inputs
-    * `:id` — the component's id; each button's id is `"<id>-page"` or
+    * `:id`: the component's id; each button's id is `"<id>-page"` or
       `"<id>-strip"`.
-    * `:scope` — the signed-in user's `DrawMusic.Accounts.Scope` (required);
-      its user's `score_layout` is the one shown as chosen.
-    * `:class` — extra classes for the group (e.g. `contents`, so the buttons
+    * `:layout`: the layout shown now (`:page` or `:strip`), drawn as chosen.
+    * `:class`: extra classes for the group (e.g. `contents`, so the buttons
       join the caller's grid).
-    * `:button_class` — extra classes for each button.
+    * `:button_class`: extra classes for each button.
 
   ## Messages to the parent
   Sent as `{DrawMusicWeb.LayoutToggle, message}`:
-    * `{:updated, user}` — the new layout is saved. The parent puts `user`
-      in its scope (and lays its score out again, if it shows one).
+    * `{:chosen, layout}`: a different layout was picked. The parent shows
+      its score in it.
 
   ## Browser events
   Before asking for a different layout, it dispatches `"score:redraw"`
@@ -28,28 +27,23 @@ defmodule DrawMusicWeb.LayoutToggle do
 
   use DrawMusicWeb, :live_component
 
-  alias DrawMusic.Accounts
-  alias DrawMusic.Accounts.Scope
-
   @layouts [
     {:page, "Page", "Rows, like sheet music"},
     {:strip, "Strip", "One long staff"}
   ]
 
-  @type message :: {:updated, DrawMusic.Accounts.User.t()}
+  @type message :: {:chosen, :page | :strip}
 
-  # A refused layout (only a tampered request) leaves the preference as it was.
+  # Only the two layouts are taken (anything else is a tampered request).
   @impl true
   @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
-  def handle_event("set", %{"layout" => layout}, socket) do
-    case Accounts.update_user_preferences(socket.assigns.scope, %{score_layout: layout}) do
-      {:ok, user} -> send(self(), {__MODULE__, {:updated, user}})
-      {:error, _changeset} -> :ignored
-    end
-
+  def handle_event("set", %{"layout" => layout}, socket) when layout in ["page", "strip"] do
+    send(self(), {__MODULE__, {:chosen, String.to_existing_atom(layout)}})
     {:noreply, socket}
   end
+
+  def handle_event("set", _params, socket), do: {:noreply, socket}
 
   @impl true
   @spec render(map()) :: Phoenix.LiveView.Rendered.t()
@@ -62,7 +56,7 @@ defmodule DrawMusicWeb.LayoutToggle do
         layout={layout}
         label={label}
         hint={hint}
-        current={@scope.user.score_layout}
+        current={@layout}
         class={@button_class}
         target={@myself}
       />
@@ -72,17 +66,17 @@ defmodule DrawMusicWeb.LayoutToggle do
 
   @impl true
   @spec update(map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
-  def update(%{scope: %Scope{}} = assigns, socket) do
+  def update(%{layout: layout} = assigns, socket) when layout in [:page, :strip] do
     {:ok,
      socket
-     |> assign(Map.take(assigns, [:id, :scope]))
+     |> assign(Map.take(assigns, [:id, :layout]))
      |> assign(class: assigns[:class], button_class: assigns[:button_class], layouts: @layouts)}
   end
 
-  def update(_assigns, _socket), do: raise(ArgumentError, "LayoutToggle needs a :scope")
+  def update(_assigns, _socket), do: raise(ArgumentError, "LayoutToggle needs a :layout")
 
-  # Choosing the current layout again changes nothing to redraw.
-  defp choose(layout, layout, target), do: JS.push("set", target: target)
+  # The current layout again changes nothing.
+  defp choose(layout, layout, _target), do: nil
 
   defp choose(_current, layout, target) do
     "score:redraw"
