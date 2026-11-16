@@ -39,14 +39,6 @@ defmodule DrawMusicWeb.EditorPalette do
     two_hundred_fifty_sixth: :rest256th
   }
 
-  @doc "Parses a note value name; nil for anything else."
-  @spec value(term()) :: Duration.value() | nil
-  def value(name), do: Map.get(@values, name)
-
-  @doc "Parses a chord quality name; nil for anything else."
-  @spec quality(term()) :: Chords.quality() | nil
-  def quality(name), do: Map.get(@qualities, name)
-
   @doc ~s(Parses an accidental: "1" sharp, "-1" flat, "0" natural; nil for anything else.)
   @spec alter(term()) :: -1..1 | nil
   def alter(name) when name in ~w(1 -1 0), do: String.to_integer(name)
@@ -77,6 +69,23 @@ defmodule DrawMusicWeb.EditorPalette do
     end
   end
 
+  @doc """
+  Chord mode: places `chord` at the armed note's length, dots and
+  accidental (a quarter with nothing armed), whichever was picked first.
+  Picking the chord that is already on turns chord mode off.
+  """
+  @spec arm_chord(Armed.t() | nil, Armed.chord()) :: Armed.t()
+  def arm_chord(%Armed{kind: :chord, chord: chord} = armed, chord), do: single_notes(armed)
+
+  def arm_chord(%Armed{kind: kind} = armed, chord) when kind in [:note, :chord],
+    do: %{armed | kind: :chord, chord: chord}
+
+  def arm_chord(_armed, chord), do: %Armed{kind: :chord, value: :quarter, chord: chord}
+
+  @doc "Arms the tie tool."
+  @spec arm_tie() :: Armed.t()
+  def arm_tie, do: %Armed{kind: :tie, value: :quarter}
+
   @doc "Parses a chord pick: a quality or a scale degree; `:error` for anything else."
   @spec chord(map()) :: {:ok, Armed.chord()} | :error
   def chord(%{"quality" => name}) do
@@ -91,27 +100,45 @@ defmodule DrawMusicWeb.EditorPalette do
 
   def chord(_params), do: :error
 
-  @doc """
-  Chord mode: places `chord` at the armed note's length, dots and
-  accidental (a quarter with nothing armed), whichever was picked first.
-  Picking the chord that is already on turns chord mode off.
-  """
-  @spec arm_chord(Armed.t() | nil, Armed.chord()) :: Armed.t()
-  def arm_chord(%Armed{kind: :chord, chord: chord} = armed, chord), do: single_notes(armed)
+  @doc "The character drawn as the cursor for an armed item (nil for the tie tool)."
+  @spec cursor_glyph(Armed.t()) :: String.t() | nil
+  def cursor_glyph(%Armed{kind: :note, value: value}) do
+    Smufl.char(Map.fetch!(@note_glyphs, value))
+  end
 
-  def arm_chord(%Armed{kind: kind} = armed, chord) when kind in [:note, :chord],
-    do: %{armed | kind: :chord, chord: chord}
+  def cursor_glyph(%Armed{kind: :rest, value: value}) do
+    Smufl.char(Map.fetch!(@rest_glyphs, value))
+  end
 
-  def arm_chord(_armed, chord), do: %Armed{kind: :chord, value: :quarter, chord: chord}
+  def cursor_glyph(%Armed{kind: :chord}), do: Smufl.char(:noteheadBlack)
+  def cursor_glyph(%Armed{kind: :tie}), do: nil
+
+  @doc "Whether the armed item can take a dot."
+  @spec dottable?(Armed.t() | nil) :: boolean()
+  def dottable?(%Armed{value: value}) when not is_nil(value), do: Duration.dots_allowed?(value, 1)
+  def dottable?(_armed), do: true
+
+  @doc "Parses a chord quality name; nil for anything else."
+  @spec quality(term()) :: Chords.quality() | nil
+  def quality(name), do: Map.get(@qualities, name)
+
+  @doc "Sets the armed item's accidental; choosing the same one again clears it."
+  @spec set_accidental(Armed.t(), -2..2) :: Armed.t()
+  def set_accidental(%Armed{alter: alter} = armed, alter), do: %{armed | alter: nil}
+  def set_accidental(%Armed{} = armed, alter), do: %{armed | alter: alter}
 
   @doc "Turns chord mode off, keeping the length, dots and accidental."
   @spec single_notes(Armed.t() | nil) :: Armed.t() | nil
   def single_notes(%Armed{kind: :chord} = armed), do: %{armed | kind: :note, chord: nil}
   def single_notes(armed), do: armed
 
-  @doc "Arms the tie tool."
-  @spec arm_tie() :: Armed.t()
-  def arm_tie, do: %Armed{kind: :tie, value: :quarter}
+  @doc "Toggles one dot on the armed item (never on a 256th, which takes none)."
+  @spec toggle_dot(Armed.t()) :: Armed.t()
+  def toggle_dot(%Armed{dots: 0, value: value} = armed) do
+    %{armed | dots: if(Duration.dots_allowed?(value, 1), do: 1, else: 0)}
+  end
+
+  def toggle_dot(%Armed{} = armed), do: %{armed | dots: 0}
 
   @doc """
   Flips the duration row between notes and rests, converting an armed note
@@ -133,34 +160,7 @@ defmodule DrawMusicWeb.EditorPalette do
     {row_kind, armed}
   end
 
-  @doc "Toggles one dot on the armed item (never on a 256th, which takes none)."
-  @spec toggle_dot(Armed.t()) :: Armed.t()
-  def toggle_dot(%Armed{dots: 0, value: value} = armed) do
-    %{armed | dots: if(Duration.dots_allowed?(value, 1), do: 1, else: 0)}
-  end
-
-  def toggle_dot(%Armed{} = armed), do: %{armed | dots: 0}
-
-  @doc "Whether the armed item can take a dot."
-  @spec dottable?(Armed.t() | nil) :: boolean()
-  def dottable?(%Armed{value: value}) when not is_nil(value), do: Duration.dots_allowed?(value, 1)
-  def dottable?(_armed), do: true
-
-  @doc "Sets the armed item's accidental; choosing the same one again clears it."
-  @spec set_accidental(Armed.t(), -2..2) :: Armed.t()
-  def set_accidental(%Armed{alter: alter} = armed, alter), do: %{armed | alter: nil}
-  def set_accidental(%Armed{} = armed, alter), do: %{armed | alter: alter}
-
-  @doc "The character drawn as the cursor for an armed item (nil for the tie tool)."
-  @spec cursor_glyph(Armed.t()) :: String.t() | nil
-  def cursor_glyph(%Armed{kind: :note, value: value}) do
-    Smufl.char(Map.fetch!(@note_glyphs, value))
-  end
-
-  def cursor_glyph(%Armed{kind: :rest, value: value}) do
-    Smufl.char(Map.fetch!(@rest_glyphs, value))
-  end
-
-  def cursor_glyph(%Armed{kind: :chord}), do: Smufl.char(:noteheadBlack)
-  def cursor_glyph(%Armed{kind: :tie}), do: nil
+  @doc "Parses a note value name; nil for anything else."
+  @spec value(term()) :: Duration.value() | nil
+  def value(name), do: Map.get(@values, name)
 end

@@ -20,7 +20,6 @@ defmodule DrawMusicWeb.Palette.KeyMenu do
   @doc "The Suggest key button and its drop list of keys."
   attr :suggestion, KeySuggestion, required: true
   attr :target, :any, required: true
-
   @spec key_menu(map()) :: Phoenix.LiveView.Rendered.t()
   def key_menu(assigns) do
     ~H"""
@@ -54,7 +53,6 @@ defmodule DrawMusicWeb.Palette.KeyMenu do
 
   attr :fit, KeyFit, required: true
   attr :target, :any, required: true
-
   # One key to re-key the score in, with the accidentals it would leave.
   defp key_choice(assigns) do
     ~H"""

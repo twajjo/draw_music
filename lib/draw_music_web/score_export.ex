@@ -37,6 +37,16 @@ defmodule DrawMusicWeb.ScoreExport do
   # Decimal places kept in SVG numbers.
   @precision 3
 
+  @doc "Download filename, e.g. `Waltz - G major - v2.svg` (or `.mid`)."
+  @spec filename(Version.t()) :: String.t()
+  @spec filename(Version.t(), String.t()) :: String.t()
+  def filename(
+        %Version{key: %Key{composition: composition} = key, number: number},
+        extension \\ "svg"
+      ) do
+    "#{composition.name} - #{Key.name(key)} - v#{number}.#{extension}"
+  end
+
   @doc "The SVG document for a version with its key and composition loaded."
   @spec svg(Version.t()) :: String.t()
   def svg(%Version{key: %Key{composition: %Composition{} = composition}} = version) do
@@ -112,19 +122,7 @@ defmodule DrawMusicWeb.ScoreExport do
     |> strip_root_markers()
   end
 
-  # LiveView marks template root tags with a valueless `phx-r` attribute.
-  # That is fine in HTML but not in XML, which a standalone SVG must be.
-  defp strip_root_markers(svg), do: String.replace(svg, ~r/ phx-r(?=[\s>\/])/, "")
-
-  @doc "Download filename, e.g. `Waltz - G major - v2.svg` (or `.mid`)."
-  @spec filename(Version.t()) :: String.t()
-  @spec filename(Version.t(), String.t()) :: String.t()
-  def filename(
-        %Version{key: %Key{composition: composition} = key, number: number},
-        extension \\ "svg"
-      ) do
-    "#{composition.name} - #{Key.name(key)} - v#{number}.#{extension}"
-  end
+  defp credit_line_height, do: @credit_size + @credit_leading
 
   defp credit_lines(composition) do
     [
@@ -136,18 +134,27 @@ defmodule DrawMusicWeb.ScoreExport do
     |> Enum.reject(&(&1 in [nil, ""]))
   end
 
-  defp mm_per_space, do: @mm_per_space
-  defp margin, do: @margin
-  defp title_size, do: @title_size
-  defp subtitle_size, do: @subtitle_size
-  defp credit_size, do: @credit_size
-  defp subtitle_drop, do: @subtitle_drop
   defp credit_raise, do: @credit_raise
-  defp credit_line_height, do: @credit_size + @credit_leading
+
+  defp credit_size, do: @credit_size
+
+  defp margin, do: @margin
+
+  defp mm_per_space, do: @mm_per_space
+
+  defp n(x) when is_integer(x), do: x
+  defp n(x), do: Float.round(x, @precision)
+
+  # LiveView marks template root tags with a valueless `phx-r` attribute.
+  # That is fine in HTML but not in XML, which a standalone SVG must be.
+  defp strip_root_markers(svg), do: String.replace(svg, ~r/ phx-r(?=[\s>\/])/, "")
+
+  defp subtitle_drop, do: @subtitle_drop
 
   defp subtitle_height(%Composition{subtitle: nil}), do: 0
   defp subtitle_height(_composition), do: @subtitle_size + @subtitle_gap
 
-  defp n(x) when is_integer(x), do: x
-  defp n(x), do: Float.round(x, @precision)
+  defp subtitle_size, do: @subtitle_size
+
+  defp title_size, do: @title_size
 end

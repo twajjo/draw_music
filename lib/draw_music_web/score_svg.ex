@@ -43,10 +43,22 @@ defmodule DrawMusicWeb.ScoreSvg do
   @spec padding() :: number()
   def padding, do: @padding
 
-  @doc "Whole systems as SVG groups (`<g>`), in staff-space units."
-  @spec systems([System.t()], MapSet.t()) :: iodata()
-  def systems(systems, selection) do
-    Enum.map(systems, &group({&1.index, &1.y, &1.items}, true, selection, :all))
+  @doc "A piece's `<svg>`, sized at `space` pixels per staff space in Strip layout."
+  @spec piece(ScorePiece.t(), pos_integer()) :: iodata()
+  def piece(%ScorePiece{} = piece, space) do
+    width = piece.x1 - piece.x0
+    height = piece.y1 - piece.y0
+    range = if piece.whole?, do: :all, else: {piece.x0, piece.x1}
+
+    [
+      ~s(<svg xmlns="http://www.w3.org/2000/svg" viewBox="),
+      join([piece.x0, piece.y0, width, height], " "),
+      ~s(" ),
+      size(piece.whole?, width, height, space),
+      ~s(>),
+      Enum.map(piece.groups, &group(&1, false, piece.selected, range)),
+      "</svg>"
+    ]
   end
 
   @doc """
@@ -98,91 +110,35 @@ defmodule DrawMusicWeb.ScoreSvg do
   # A score with no systems, or Strip laid out as several, draws whole.
   def pieces(%Engraved{} = engraved, _layout), do: pieces(engraved, :page)
 
-  @doc "A piece's `<svg>`, sized at `space` pixels per staff space in Strip layout."
-  @spec piece(ScorePiece.t(), pos_integer()) :: iodata()
-  def piece(%ScorePiece{} = piece, space) do
-    width = piece.x1 - piece.x0
-    height = piece.y1 - piece.y0
-    range = if piece.whole?, do: :all, else: {piece.x0, piece.x1}
-
-    [
-      ~s(<svg xmlns="http://www.w3.org/2000/svg" viewBox="),
-      join([piece.x0, piece.y0, width, height], " "),
-      ~s(" ),
-      size(piece.whole?, width, height, space),
-      ~s(>),
-      Enum.map(piece.groups, &group(&1, false, piece.selected, range)),
-      "</svg>"
-    ]
-  end
-
-  # Page pieces fill the column's width; Strip pieces are drawn to scale.
-  defp size(true = _whole?, _width, _height, _space), do: ~s(class="block h-auto w-full")
-
-  defp size(false, width, height, space) do
-    [~s(class="block" width="), n(width * space), ~s(" height="), n(height * space), ~s(")]
-  end
-
-  # Runs of bars, each starting at its first bar's left edge; the first and
-  # last reach the score's edges.
-  defp strip_edges(%System{measures: measures}, width) do
-    starts =
-      measures
-      |> Enum.chunk_every(@strip_bars)
-      |> Enum.drop(1)
-      |> Enum.map(&hd(&1).x)
-
-    [-@padding | starts] ++ [width + @padding]
-  end
-
-  # The x range an item takes. Glyphs and the brace count only where they
-  # start, so each lands in one run and keeps a single element; lines,
-  # beams, ties and tempo marks go in every run they cross, each drawing
-  # (and clipping) its part.
-  defp x_span(%Glyph{x: x}), do: {x, x}
-  defp x_span(%Brace{x: x}), do: {x, x}
-  defp x_span(%ReadingAid{x: x}), do: {x, x}
-
-  defp x_span(%TempoMark{} = mark) do
-    {mark.x, (mark.line_to || mark.x + mark.width) + @tempo_end_room}
-  end
-
-  defp x_span(%{x1: a, x2: b}), do: {min(a, b), max(a, b)}
-
-  # The run holding x: the last whose start is at or before it (the first
-  # for anything left of the score).
-  defp run_at(starts, x), do: run_at(starts, x, 0, tuple_size(starts) - 1)
-
-  defp run_at(_starts, _x, low, high) when low >= high, do: low
-
-  defp run_at(starts, x, low, high) do
-    mid = div(low + high + 1, 2)
-
-    case elem(starts, mid) <= x do
-      true -> run_at(starts, x, mid, high)
-      false -> run_at(starts, x, low, mid - 1)
-    end
-  end
-
   @doc "Marks which of each piece's notes, rests and tempo marks are in `selection`."
   @spec select([ScorePiece.t()], MapSet.t()) :: [ScorePiece.t()]
   def select(pieces, selection), do: Enum.map(pieces, &select_in(&1, selection))
 
-  defp select_in(%ScorePiece{} = piece, selection) do
-    selected =
-      for {_index, _y, items} <- piece.groups,
-          item <- items,
-          id = selectable_id(item),
-          MapSet.member?(selection, id),
-          into: MapSet.new(),
-          do: id
-
-    %{piece | selected: selected}
+  @doc "Whole systems as SVG groups (`<g>`), in staff-space units."
+  @spec systems([System.t()], MapSet.t()) :: iodata()
+  def systems(systems, selection) do
+    Enum.map(systems, &group({&1.index, &1.y, &1.items}, true, selection, :all))
   end
 
-  defp selectable_id(%Glyph{id: id}), do: id
-  defp selectable_id(%TempoMark{id: id}), do: id
-  defp selectable_id(_item), do: nil
+  # ` name="value"`; nothing for a nil or false value.
+  defp attr(_name, value) when value in [nil, false], do: []
+  defp attr(name, value), do: [" ", name, ~s(="), to_iodata(value), ~s(")]
+
+  defp beam_points(%Beam{x1: x1, y1: y1, x2: x2, y2: y2, thickness: t}) do
+    [{x1, y1}, {x2, y2}, {x2, y2 + t}, {x1, y1 + t}]
+    |> Enum.map(fn {x, y} -> [n(x), ",", n(y)] end)
+    |> Enum.intersperse(" ")
+  end
+
+  defp dom_id(%Glyph{role: :notehead, id: id}), do: "note-#{id}"
+  defp dom_id(%Glyph{role: :rest, id: id}) when is_binary(id), do: "rest-#{id}"
+  defp dom_id(_glyph), do: nil
+
+  defp escape(text) do
+    text
+    |> Phoenix.HTML.html_escape()
+    |> Phoenix.HTML.safe_to_string()
+  end
 
   # A system's items under its translation, with its index. In the export
   # it also has the system's id (the editor gives that to the piece).
@@ -200,6 +156,9 @@ defmodule DrawMusicWeb.ScoreSvg do
       "</g>"
     ]
   end
+
+  defp in_range?(_x, :all), do: true
+  defp in_range?(x, {x0, x1}), do: x >= x0 and x < x1
 
   defp item(%Glyph{} = glyph, selection, _range) do
     [
@@ -321,33 +280,63 @@ defmodule DrawMusicWeb.ScoreSvg do
     ]
   end
 
-  defp tempo_text(x, y, words, class, id) do
-    [
-      "<g",
-      attr("id", id),
-      attr("class", class),
-      "><text",
-      attr("x", n(x)),
-      attr("y", n(y)),
-      attr("font-family", "Bravura"),
-      attr("font-size", @tempo_note_size),
-      ">",
-      Smufl.char(:metNoteQuarterUp),
-      "</text><text",
-      attr("x", n(x + @tempo_note_width)),
-      attr("y", n(y)),
-      attr("font-weight", "bold"),
-      ">",
-      escape(words),
-      "</text></g>"
-    ]
+  defp join(numbers, separator) do
+    numbers
+    |> Enum.map(&n/1)
+    |> Enum.intersperse(separator)
   end
 
-  defp tempo_label(%TempoMark{start?: false}, _range), do: []
+  defp n(x) when is_integer(x), do: Integer.to_string(x)
+  defp n(x) when is_float(x), do: :erlang.float_to_binary(x, [{:decimals, @precision}, :compact])
 
-  defp tempo_label(%TempoMark{} = mark, range) do
-    id = in_range?(mark.x, range) && "tempo-#{mark.id}"
-    tempo_text(mark.x, mark.y, TempoMark.label(mark), "tempo-label", id)
+  # The run holding x: the last whose start is at or before it (the first
+  # for anything left of the score).
+  defp run_at(starts, x), do: run_at(starts, x, 0, tuple_size(starts) - 1)
+
+  defp run_at(_starts, _x, low, high) when low >= high, do: low
+
+  defp run_at(starts, x, low, high) do
+    mid = div(low + high + 1, 2)
+
+    case elem(starts, mid) <= x do
+      true -> run_at(starts, x, mid, high)
+      false -> run_at(starts, x, low, mid - 1)
+    end
+  end
+
+  defp select_in(%ScorePiece{} = piece, selection) do
+    selected =
+      for {_index, _y, items} <- piece.groups,
+          item <- items,
+          id = selectable_id(item),
+          MapSet.member?(selection, id),
+          into: MapSet.new(),
+          do: id
+
+    %{piece | selected: selected}
+  end
+
+  defp selectable_id(%Glyph{id: id}), do: id
+  defp selectable_id(%TempoMark{id: id}), do: id
+  defp selectable_id(_item), do: nil
+
+  # Page pieces fill the column's width; Strip pieces are drawn to scale.
+  defp size(true = _whole?, _width, _height, _space), do: ~s(class="block h-auto w-full")
+
+  defp size(false, width, height, space) do
+    [~s(class="block" width="), n(width * space), ~s(" height="), n(height * space), ~s(")]
+  end
+
+  # Runs of bars, each starting at its first bar's left edge; the first and
+  # last reach the score's edges.
+  defp strip_edges(%System{measures: measures}, width) do
+    starts =
+      measures
+      |> Enum.chunk_every(@strip_bars)
+      |> Enum.drop(1)
+      |> Enum.map(&hd(&1).x)
+
+    [-@padding | starts] ++ [width + @padding]
   end
 
   defp tempo_end(%TempoMark{end?: false}, _end_x, _range), do: []
@@ -355,6 +344,13 @@ defmodule DrawMusicWeb.ScoreSvg do
   defp tempo_end(%TempoMark{} = mark, end_x, range) do
     id = in_range?(end_x, range) && "tempo-end-#{mark.id}"
     tempo_text(end_x, mark.y, TempoMark.end_label(mark), "tempo-end", id)
+  end
+
+  defp tempo_label(%TempoMark{start?: false}, _range), do: []
+
+  defp tempo_label(%TempoMark{} = mark, range) do
+    id = in_range?(mark.x, range) && "tempo-#{mark.id}"
+    tempo_text(mark.x, mark.y, TempoMark.label(mark), "tempo-label", id)
   end
 
   defp tempo_line(%TempoMark{line_to: nil}), do: []
@@ -375,17 +371,26 @@ defmodule DrawMusicWeb.ScoreSvg do
     ]
   end
 
-  defp in_range?(_x, :all), do: true
-  defp in_range?(x, {x0, x1}), do: x >= x0 and x < x1
-
-  defp dom_id(%Glyph{role: :notehead, id: id}), do: "note-#{id}"
-  defp dom_id(%Glyph{role: :rest, id: id}) when is_binary(id), do: "rest-#{id}"
-  defp dom_id(_glyph), do: nil
-
-  defp beam_points(%Beam{x1: x1, y1: y1, x2: x2, y2: y2, thickness: t}) do
-    [{x1, y1}, {x2, y2}, {x2, y2 + t}, {x1, y1 + t}]
-    |> Enum.map(fn {x, y} -> [n(x), ",", n(y)] end)
-    |> Enum.intersperse(" ")
+  defp tempo_text(x, y, words, class, id) do
+    [
+      "<g",
+      attr("id", id),
+      attr("class", class),
+      "><text",
+      attr("x", n(x)),
+      attr("y", n(y)),
+      attr("font-family", "Bravura"),
+      attr("font-size", @tempo_note_size),
+      ">",
+      Smufl.char(:metNoteQuarterUp),
+      "</text><text",
+      attr("x", n(x + @tempo_note_width)),
+      attr("y", n(y)),
+      attr("font-weight", "bold"),
+      ">",
+      escape(words),
+      "</text></g>"
+    ]
   end
 
   # Two quadratic curves between the endpoints: the outer one bulges `dir`,
@@ -416,26 +421,21 @@ defmodule DrawMusicWeb.ScoreSvg do
   defp tie_sign(:down), do: 1
   defp tie_sign(_up), do: -1
 
-  # ` name="value"`; nothing for a nil or false value.
-  defp attr(_name, value) when value in [nil, false], do: []
-  defp attr(name, value), do: [" ", name, ~s(="), to_iodata(value), ~s(")]
-
   defp to_iodata(value) when is_binary(value) or is_list(value), do: value
   defp to_iodata(value) when is_atom(value), do: Atom.to_string(value)
   defp to_iodata(value) when is_number(value), do: n(value)
 
-  defp escape(text) do
-    text
-    |> Phoenix.HTML.html_escape()
-    |> Phoenix.HTML.safe_to_string()
+  # The x range an item takes. Glyphs and the brace count only where they
+  # start, so each lands in one run and keeps a single element; lines,
+  # beams, ties and tempo marks go in every run they cross, each drawing
+  # (and clipping) its part.
+  defp x_span(%Glyph{x: x}), do: {x, x}
+  defp x_span(%Brace{x: x}), do: {x, x}
+  defp x_span(%ReadingAid{x: x}), do: {x, x}
+
+  defp x_span(%TempoMark{} = mark) do
+    {mark.x, (mark.line_to || mark.x + mark.width) + @tempo_end_room}
   end
 
-  defp join(numbers, separator) do
-    numbers
-    |> Enum.map(&n/1)
-    |> Enum.intersperse(separator)
-  end
-
-  defp n(x) when is_integer(x), do: Integer.to_string(x)
-  defp n(x) when is_float(x), do: :erlang.float_to_binary(x, [{:decimals, @precision}, :compact])
+  defp x_span(%{x1: a, x2: b}), do: {min(a, b), max(a, b)}
 end

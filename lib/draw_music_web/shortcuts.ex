@@ -420,10 +420,6 @@ defmodule DrawMusicWeb.Shortcuts do
   @spec all() :: [Shortcut.t()]
   def all, do: @shortcuts
 
-  @doc "The groups, in the order the cheat-sheet lists them."
-  @spec groups() :: [String.t()]
-  def groups, do: @groups
-
   @doc "Every entry, with the groups that matter most in `mode` first."
   @spec for_mode(Shortcut.mode()) :: [Shortcut.t()]
   def for_mode(mode) do
@@ -431,8 +427,9 @@ defmodule DrawMusicWeb.Shortcuts do
     Enum.sort_by(@shortcuts, &Enum.find_index(order, fn group -> group == &1.group end))
   end
 
-  defp group_order(:play), do: @play_first ++ (@groups -- @play_first)
-  defp group_order(:edit), do: @groups
+  @doc "The groups, in the order the cheat-sheet lists them."
+  @spec groups() :: [String.t()]
+  def groups, do: @groups
 
   @doc "Every key named on the cheat-sheet."
   @spec handled_keys() :: [String.t()]
@@ -441,4 +438,7 @@ defmodule DrawMusicWeb.Shortcuts do
     |> Enum.flat_map(& &1.keys)
     |> Enum.uniq()
   end
+
+  defp group_order(:play), do: @play_first ++ (@groups -- @play_first)
+  defp group_order(:edit), do: @groups
 end

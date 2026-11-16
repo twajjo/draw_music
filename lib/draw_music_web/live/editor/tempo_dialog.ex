@@ -130,7 +130,6 @@ defmodule DrawMusicWeb.Editor.TempoDialog do
 
   attr :target, TempoTarget, required: true
   attr :myself, :any, required: true
-
   # Delete (an existing change only), Cancel and Save.
   defp actions(assigns) do
     ~H"""
@@ -160,7 +159,6 @@ defmodule DrawMusicWeb.Editor.TempoDialog do
   attr :form, Phoenix.HTML.Form, required: true
   attr :ramp, :string, default: nil
   attr :target, TempoTarget, required: true
-
   # A rit.'s or accel.'s end tempo and length, with what it does and how
   # long it may last.
   defp gradual_fields(assigns) do

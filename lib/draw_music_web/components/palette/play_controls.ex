@@ -23,7 +23,6 @@ defmodule DrawMusicWeb.Palette.PlayControls do
   attr :instrument_options, :list, default: [], doc: "grouped select options (LibraryComponents)"
   attr :range, PlayRange, default: nil, doc: "the bounds being played (none: no measure lists)"
   attr :target, :any, default: nil, doc: "the component the controls' events go to"
-
   @spec play_controls(map()) :: Phoenix.LiveView.Rendered.t()
   def play_controls(assigns) do
     ~H"""
@@ -85,7 +84,6 @@ defmodule DrawMusicWeb.Palette.PlayControls do
   attr :version_instrument, :integer, required: true
   attr :instrument_options, :list, required: true
   attr :target, :any, required: true
-
   # The picker and its button stay together on one line, the same height.
   defp instrument_picker(assigns) do
     ~H"""
@@ -131,7 +129,6 @@ defmodule DrawMusicWeb.Palette.PlayControls do
   attr :range, PlayRange, required: true
   attr :locked?, :boolean, required: true, doc: "while playing, the measures can't change"
   attr :target, :any, required: true
-
   # Measures From and To (To can't be before From; both included), and
   # Whole piece to play everything again.
   defp measure_range(assigns) do
@@ -207,7 +204,6 @@ defmodule DrawMusicWeb.Palette.PlayControls do
   attr :back, :boolean, default: false
   attr :disabled, :boolean, default: false
   attr :target, :any, required: true
-
   # Skips back or forward by a measure (two arrowheads) or a line of
   # music (three).
   defp skip_button(assigns) do

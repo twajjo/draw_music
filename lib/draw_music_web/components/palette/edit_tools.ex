@@ -65,7 +65,6 @@ defmodule DrawMusicWeb.Palette.EditTools do
     doc: "better keys for the score, for the Suggest key button"
 
   attr :target, :any, default: nil, doc: "the component the controls' clicks go to"
-
   @spec edit_tools(map()) :: Phoenix.LiveView.Rendered.t()
   def edit_tools(assigns) do
     ~H"""
@@ -121,7 +120,6 @@ defmodule DrawMusicWeb.Palette.EditTools do
   attr :row_kind, :atom, required: true
   attr :numerals, :list, required: true
   attr :target, :any, required: true
-
   # Chord mode: on while a chord is picked, whichever of length and chord
   # came first; it doesn't apply to rests.
   defp chords_menu(assigns) do
@@ -203,7 +201,6 @@ defmodule DrawMusicWeb.Palette.EditTools do
   attr :armed, :map, required: true
   attr :row_kind, :atom, required: true
   attr :target, :any, required: true
-
   # The lengths, as notes or rests (the rest toggle switches the row).
   defp durations(assigns) do
     assigns = assign(assigns, :values, @values)
@@ -228,7 +225,6 @@ defmodule DrawMusicWeb.Palette.EditTools do
   attr :can_undo?, :boolean, required: true
   attr :can_redo?, :boolean, required: true
   attr :target, :any, required: true
-
   # Settings, select all, undo and redo.
   defp history_tools(assigns) do
     ~H"""
@@ -286,7 +282,6 @@ defmodule DrawMusicWeb.Palette.EditTools do
   attr :armed, :map, required: true
   attr :row_kind, :atom, required: true
   attr :target, :any, required: true
-
   # Rest or note, the dot and the accidentals.
   defp modifiers(assigns) do
     assigns = assign(assigns, :accidentals, @accidentals)
@@ -327,7 +322,6 @@ defmodule DrawMusicWeb.Palette.EditTools do
 
   attr :insert?, :boolean, required: true
   attr :target, :any, required: true
-
   # One button naming the current placing mode; a click switches it.
   defp placing_toggle(assigns) do
     ~H"""

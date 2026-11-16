@@ -23,7 +23,6 @@ defmodule DrawMusicWeb.ScoreCanvas.Surface do
   attr :layout, :atom, required: true, doc: "`:page` or `:strip`"
   attr :show_note_names?, :boolean, required: true
   slot :inner_block, required: true
-
   @doc "The score element, holding what the canvas draws in it."
   @spec surface(map()) :: Phoenix.LiveView.Rendered.t()
   def surface(assigns) do

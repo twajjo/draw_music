@@ -67,52 +67,6 @@ defmodule DrawMusicWeb.Editor.ScoreCanvas do
                   move_tempo open_menu open_settings paste place resize_tempo tie)
 
   @impl true
-  @spec mount(Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
-  def mount(socket), do: {:ok, assign(socket, :last_click, nil)}
-
-  @impl true
-  @spec render(map()) :: Phoenix.LiveView.Rendered.t()
-  def render(assigns) do
-    ~H"""
-    <div id="score-canvas" class="contents">
-      <.loading_note />
-      <.redrawing_note />
-      <.surface
-        target={@myself}
-        geometry_json={@geometry_json}
-        armed_json={Jason.encode!(EditorGeometry.armed(@armed, @session.ctx))}
-        insert?={@insert?}
-        editor_mode={@editor_mode}
-        loading?={@loading?}
-        layout={@layout}
-        show_note_names?={@show_note_names?}
-      >
-        <.score
-          id="score"
-          layout={@engraved}
-          pieces={ScoreSvg.select(@pieces, @session.selection)}
-          strip?={@layout == :strip}
-        />
-        <%!-- The hook draws the cursor glyph and previews here. --%>
-        <svg
-          id="score-overlay"
-          phx-update="ignore"
-          xmlns="http://www.w3.org/2000/svg"
-          class="pointer-events-none absolute inset-0 h-full w-full"
-          style="color: var(--score-ink)"
-        />
-        <.measure_controls
-          :if={@editor_mode == :edit}
-          engraved={@engraved}
-          score={@session.score}
-          target={@myself}
-        />
-      </.surface>
-    </div>
-    """
-  end
-
-  @impl true
   @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
           | {:reply, map(), Phoenix.LiveView.Socket.t()}
@@ -331,6 +285,52 @@ defmodule DrawMusicWeb.Editor.ScoreCanvas do
   # audition in Edit mode, paste with nothing copied, a placement with
   # nothing armed) are ignored rather than crashing the editor.
   def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  @impl true
+  @spec mount(Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
+  def mount(socket), do: {:ok, assign(socket, :last_click, nil)}
+
+  @impl true
+  @spec render(map()) :: Phoenix.LiveView.Rendered.t()
+  def render(assigns) do
+    ~H"""
+    <div id="score-canvas" class="contents">
+      <.loading_note />
+      <.redrawing_note />
+      <.surface
+        target={@myself}
+        geometry_json={@geometry_json}
+        armed_json={Jason.encode!(EditorGeometry.armed(@armed, @session.ctx))}
+        insert?={@insert?}
+        editor_mode={@editor_mode}
+        loading?={@loading?}
+        layout={@layout}
+        show_note_names?={@show_note_names?}
+      >
+        <.score
+          id="score"
+          layout={@engraved}
+          pieces={ScoreSvg.select(@pieces, @session.selection)}
+          strip?={@layout == :strip}
+        />
+        <%!-- The hook draws the cursor glyph and previews here. --%>
+        <svg
+          id="score-overlay"
+          phx-update="ignore"
+          xmlns="http://www.w3.org/2000/svg"
+          class="pointer-events-none absolute inset-0 h-full w-full"
+          style="color: var(--score-ink)"
+        />
+        <.measure_controls
+          :if={@editor_mode == :edit}
+          engraved={@engraved}
+          score={@session.score}
+          target={@myself}
+        />
+      </.surface>
+    </div>
+    """
+  end
 
   # The palette's alteration of a dropped note, if a modifier was held.
   defp alter(params), do: EditorPalette.alter(to_string(params["alter"]))

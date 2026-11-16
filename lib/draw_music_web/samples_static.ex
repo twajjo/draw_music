@@ -9,9 +9,6 @@ defmodule DrawMusicWeb.SamplesStatic do
   @behaviour Plug
 
   @impl Plug
-  def init(opts), do: opts
-
-  @impl Plug
   def call(%Plug.Conn{path_info: ["samples" | _]} = conn, opts) do
     static =
       Plug.Static.init([at: "/samples", from: DrawMusic.Samples.samples_dir()] ++ opts)
@@ -20,4 +17,7 @@ defmodule DrawMusicWeb.SamplesStatic do
   end
 
   def call(conn, _opts), do: conn
+
+  @impl Plug
+  def init(opts), do: opts
 end

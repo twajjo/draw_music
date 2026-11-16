@@ -12,81 +12,6 @@ defmodule DrawMusicWeb.Layouts do
   embed_templates "layouts/*"
 
   @doc """
-  The app layout: the header (wordmark, navigation, theme toggle and
-  account links) above the page content.
-
-  ## Examples
-
-      <Layouts.app flash={@flash} current_scope={@current_scope}>
-        <h1>Content</h1>
-      </Layouts.app>
-
-  """
-  attr :flash, :map, required: true, doc: "the map of flash messages"
-  attr :wide, :boolean, default: false, doc: "use the full window width (e.g. for a score)"
-
-  attr :preferences_patch, :string,
-    default: nil,
-    doc:
-      "where the account menu's Preferences patches to, in a page with its own panel (the editor)"
-
-  attr :current_scope, :map,
-    default: nil,
-    doc: "the current [scope](https://phoenix.hexdocs.pm/scopes.html)"
-
-  slot :inner_block, required: true
-
-  @spec app(map()) :: Phoenix.LiveView.Rendered.t()
-  def app(assigns) do
-    ~H"""
-    <header
-      id="app-header"
-      class="flex flex-nowrap items-center gap-4 whitespace-nowrap border-b border-base-300 px-4 py-2 sm:px-6 lg:px-8"
-    >
-      <.link
-        navigate={~p"/"}
-        class="flex shrink-0 items-center gap-2 text-lg font-semibold tracking-tight transition-opacity hover:opacity-80"
-      >
-        <.icon name="hero-musical-note" class="size-6 text-primary" />
-        <span class="hidden sm:inline">DrawMusic</span>
-      </.link>
-
-      <nav :if={@current_scope} class="flex items-center gap-1 text-sm">
-        <.link id="nav-new" navigate={~p"/"} class="btn btn-ghost btn-sm">New</.link>
-        <.link id="nav-compositions" navigate={~p"/compositions"} class="btn btn-ghost btn-sm">
-          Compositions
-        </.link>
-      </nav>
-
-      <div class="ml-auto flex items-center gap-2 text-sm">
-        <%= if @current_scope do %>
-          <.account_menu user={@current_scope.user} preferences_patch={@preferences_patch} />
-        <% else %>
-          <.link href={~p"/users/log-in"} class="btn btn-ghost btn-sm">Log in</.link>
-          <.link href={~p"/users/register"} class="btn btn-primary btn-sm">Register</.link>
-        <% end %>
-      </div>
-    </header>
-
-    <main
-      class={["score-colors px-4 sm:px-6 lg:px-8", if(@wide, do: "py-6", else: "py-20")]}
-      style={score_ink_style(@current_scope)}
-    >
-      <div class={["mx-auto space-y-4", if(@wide, do: "max-w-none", else: "max-w-2xl")]}>
-        {render_slot(@inner_block)}
-      </div>
-    </main>
-
-    <footer class="flex items-center justify-center gap-4 border-t border-base-300 px-4 py-4 text-sm opacity-70">
-      <.link id="footer-help" navigate={~p"/help"} class="link link-hover">Keys and mouse</.link>
-      <.link id="footer-credits" navigate={~p"/credits"} class="link link-hover">Credits</.link>
-    </footer>
-
-    <.flash_group flash={@flash} />
-    """
-  end
-
-  @doc """
   The signed-in user's menu: the display theme, Preferences and Log out,
   behind a button showing the user's email. Clicking elsewhere closes it.
   """
@@ -179,16 +104,78 @@ defmodule DrawMusicWeb.Layouts do
   end
 
   @doc """
-  The `style` carrying the user's dark-mode score ink (see `.score-colors`
-  in `app.css`); nil when signed out or unset. The value is validated as
-  `#rrggbb` when saved.
-  """
-  @spec score_ink_style(DrawMusic.Accounts.Scope.t() | nil) :: String.t() | nil
-  def score_ink_style(%{user: %{score_ink_dark: "#" <> _ = color}}) do
-    "--score-ink-dark: #{color}"
-  end
+  The app layout: the header (wordmark, navigation, theme toggle and
+  account links) above the page content.
 
-  def score_ink_style(_scope), do: nil
+  ## Examples
+
+      <Layouts.app flash={@flash} current_scope={@current_scope}>
+        <h1>Content</h1>
+      </Layouts.app>
+
+  """
+  attr :flash, :map, required: true, doc: "the map of flash messages"
+  attr :wide, :boolean, default: false, doc: "use the full window width (e.g. for a score)"
+
+  attr :preferences_patch, :string,
+    default: nil,
+    doc:
+      "where the account menu's Preferences patches to, in a page with its own panel (the editor)"
+
+  attr :current_scope, :map,
+    default: nil,
+    doc: "the current [scope](https://phoenix.hexdocs.pm/scopes.html)"
+
+  slot :inner_block, required: true
+  @spec app(map()) :: Phoenix.LiveView.Rendered.t()
+  def app(assigns) do
+    ~H"""
+    <header
+      id="app-header"
+      class="flex flex-nowrap items-center gap-4 whitespace-nowrap border-b border-base-300 px-4 py-2 sm:px-6 lg:px-8"
+    >
+      <.link
+        navigate={~p"/"}
+        class="flex shrink-0 items-center gap-2 text-lg font-semibold tracking-tight transition-opacity hover:opacity-80"
+      >
+        <.icon name="hero-musical-note" class="size-6 text-primary" />
+        <span class="hidden sm:inline">DrawMusic</span>
+      </.link>
+
+      <nav :if={@current_scope} class="flex items-center gap-1 text-sm">
+        <.link id="nav-new" navigate={~p"/"} class="btn btn-ghost btn-sm">New</.link>
+        <.link id="nav-compositions" navigate={~p"/compositions"} class="btn btn-ghost btn-sm">
+          Compositions
+        </.link>
+      </nav>
+
+      <div class="ml-auto flex items-center gap-2 text-sm">
+        <%= if @current_scope do %>
+          <.account_menu user={@current_scope.user} preferences_patch={@preferences_patch} />
+        <% else %>
+          <.link href={~p"/users/log-in"} class="btn btn-ghost btn-sm">Log in</.link>
+          <.link href={~p"/users/register"} class="btn btn-primary btn-sm">Register</.link>
+        <% end %>
+      </div>
+    </header>
+
+    <main
+      class={["score-colors px-4 sm:px-6 lg:px-8", if(@wide, do: "py-6", else: "py-20")]}
+      style={score_ink_style(@current_scope)}
+    >
+      <div class={["mx-auto space-y-4", if(@wide, do: "max-w-none", else: "max-w-2xl")]}>
+        {render_slot(@inner_block)}
+      </div>
+    </main>
+
+    <footer class="flex items-center justify-center gap-4 border-t border-base-300 px-4 py-4 text-sm opacity-70">
+      <.link id="footer-help" navigate={~p"/help"} class="link link-hover">Keys and mouse</.link>
+      <.link id="footer-credits" navigate={~p"/credits"} class="link link-hover">Credits</.link>
+    </footer>
+
+    <.flash_group flash={@flash} />
+    """
+  end
 
   @doc """
   Shows the flash group with standard titles and content.
@@ -199,7 +186,6 @@ defmodule DrawMusicWeb.Layouts do
   """
   attr :flash, :map, required: true, doc: "the map of flash messages"
   attr :id, :string, default: "flash-group", doc: "the optional id of flash container"
-
   @spec flash_group(map()) :: Phoenix.LiveView.Rendered.t()
   def flash_group(assigns) do
     ~H"""
@@ -239,6 +225,18 @@ defmodule DrawMusicWeb.Layouts do
     </div>
     """
   end
+
+  @doc """
+  The `style` carrying the user's dark-mode score ink (see `.score-colors`
+  in `app.css`); nil when signed out or unset. The value is validated as
+  `#rrggbb` when saved.
+  """
+  @spec score_ink_style(DrawMusic.Accounts.Scope.t() | nil) :: String.t() | nil
+  def score_ink_style(%{user: %{score_ink_dark: "#" <> _ = color}}) do
+    "--score-ink-dark: #{color}"
+  end
+
+  def score_ink_style(_scope), do: nil
 
   @doc """
   Provides dark vs light theme toggle based on themes defined in app.css.

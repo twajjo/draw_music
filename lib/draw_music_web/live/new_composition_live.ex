@@ -19,6 +19,27 @@ defmodule DrawMusicWeb.NewCompositionLive do
   @credit_fields ~w(subtitle composer arranger lyricist copyright notes)
 
   @impl true
+  def handle_event("validate", %{"composition" => params} = event, socket) do
+    params = EditorSettings.follow(params, event["_target"] || [])
+    {:noreply, assign(socket, :form, form(socket, params, :validate))}
+  end
+
+  def handle_event("save", %{"composition" => params}, socket) do
+    case Key.from_slug(params["key"] || "") do
+      {:ok, key} -> {:noreply, create(socket, params, key)}
+      :error -> {:noreply, assign(socket, :form, form(socket, params, :insert))}
+    end
+  end
+
+  @impl true
+  def mount(_params, _session, socket) do
+    {:ok,
+     socket
+     |> assign(:page_title, "New composition")
+     |> assign(:form, to_form(defaults(), as: :composition))}
+  end
+
+  @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
@@ -51,26 +72,7 @@ defmodule DrawMusicWeb.NewCompositionLive do
     """
   end
 
-  @impl true
-  def mount(_params, _session, socket) do
-    {:ok,
-     socket
-     |> assign(:page_title, "New composition")
-     |> assign(:form, to_form(defaults(), as: :composition))}
-  end
-
-  @impl true
-  def handle_event("validate", %{"composition" => params} = event, socket) do
-    params = EditorSettings.follow(params, event["_target"] || [])
-    {:noreply, assign(socket, :form, form(socket, params, :validate))}
-  end
-
-  def handle_event("save", %{"composition" => params}, socket) do
-    case Key.from_slug(params["key"] || "") do
-      {:ok, key} -> {:noreply, create(socket, params, key)}
-      :error -> {:noreply, assign(socket, :form, form(socket, params, :insert))}
-    end
-  end
+  defp composition_attrs(params), do: Map.take(params, ["name" | @credit_fields])
 
   defp create(socket, params, {sf, mode}) do
     scope = socket.assigns.current_scope
@@ -94,21 +96,15 @@ defmodule DrawMusicWeb.NewCompositionLive do
     end
   end
 
-  defp form(socket, params, action, extra_errors \\ []) do
-    errors = Enum.uniq(validation_errors(socket.assigns.current_scope, params) ++ extra_errors)
-    to_form(params, as: :composition, errors: EditorSettings.form_errors(errors), action: action)
-  end
-
   defp defaults do
     %Context{}
     |> EditorSettings.params(%Version{}.tempo_text, %Version{}.instrument)
     |> Map.put("name", "")
   end
 
-  defp validation_errors(scope, params) do
-    composition = Composition.changeset(%Composition{}, composition_attrs(params), scope)
-    version = Version.changeset(%Version{number: 1}, version_attrs(params))
-    composition.errors ++ version.errors ++ key_errors(params["key"])
+  defp form(socket, params, action, extra_errors \\ []) do
+    errors = Enum.uniq(validation_errors(socket.assigns.current_scope, params) ++ extra_errors)
+    to_form(params, as: :composition, errors: EditorSettings.form_errors(errors), action: action)
   end
 
   defp key_errors(slug) do
@@ -118,7 +114,11 @@ defmodule DrawMusicWeb.NewCompositionLive do
     end
   end
 
-  defp composition_attrs(params), do: Map.take(params, ["name" | @credit_fields])
+  defp validation_errors(scope, params) do
+    composition = Composition.changeset(%Composition{}, composition_attrs(params), scope)
+    version = Version.changeset(%Version{number: 1}, version_attrs(params))
+    composition.errors ++ version.errors ++ key_errors(params["key"])
+  end
 
   defp version_attrs(params) do
     params
