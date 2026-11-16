@@ -48,10 +48,6 @@ defmodule DrawMusic.Music.Note do
           tie_to: Ecto.UUID.t() | nil
         }
 
-  @doc "The voices a staff holds (shared by rests)."
-  @spec voices() :: Range.t()
-  def voices, do: @voices
-
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(note, attrs) do
     note
@@ -64,9 +60,17 @@ defmodule DrawMusic.Music.Note do
     |> validate_range()
   end
 
-  defp validate_range(changeset) do
-    range_error(changeset, get_field(changeset, :step), get_field(changeset, :alter))
-  end
+  @doc "Sounding pitch as a MIDI number."
+  @spec midi(t()) :: integer()
+  def midi(%__MODULE__{step: step, alter: alter}), do: Pitch.midi(step, alter)
+
+  @doc "Length in ticks."
+  @spec ticks(t()) :: pos_integer()
+  def ticks(%__MODULE__{value: value, dots: dots}), do: Duration.ticks(value, dots)
+
+  @doc "The voices a staff holds (shared by rests)."
+  @spec voices() :: Range.t()
+  def voices, do: @voices
 
   defp range_error(changeset, step, alter) when is_integer(step) and is_integer(alter) do
     if Pitch.in_range?(Pitch.midi(step, alter)) do
@@ -78,11 +82,7 @@ defmodule DrawMusic.Music.Note do
 
   defp range_error(changeset, _step, _alter), do: changeset
 
-  @doc "Sounding pitch as a MIDI number."
-  @spec midi(t()) :: integer()
-  def midi(%__MODULE__{step: step, alter: alter}), do: Pitch.midi(step, alter)
-
-  @doc "Length in ticks."
-  @spec ticks(t()) :: pos_integer()
-  def ticks(%__MODULE__{value: value, dots: dots}), do: Duration.ticks(value, dots)
+  defp validate_range(changeset) do
+    range_error(changeset, get_field(changeset, :step), get_field(changeset, :alter))
+  end
 end

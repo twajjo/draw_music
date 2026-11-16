@@ -7,63 +7,6 @@ defmodule DrawMusic.Music.Playback do
   alias DrawMusic.Music.{Context, Note, Pitch, PlaybackEvent, Score, Sound, TempoMap, Timeline}
 
   @doc """
-  Where a skip lands: the first of `points` (ticks, in order) after `from`,
-  or, going back, the last before it. Nil when there is none.
-  """
-  @spec skip_target([non_neg_integer()], non_neg_integer(), boolean()) :: non_neg_integer() | nil
-  def skip_target(points, from, false = _back?), do: Enum.find(points, &(&1 > from))
-
-  def skip_target(points, from, true = _back?) do
-    points
-    |> Enum.filter(&(&1 < from))
-    |> List.last()
-  end
-
-  @doc """
-  The score's sounds, ordered by start: a tied chain sounds once, for its
-  total length.
-  """
-  @spec sounds(Score.t(), Context.t()) :: [Sound.t()]
-  def sounds(%Score{} = score, %Context{} = ctx) do
-    notes = for %{kind: :note} = entry <- Timeline.flatten(score, ctx), do: entry
-    by_id = Map.new(notes, &{&1.event.id, &1})
-
-    tie_targets =
-      for n <- notes, Map.has_key?(by_id, n.event.tie_to), into: MapSet.new(), do: n.event.tie_to
-
-    notes
-    |> Enum.reject(&(&1.event.id in tie_targets))
-    |> Enum.map(&chain(&1, by_id))
-    |> Enum.sort_by(&{&1.start, &1.midi})
-  end
-
-  defp chain(head, by_id) do
-    {ids, ticks} = follow(head, by_id, [], 0)
-
-    %Sound{
-      ids: ids,
-      staff: head.event.staff,
-      midi: Note.midi(head.event),
-      start: head.start,
-      ticks: ticks
-    }
-  end
-
-  defp follow(entry, by_id, ids, ticks) do
-    ids = [entry.event.id | ids]
-    ticks = ticks + entry.ticks
-
-    case Map.get(by_id, entry.event.tie_to) do
-      # The id check guards against a malformed (cyclic) tie chain.
-      %{event: %{id: next_id}} = next ->
-        if next_id in ids, do: {Enum.reverse(ids), ticks}, else: follow(next, by_id, ids, ticks)
-
-      nil ->
-        {Enum.reverse(ids), ticks}
-    end
-  end
-
-  @doc """
   The chord a note belongs to, to sound at once: every note on its staff
   that starts with it, each for its own written length, timed from 0.
   Nothing for a rest or an unknown id.
@@ -126,6 +69,37 @@ defmodule DrawMusic.Music.Playback do
   end
 
   @doc """
+  Where a skip lands: the first of `points` (ticks, in order) after `from`,
+  or, going back, the last before it. Nil when there is none.
+  """
+  @spec skip_target([non_neg_integer()], non_neg_integer(), boolean()) :: non_neg_integer() | nil
+  def skip_target(points, from, false = _back?), do: Enum.find(points, &(&1 > from))
+
+  def skip_target(points, from, true = _back?) do
+    points
+    |> Enum.filter(&(&1 < from))
+    |> List.last()
+  end
+
+  @doc """
+  The score's sounds, ordered by start: a tied chain sounds once, for its
+  total length.
+  """
+  @spec sounds(Score.t(), Context.t()) :: [Sound.t()]
+  def sounds(%Score{} = score, %Context{} = ctx) do
+    notes = for %{kind: :note} = entry <- Timeline.flatten(score, ctx), do: entry
+    by_id = Map.new(notes, &{&1.event.id, &1})
+
+    tie_targets =
+      for n <- notes, Map.has_key?(by_id, n.event.tie_to), into: MapSet.new(), do: n.event.tie_to
+
+    notes
+    |> Enum.reject(&(&1.event.id in tie_targets))
+    |> Enum.map(&chain(&1, by_id))
+    |> Enum.sort_by(&{&1.start, &1.midi})
+  end
+
+  @doc """
   The span Play plays, as `{from, to}` ticks: several selected events play
   from the first to the end of the last; one plays from there to the end
   of the score; none, the whole score.
@@ -145,6 +119,18 @@ defmodule DrawMusic.Music.Playback do
     end
   end
 
+  defp chain(head, by_id) do
+    {ids, ticks} = follow(head, by_id, [], 0)
+
+    %Sound{
+      ids: ids,
+      staff: head.event.staff,
+      midi: Note.midi(head.event),
+      start: head.start,
+      ticks: ticks
+    }
+  end
+
   defp event(ids, midi, tick, from, ticks, map) do
     %PlaybackEvent{
       ids: ids,
@@ -154,6 +140,20 @@ defmodule DrawMusic.Music.Playback do
       start: TempoMap.seconds(map, from, tick),
       duration: TempoMap.seconds(map, tick, tick + ticks)
     }
+  end
+
+  defp follow(entry, by_id, ids, ticks) do
+    ids = [entry.event.id | ids]
+    ticks = ticks + entry.ticks
+
+    case Map.get(by_id, entry.event.tie_to) do
+      # The id check guards against a malformed (cyclic) tie chain.
+      %{event: %{id: next_id}} = next ->
+        if next_id in ids, do: {Enum.reverse(ids), ticks}, else: follow(next, by_id, ids, ticks)
+
+      nil ->
+        {Enum.reverse(ids), ticks}
+    end
   end
 
   defp span_end(entries) do

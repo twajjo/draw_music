@@ -30,16 +30,26 @@ defmodule DrawMusic.Music.Context do
           tempo_bpm: pos_integer()
         }
 
-  @doc "Time-signature denominators a score may use."
-  @spec time_denominators() :: [pos_integer()]
-  def time_denominators, do: @time_denominators
+  @doc "Span that beamed notes are grouped by: the felt beat."
+  @spec beam_group_ticks(t()) :: pos_integer()
+  def beam_group_ticks(ctx) do
+    if compound?(ctx), do: @beats_per_compound_beat * beat_ticks(ctx), else: beat_ticks(ctx)
+  end
 
-  @spec max_time_num() :: pos_integer()
-  def max_time_num, do: @max_time_num
+  @doc "One time-signature unit (the denominator's note value) in ticks."
+  @spec beat_ticks(t()) :: pos_integer()
+  def beat_ticks(%__MODULE__{time_den: den}), do: div(Duration.ticks(:whole), den)
 
-  @doc "Tempos a score may use, in beats per minute."
-  @spec tempo_range() :: Range.t()
-  def tempo_range, do: @tempo_range
+  @doc "Capacity of measure `index`: the pickup length for an opening pickup bar."
+  @spec capacity(t(), non_neg_integer()) :: pos_integer()
+  def capacity(%__MODULE__{pickup_ticks: pickup}, 0) when pickup > 0, do: pickup
+  def capacity(ctx, _index), do: measure_ticks(ctx)
+
+  @doc "6/8, 9/8, 12/8 and the like: beats divide into three."
+  @spec compound?(t()) :: boolean()
+  def compound?(%__MODULE__{time_num: num}) do
+    num > @beats_per_compound_beat and rem(num, @beats_per_compound_beat) == 0
+  end
 
   @doc "Builds a context from a version with its key loaded."
   @spec from_version(DrawMusic.Library.Version.t()) :: t()
@@ -55,33 +65,23 @@ defmodule DrawMusic.Music.Context do
     }
   end
 
+  @spec max_time_num() :: pos_integer()
+  def max_time_num, do: @max_time_num
+
   @doc "Length of a full measure in ticks."
   @spec measure_ticks(t()) :: pos_integer()
   def measure_ticks(%__MODULE__{time_num: num} = ctx), do: num * beat_ticks(ctx)
-
-  @doc "One time-signature unit (the denominator's note value) in ticks."
-  @spec beat_ticks(t()) :: pos_integer()
-  def beat_ticks(%__MODULE__{time_den: den}), do: div(Duration.ticks(:whole), den)
-
-  @doc "6/8, 9/8, 12/8 and the like: beats divide into three."
-  @spec compound?(t()) :: boolean()
-  def compound?(%__MODULE__{time_num: num}) do
-    num > @beats_per_compound_beat and rem(num, @beats_per_compound_beat) == 0
-  end
-
-  @doc "Span that beamed notes are grouped by: the felt beat."
-  @spec beam_group_ticks(t()) :: pos_integer()
-  def beam_group_ticks(ctx) do
-    if compound?(ctx), do: @beats_per_compound_beat * beat_ticks(ctx), else: beat_ticks(ctx)
-  end
-
-  @doc "Capacity of measure `index`: the pickup length for an opening pickup bar."
-  @spec capacity(t(), non_neg_integer()) :: pos_integer()
-  def capacity(%__MODULE__{pickup_ticks: pickup}, 0) when pickup > 0, do: pickup
-  def capacity(ctx, _index), do: measure_ticks(ctx)
 
   @doc "Total length of the first `count` measures."
   @spec span(t(), non_neg_integer()) :: non_neg_integer()
   def span(_ctx, 0), do: 0
   def span(ctx, count), do: capacity(ctx, 0) + (count - 1) * measure_ticks(ctx)
+
+  @doc "Tempos a score may use, in beats per minute."
+  @spec tempo_range() :: Range.t()
+  def tempo_range, do: @tempo_range
+
+  @doc "Time-signature denominators a score may use."
+  @spec time_denominators() :: [pos_integer()]
+  def time_denominators, do: @time_denominators
 end

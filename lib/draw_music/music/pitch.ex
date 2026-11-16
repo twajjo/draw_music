@@ -47,7 +47,10 @@ defmodule DrawMusic.Music.Pitch do
     "𝄫" => -2
   }
 
-  letter_index = fn name -> Enum.find_index(Tuple.to_list(@letter_names), &(&1 == name)) end
+  letter_index = fn name ->
+    Enum.find_index(Tuple.to_list(@letter_names), &(&1 == name))
+  end
+
   @sharp_order Enum.map(~w(F C G D A E B), letter_index)
   @flat_order Enum.map(~w(B E A D G C F), letter_index)
 
@@ -67,67 +70,39 @@ defmodule DrawMusic.Music.Pitch do
   @cost_per_semitone 2
   @against_key_cost 1
 
-  @spec min_midi() :: 21
-  def min_midi, do: @min_midi
-  @spec max_midi() :: 108
-  def max_midi, do: @max_midi
-  @spec middle_c() :: 60
-  def middle_c, do: @middle_c
-  @spec steps_per_octave() :: 7
-  def steps_per_octave, do: @steps_per_octave
-  @spec semitones_per_octave() :: 12
-  def semitones_per_octave, do: @semitones_per_octave
-
   @doc "Alterations a written note may carry, double flat to double sharp."
   @spec alters() :: Range.t()
   def alters, do: @alters
 
+  @doc "Equal-tempered frequency in Hz, A4 = 440."
+  @spec frequency(number()) :: float()
+  def frequency(midi), do: @a4_hz * :math.pow(2, (midi - @a4_midi) / @semitones_per_octave)
+
   @spec in_range?(integer()) :: boolean()
   def in_range?(midi), do: midi in @min_midi..@max_midi
 
-  @doc "A written pitch with at most a double accidental, within the playable range."
-  @spec playable?(integer(), integer()) :: boolean()
-  def playable?(step, alter), do: alter in @alters and in_range?(midi(step, alter))
-
-  @doc """
-  Moves `{step, alter}` by an exact interval: the letter moves `steps` and
-  the alteration makes up `semitones`. A result needing more than a double
-  sharp or flat is re-spelled for key signature `sf`.
-  """
-  @spec transpose(integer(), integer(), integer(), integer(), -7..7) :: {integer(), -2..2}
-  def transpose(step, alter, steps, semitones, sf) do
-    target = midi(step, alter) + semitones
-    moved = step + steps
-
-    case target - natural_midi(moved) do
-      moved_alter when moved_alter in @alters -> {moved, moved_alter}
-      _too_far -> spell(target, sf)
-    end
-  end
+  @doc "The alteration the key signature `sf` gives `letter`: -1, 0 or 1."
+  @spec key_alter(-7..7, 0..6) :: -1..1
+  def key_alter(sf, letter), do: Map.get(@key_alters, {sf, letter}, 0)
 
   @spec letter(integer()) :: 0..6
   def letter(step), do: Integer.mod(step, @steps_per_octave)
+
   @doc "The step's letter name, without accidental or octave, e.g. `\"C\"`."
   @spec letter_name(integer()) :: String.t()
   def letter_name(step), do: elem(@letter_names, letter(step))
-  @spec octave(integer()) :: integer()
-  def octave(step), do: Integer.floor_div(step, @steps_per_octave)
-  @spec step(0..6, integer()) :: integer()
-  def step(letter, octave), do: octave * @steps_per_octave + letter
 
-  @doc "MIDI number of the step with no accidental."
-  @spec natural_midi(integer()) :: integer()
-  def natural_midi(step) do
-    @semitones_per_octave * (octave(step) + @midi_octave_offset) +
-      elem(@semitones_above_c, letter(step))
-  end
+  @spec max_midi() :: 108
+  def max_midi, do: @max_midi
+
+  @spec middle_c() :: 60
+  def middle_c, do: @middle_c
 
   @spec midi(integer(), integer()) :: integer()
   def midi(step, alter), do: natural_midi(step) + alter
 
-  @doc "Equal-tempered frequency in Hz, A4 = 440."
-  @spec frequency(number()) :: float()
-  def frequency(midi), do: @a4_hz * :math.pow(2, (midi - @a4_midi) / @semitones_per_octave)
+  @spec min_midi() :: 21
+  def min_midi, do: @min_midi
 
   @doc "SPN name, e.g. `name(28, 1)` → `\"C♯4\"`."
   @spec name(integer(), integer()) :: String.t()
@@ -136,6 +111,16 @@ defmodule DrawMusic.Music.Pitch do
       Map.fetch!(@accidental_names, alter) <>
       Integer.to_string(octave(step))
   end
+
+  @doc "MIDI number of the step with no accidental."
+  @spec natural_midi(integer()) :: integer()
+  def natural_midi(step) do
+    @semitones_per_octave * (octave(step) + @midi_octave_offset) +
+      elem(@semitones_above_c, letter(step))
+  end
+
+  @spec octave(integer()) :: integer()
+  def octave(step), do: Integer.floor_div(step, @steps_per_octave)
 
   @doc """
   Parses SPN into `{:ok, {step, alter}}`. Accepts Unicode accidentals
@@ -153,25 +138,12 @@ defmodule DrawMusic.Music.Pitch do
     end
   end
 
-  defp letter_index(letter) do
-    Enum.find_index(Tuple.to_list(@letter_names), &(&1 == String.upcase(letter)))
-  end
+  @doc "A written pitch with at most a double accidental, within the playable range."
+  @spec playable?(integer(), integer()) :: boolean()
+  def playable?(step, alter), do: alter in @alters and in_range?(midi(step, alter))
 
-  @doc "The alteration the key signature `sf` gives `letter`: -1, 0 or 1."
-  @spec key_alter(-7..7, 0..6) :: -1..1
-  def key_alter(sf, letter), do: Map.get(@key_alters, {sf, letter}, 0)
-
-  @doc "Tonic of a key as `{letter, pitch_class}`, e.g. `tonic(-1, :minor)` is D."
-  @spec tonic(-7..7, :major | :minor) :: {0..6, 0..11}
-  def tonic(sf, :major), do: by_fifths(sf, {0, 0})
-  def tonic(sf, :minor), do: by_fifths(sf, @relative_minor)
-
-  defp by_fifths(sf, {steps, semitones}) do
-    {fifth_steps, fifth_semitones} = @fifth
-
-    {Integer.mod(steps + fifth_steps * sf, @steps_per_octave),
-     Integer.mod(semitones + fifth_semitones * sf, @semitones_per_octave)}
-  end
+  @spec semitones_per_octave() :: 12
+  def semitones_per_octave, do: @semitones_per_octave
 
   @doc """
   Spells a MIDI number as `{step, alter}` for key signature `sf`: the key's
@@ -198,14 +170,52 @@ defmodule DrawMusic.Music.Pitch do
     {step(letter, octave), alter}
   end
 
-  defp spelling_cost({letter, alter}, sf) do
-    case key_alter(sf, letter) do
-      ^alter -> 0
-      _other -> @off_key_cost + @cost_per_semitone * abs(alter) + against_key(alter, sf)
+  @spec step(0..6, integer()) :: integer()
+  def step(letter, octave), do: octave * @steps_per_octave + letter
+
+  @spec steps_per_octave() :: 7
+  def steps_per_octave, do: @steps_per_octave
+
+  @doc "Tonic of a key as `{letter, pitch_class}`, e.g. `tonic(-1, :minor)` is D."
+  @spec tonic(-7..7, :major | :minor) :: {0..6, 0..11}
+  def tonic(sf, :major), do: by_fifths(sf, {0, 0})
+  def tonic(sf, :minor), do: by_fifths(sf, @relative_minor)
+
+  @doc """
+  Moves `{step, alter}` by an exact interval: the letter moves `steps` and
+  the alteration makes up `semitones`. A result needing more than a double
+  sharp or flat is re-spelled for key signature `sf`.
+  """
+  @spec transpose(integer(), integer(), integer(), integer(), -7..7) :: {integer(), -2..2}
+  def transpose(step, alter, steps, semitones, sf) do
+    target = midi(step, alter) + semitones
+    moved = step + steps
+
+    case target - natural_midi(moved) do
+      moved_alter when moved_alter in @alters -> {moved, moved_alter}
+      _too_far -> spell(target, sf)
     end
   end
 
   defp against_key(alter, sf) when alter > 0 and sf < 0, do: @against_key_cost
   defp against_key(alter, sf) when alter < 0 and sf >= 0, do: @against_key_cost
   defp against_key(_alter, _sf), do: 0
+
+  defp by_fifths(sf, {steps, semitones}) do
+    {fifth_steps, fifth_semitones} = @fifth
+
+    {Integer.mod(steps + fifth_steps * sf, @steps_per_octave),
+     Integer.mod(semitones + fifth_semitones * sf, @semitones_per_octave)}
+  end
+
+  defp letter_index(letter) do
+    Enum.find_index(Tuple.to_list(@letter_names), &(&1 == String.upcase(letter)))
+  end
+
+  defp spelling_cost({letter, alter}, sf) do
+    case key_alter(sf, letter) do
+      ^alter -> 0
+      _other -> @off_key_cost + @cost_per_semitone * abs(alter) + against_key(alter, sf)
+    end
+  end
 end

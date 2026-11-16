@@ -50,8 +50,13 @@ defmodule DrawMusic.Music.Duration do
   # Further dots would need fractions of a tick.
   @dot_limits %{hundred_twenty_eighth: 1, two_hundred_fifty_sixth: 0}
 
-  max_dots = fn value -> Map.get(@dot_limits, value, @max_dots) end
-  dotted = fn base, dots -> Enum.sum(for dot <- 0..dots, do: div(base, 2 ** dot)) end
+  max_dots = fn value ->
+    Map.get(@dot_limits, value, @max_dots)
+  end
+
+  dotted = fn base, dots ->
+    Enum.sum(for dot <- 0..dots, do: div(base, 2 ** dot))
+  end
 
   # Every value/dots combination, longest first: of the common values, and
   # of all of them.
@@ -71,43 +76,6 @@ defmodule DrawMusic.Music.Duration do
   # count except these; with the 256th (1) every count is reached.
   @unit Keyword.fetch!(@base, :two_hundred_fifty_sixth)
   @common_unreachable_units [1, 2, 3, 5, 9]
-
-  @spec ppq() :: pos_integer()
-  def ppq, do: @ppq
-
-  @doc "How many dots any value may take, at most."
-  @spec dot_counts() :: Range.t()
-  def dot_counts, do: 0..@max_dots
-
-  @doc "How many dots `value` may take."
-  @spec dot_counts(value()) :: Range.t()
-  def dot_counts(value), do: 0..Map.get(@dot_limits, value, @max_dots)
-
-  @doc "Whether `value` can take `dots`."
-  @spec dots_allowed?(value(), integer()) :: boolean()
-  def dots_allowed?(value, dots), do: dots in dot_counts(value)
-
-  @doc "Checks a note's or rest's `:dots` against what its `:value` may take."
-  @spec validate_dots(Ecto.Changeset.t()) :: Ecto.Changeset.t()
-  def validate_dots(changeset) do
-    case Ecto.Changeset.get_field(changeset, :value) do
-      nil -> Ecto.Changeset.validate_inclusion(changeset, :dots, dot_counts())
-      value -> Ecto.Changeset.validate_inclusion(changeset, :dots, dot_counts(value))
-    end
-  end
-
-  @doc "Note values, longest first."
-  @spec values() :: [value()]
-  def values, do: @values
-
-  @doc "Length of `value` with `dots` (as many as it may take) in ticks."
-  @spec ticks(value()) :: pos_integer()
-  @spec ticks(value(), 0..2) :: pos_integer()
-  def ticks(value, dots \\ 0), do: Map.fetch!(@lengths, {value, dots})
-
-  @doc "Number of flags (or beams) the value takes: 0 for quarter and longer."
-  @spec flags(value()) :: 0..6
-  def flags(value), do: Map.get(@flags, value, 0)
 
   @doc "Eighths and shorter can be beamed."
   @spec beamable?(value()) :: boolean()
@@ -130,6 +98,52 @@ defmodule DrawMusic.Music.Duration do
     end
   end
 
+  @doc "How many dots any value may take, at most."
+  @spec dot_counts() :: Range.t()
+  def dot_counts, do: 0..@max_dots
+
+  @doc "How many dots `value` may take."
+  @spec dot_counts(value()) :: Range.t()
+  def dot_counts(value), do: 0..Map.get(@dot_limits, value, @max_dots)
+
+  @doc "Whether `value` can take `dots`."
+  @spec dots_allowed?(value(), integer()) :: boolean()
+  def dots_allowed?(value, dots), do: dots in dot_counts(value)
+
+  @doc "Number of flags (or beams) the value takes: 0 for quarter and longer."
+  @spec flags(value()) :: 0..6
+  def flags(value), do: Map.get(@flags, value, 0)
+
+  @spec ppq() :: pos_integer()
+  def ppq, do: @ppq
+
+  @doc "Length of `value` with `dots` (as many as it may take) in ticks."
+  @spec ticks(value()) :: pos_integer()
+  @spec ticks(value(), 0..2) :: pos_integer()
+  def ticks(value, dots \\ 0), do: Map.fetch!(@lengths, {value, dots})
+
+  @doc "Checks a note's or rest's `:dots` against what its `:value` may take."
+  @spec validate_dots(Ecto.Changeset.t()) :: Ecto.Changeset.t()
+  def validate_dots(changeset) do
+    case Ecto.Changeset.get_field(changeset, :value) do
+      nil -> Ecto.Changeset.validate_inclusion(changeset, :dots, dot_counts())
+      value -> Ecto.Changeset.validate_inclusion(changeset, :dots, dot_counts(value))
+    end
+  end
+
+  @doc "Note values, longest first."
+  @spec values() :: [value()]
+  def values, do: @values
+
+  defp candidates(:common), do: @common_candidates
+  defp candidates(:all), do: @candidates
+
+  defp representable?(ticks, :common) do
+    rem(ticks, @unit) == 0 and div(ticks, @unit) not in @common_unreachable_units
+  end
+
+  defp representable?(ticks, :all), do: rem(ticks, @unit) == 0
+
   defp take(0, _values), do: []
 
   defp take(ticks, values) do
@@ -140,13 +154,4 @@ defmodule DrawMusic.Music.Duration do
 
     [{value, dots} | take(ticks - len, values)]
   end
-
-  defp candidates(:common), do: @common_candidates
-  defp candidates(:all), do: @candidates
-
-  defp representable?(ticks, :common) do
-    rem(ticks, @unit) == 0 and div(ticks, @unit) not in @common_unreachable_units
-  end
-
-  defp representable?(ticks, :all), do: rem(ticks, @unit) == 0
 end

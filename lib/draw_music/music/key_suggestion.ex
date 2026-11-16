@@ -81,6 +81,13 @@ defmodule DrawMusic.Music.KeySuggestion do
     now - count >= @min_fewer and count <= now * @max_share
   end
 
+  # Each note's pitch and how long it sounds.
+  defp sounding(%Score{measures: measures}) do
+    for measure <- measures, note <- measure.notes do
+      {Pitch.midi(note.step, note.alter), Duration.ticks(note.value, note.dots)}
+    end
+  end
+
   # Each accidental written in key signature `sf`, in the order they come,
   # named without an octave (F♯, B♮).
   defp written_accidentals(%Score{measures: measures}, sf) do
@@ -89,13 +96,6 @@ defmodule DrawMusic.Music.KeySuggestion do
         note <- Enum.sort_by(measure.notes, &{&1.offset, &1.step}),
         Map.has_key?(shown, note.id) do
       Pitch.letter_name(note.step) <> Map.fetch!(@signs, note.alter)
-    end
-  end
-
-  # Each note's pitch and how long it sounds.
-  defp sounding(%Score{measures: measures}) do
-    for measure <- measures, note <- measure.notes do
-      {Pitch.midi(note.step, note.alter), Duration.ticks(note.value, note.dots)}
     end
   end
 end
