@@ -9,18 +9,6 @@ defmodule DrawMusicWeb.Editor.PaletteTest do
 
   setup :register_and_log_in_user
 
-  defp host(conn, attrs) do
-    session = %{"component" => Palette, "attrs" => attrs, "test_pid" => self()}
-    {:ok, view, _html} = live_isolated(conn, ComponentHostLive, session: session)
-    view
-  end
-
-  defp click(view, selector), do: view |> element(selector) |> render_click()
-
-  defp key_event(view, event, params \\ %{}) do
-    view |> element("#palette") |> render_hook(event, params)
-  end
-
   test "a length arms that note", %{conn: conn} do
     conn |> host(%{}) |> click("#palette-quarter")
 
@@ -102,5 +90,17 @@ defmodule DrawMusicWeb.Editor.PaletteTest do
 
     key_event(view, "toggle_mode")
     assert_receive {:component_sent, {:editor, {:mode, :edit}}}
+  end
+
+  defp click(view, selector), do: view |> element(selector) |> render_click()
+
+  defp host(conn, attrs) do
+    session = %{"component" => Palette, "attrs" => attrs, "test_pid" => self()}
+    {:ok, view, _html} = live_isolated(conn, ComponentHostLive, session: session)
+    view
+  end
+
+  defp key_event(view, event, params \\ %{}) do
+    view |> element("#palette") |> render_hook(event, params)
   end
 end

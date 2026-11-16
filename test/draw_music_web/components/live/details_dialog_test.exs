@@ -8,12 +8,6 @@ defmodule DrawMusicWeb.DetailsDialogTest do
 
   setup :register_and_log_in_user
 
-  defp host(conn, attrs) do
-    session = %{"component" => DetailsDialog, "attrs" => attrs, "test_pid" => self()}
-    {:ok, view, _html} = live_isolated(conn, ComponentHostLive, session: session)
-    view
-  end
-
   setup %{scope: scope} do
     %{composition: composition_fixture(scope)}
   end
@@ -38,7 +32,7 @@ defmodule DrawMusicWeb.DetailsDialogTest do
 
     view |> form("#details-form", composition: %{composer: "J. Field"}) |> render_submit()
 
-    assert_received {:component_sent, {DetailsDialog, {:saved, %{composer: "J. Field"}}}}
+    assert_receive {:component_sent, {DetailsDialog, {:saved, %{composer: "J. Field"}}}}
   end
 
   test "a draft's details are checked and reported, not stored",
@@ -47,7 +41,7 @@ defmodule DrawMusicWeb.DetailsDialogTest do
 
     view |> form("#details-form", composition: %{name: "Nocturne"}) |> render_submit()
 
-    assert_received {:component_sent, {DetailsDialog, {:saved, %{name: "Nocturne", id: id}}}}
+    assert_receive {:component_sent, {DetailsDialog, {:saved, %{name: "Nocturne", id: id}}}}
     assert id == c.id
   end
 
@@ -65,9 +59,15 @@ defmodule DrawMusicWeb.DetailsDialogTest do
     view = host(conn, %{scope: scope, composition: c})
 
     view |> element("#details-dialog button", "Cancel") |> render_click()
-    assert_received {:component_sent, {DetailsDialog, :closed}}
+    assert_receive {:component_sent, {DetailsDialog, :closed}}
 
     view |> element("#details-dialog") |> render_keydown(%{"key" => "Escape"})
-    assert_received {:component_sent, {DetailsDialog, :closed}}
+    assert_receive {:component_sent, {DetailsDialog, :closed}}
+  end
+
+  defp host(conn, attrs) do
+    session = %{"component" => DetailsDialog, "attrs" => attrs, "test_pid" => self()}
+    {:ok, view, _html} = live_isolated(conn, ComponentHostLive, session: session)
+    view
   end
 end

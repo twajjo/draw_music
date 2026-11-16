@@ -28,10 +28,6 @@ defmodule DrawMusicWeb.EditorModeTest do
     %{view: view, c: c, e: e, g: g}
   end
 
-  defp assigns(view), do: :sys.get_state(view.pid).socket.assigns
-
-  defp play_mode(view), do: view |> element("#palette-mode-play") |> render_click()
-
   test "toggle_mode switches, disarms, and keeps the selection", %{view: view, g: g} do
     canvas_hook(view, "select", %{"ids" => [g], "add" => false})
     play_mode(view)
@@ -156,4 +152,8 @@ defmodule DrawMusicWeb.EditorModeTest do
     assert session_of(view).ctx.time_num == 4
     assert session_of(view).ctx.sf == 0
   end
+
+  defp assigns(view), do: :sys.get_state(view.pid).socket.assigns
+
+  defp play_mode(view), do: view |> element("#palette-mode-play") |> render_click()
 end

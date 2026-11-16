@@ -8,7 +8,10 @@ defmodule DrawMusic.Music.PlaybackTest do
   describe "chord_at/3" do
     setup do
       ctx = %Context{sf: 1}
-      quarter = fn offset, staff -> %{staff: staff, offset: offset, value: :quarter} end
+
+      quarter = fn offset, staff ->
+        %{staff: staff, offset: offset, value: :quarter}
+      end
 
       {score, _g} = note!(Score.new(2), ctx, 0, "G4", quarter.(0, :treble))
       {score, b} = note!(score, ctx, 0, "B4", quarter.(0, :treble))
@@ -42,7 +45,10 @@ defmodule DrawMusic.Music.PlaybackTest do
   describe "span/3, first_event_from/3 and skip_target/3" do
     setup do
       ctx = %Context{}
-      quarter = fn offset -> %{staff: :treble, offset: offset, value: :quarter} end
+
+      quarter = fn offset ->
+        %{staff: :treble, offset: offset, value: :quarter}
+      end
 
       {score, c} = note!(Score.new(2), ctx, 0, "C4", quarter.(0))
       {score, e} = note!(score, ctx, 0, "E4", quarter.(1920))

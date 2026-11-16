@@ -14,8 +14,6 @@ defmodule DrawMusicWeb.InstrumentSourceTest do
     %{dir: dir}
   end
 
-  defp entry, do: %ManifestEntry{bytes: 1, fetched_at: DateTime.utc_now()}
-
   test "nothing installed plays the synth" do
     assert %InstrumentSource{kind: :synth, url: nil, name: "Flute"} =
              InstrumentSource.for_program(73)
@@ -37,4 +35,6 @@ defmodule DrawMusicWeb.InstrumentSourceTest do
     assert %InstrumentSource{kind: :splendid, url: "/samples/splendid-grand-piano"} =
              InstrumentSource.for_program(0)
   end
+
+  defp entry, do: %ManifestEntry{bytes: 1, fetched_at: DateTime.utc_now()}
 end

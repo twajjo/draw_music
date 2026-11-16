@@ -5,11 +5,22 @@ defmodule DrawMusic.LibraryFixtures do
 
   alias DrawMusic.Library
 
-  def unique_composition_name, do: "Composition #{System.unique_integer([:positive])}"
+  def composition_fixture(scope, opts \\ []), do: version_fixture(scope, opts).key.composition
+
+  def import_fixture(opts \\ []) do
+    %DrawMusic.Library.Import{
+      name: Keyword.get(opts, :name, unique_composition_name()),
+      composition: Keyword.get(opts, :composition, %{}),
+      key: key_attrs(Keyword.get(opts, :key, %{})),
+      version: version_attrs(Keyword.get(opts, :version, %{}))
+    }
+  end
+
+  def key_attrs(attrs \\ %{}), do: Enum.into(attrs, %{sf: 0, mode: :major})
 
   def score_fixture(attrs \\ %{}), do: Enum.into(attrs, %{"measures" => []})
 
-  def key_attrs(attrs \\ %{}), do: Enum.into(attrs, %{sf: 0, mode: :major})
+  def unique_composition_name, do: "Composition #{System.unique_integer([:positive])}"
 
   def version_attrs(attrs \\ %{}), do: Enum.into(attrs, %{score: score_fixture()})
 
@@ -31,16 +42,5 @@ defmodule DrawMusic.LibraryFixtures do
       )
 
     version
-  end
-
-  def composition_fixture(scope, opts \\ []), do: version_fixture(scope, opts).key.composition
-
-  def import_fixture(opts \\ []) do
-    %DrawMusic.Library.Import{
-      name: Keyword.get(opts, :name, unique_composition_name()),
-      composition: Keyword.get(opts, :composition, %{}),
-      key: key_attrs(Keyword.get(opts, :key, %{})),
-      version: version_attrs(Keyword.get(opts, :version, %{}))
-    }
   end
 end

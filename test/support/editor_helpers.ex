@@ -9,24 +9,6 @@ defmodule DrawMusicWeb.EditorHelpers do
 
   alias DrawMusic.MusicHelpers
 
-  @doc "The editor's `DrawMusic.Music.Session`."
-  def session_of(view), do: :sys.get_state(view.pid).socket.assigns.session
-
-  @doc "All notes as `MusicHelpers.notes/1` tuples."
-  def notes_of(view), do: MusicHelpers.notes(session_of(view).score)
-
-  @doc "How many elements in the rendered view match `selector`."
-  def count(view, selector) do
-    view |> render() |> LazyHTML.from_fragment() |> LazyHTML.query(selector) |> Enum.count()
-  end
-
-  @doc "Puts the editor in `:insert` (the default) or `:overlay` placing mode."
-  def placing_mode(view, mode) when mode in [:insert, :overlay] do
-    insert? = has_element?(view, "#palette-insert[aria-pressed=true]")
-    if insert? != (mode == :insert), do: view |> element("#palette-insert") |> render_click()
-    view
-  end
-
   @doc """
   Sends `event` from the score's hook to `Editor.ScoreCanvas`, which handles
   every event from the score.
@@ -34,6 +16,14 @@ defmodule DrawMusicWeb.EditorHelpers do
   def canvas_hook(view, event, params \\ %{}) do
     view |> element("#score-editor") |> render_hook(event, params)
   end
+
+  @doc "How many elements in the rendered view match `selector`."
+  def count(view, selector) do
+    view |> render() |> LazyHTML.from_fragment() |> LazyHTML.query(selector) |> Enum.count()
+  end
+
+  @doc "All notes as `MusicHelpers.notes/1` tuples."
+  def notes_of(view), do: MusicHelpers.notes(session_of(view).score)
 
   @doc """
   Places with the `place` hook event; `spn` like \"C4\".
@@ -52,4 +42,14 @@ defmodule DrawMusicWeb.EditorHelpers do
 
     canvas_hook(view, "place", params)
   end
+
+  @doc "Puts the editor in `:insert` (the default) or `:overlay` placing mode."
+  def placing_mode(view, mode) when mode in [:insert, :overlay] do
+    insert? = has_element?(view, "#palette-insert[aria-pressed=true]")
+    if insert? != (mode == :insert), do: view |> element("#palette-insert") |> render_click()
+    view
+  end
+
+  @doc "The editor's `DrawMusic.Music.Session`."
+  def session_of(view), do: :sys.get_state(view.pid).socket.assigns.session
 end

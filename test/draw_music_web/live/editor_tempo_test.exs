@@ -16,30 +16,6 @@ defmodule DrawMusicWeb.EditorTempoTest do
     %{view: view}
   end
 
-  defp tempos(view), do: session_of(view).score.tempos
-
-  defp e4_id(view) do
-    session_of(view).score.measures
-    |> hd()
-    |> Map.fetch!(:notes)
-    |> Enum.find(&(&1.offset == 960))
-    |> Map.fetch!(:id)
-  end
-
-  # Select the E4 and right-click it, "Tempo change here…", fill in the
-  # dialog (ticking "Gradually" first shows its fields).
-  defp add_tempo(view, params) do
-    canvas_hook(view, "select", %{"ids" => [e4_id(view)], "add" => false})
-    canvas_hook(view, "open_menu", %{"id" => e4_id(view), "x" => 10, "y" => 10})
-    view |> element("#menu-tempo") |> render_click()
-
-    if params[:gradual] == "true" do
-      view |> form("#tempo-form", tempo: %{gradual: "true"}) |> render_change()
-    end
-
-    view |> form("#tempo-form", tempo: params) |> render_submit()
-  end
-
   test "the opening tempo marking is drawn over the first bar and follows the settings",
        %{view: view} do
     assert has_element?(view, "#opening-tempo", "Moderato")
@@ -206,4 +182,28 @@ defmodule DrawMusicWeb.EditorTempoTest do
     assert_in_delta e4.duration, 1.0, 1.0e-9
     assert c4.duration < e4.duration
   end
+
+  # Select the E4 and right-click it, "Tempo change here…", fill in the
+  # dialog (ticking "Gradually" first shows its fields).
+  defp add_tempo(view, params) do
+    canvas_hook(view, "select", %{"ids" => [e4_id(view)], "add" => false})
+    canvas_hook(view, "open_menu", %{"id" => e4_id(view), "x" => 10, "y" => 10})
+    view |> element("#menu-tempo") |> render_click()
+
+    if params[:gradual] == "true" do
+      view |> form("#tempo-form", tempo: %{gradual: "true"}) |> render_change()
+    end
+
+    view |> form("#tempo-form", tempo: params) |> render_submit()
+  end
+
+  defp e4_id(view) do
+    session_of(view).score.measures
+    |> hd()
+    |> Map.fetch!(:notes)
+    |> Enum.find(&(&1.offset == 960))
+    |> Map.fetch!(:id)
+  end
+
+  defp tempos(view), do: session_of(view).score.tempos
 end

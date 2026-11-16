@@ -17,10 +17,6 @@ defmodule DrawMusicWeb.EditorCommandsTest do
     %{score: %Score{measures: [bar | others]}, c4: c4, e4: e4, rest: rest}
   end
 
-  defp event(%Score{measures: [bar | _]}, id) do
-    Enum.find(bar.notes ++ bar.rests, &(&1.id == id))
-  end
-
   describe "toggle_dots/1" do
     test "dots notes and rests that aren't all dotted", %{score: score, c4: c4, rest: rest} do
       edit = EditorCommands.toggle_dots([c4.id, rest.id, "tempo-mark-id"])
@@ -45,5 +41,9 @@ defmodule DrawMusicWeb.EditorCommandsTest do
       assert event(sharpened, e4.id).alter == e4.alter
       assert event(sharpened, rest.id)
     end
+  end
+
+  defp event(%Score{measures: [bar | _]}, id) do
+    Enum.find(bar.notes ++ bar.rests, &(&1.id == id))
   end
 end

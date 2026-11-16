@@ -21,46 +21,10 @@ defmodule DrawMusicWeb.Editor.SettingsDialogTest do
     "instrument" => "0"
   }
 
-  defp host(conn, attrs) do
-    session = %{"component" => SettingsDialog, "attrs" => attrs, "test_pid" => self()}
-    {:ok, view, _html} = live_isolated(conn, ComponentHostLive, session: session)
-    view
-  end
-
   setup %{conn: conn} do
     ctx = %Context{sf: 0, mode: :major, time_num: 4, time_den: 4, tempo_bpm: 100}
     %{view: host(conn, %{ctx: ctx, tempo_text: "Andante", instrument: 0})}
   end
-
-  # A marking is chosen first: its words are then the ones that can be printed.
-  defp apply_settings(view, changes) do
-    settings = Map.merge(@settings, changes)
-    choose_marking(view, settings["tempo_marking"])
-    view |> form("#settings-form", settings: settings) |> render_submit()
-  end
-
-  # As the browser does, the change names the field that changed.
-  defp choose_marking(view, marking) do
-    view
-    |> form("#settings-form", settings: %{"tempo_marking" => marking})
-    |> render_change(%{"_target" => ["settings", "tempo_marking"]})
-  end
-
-  defp set_bpm(view, bpm) do
-    view
-    |> form("#settings-form", settings: %{"tempo_bpm" => bpm})
-    |> render_change(%{"_target" => ["settings", "tempo_bpm"]})
-  end
-
-  defp bpm?(view, bpm),
-    do: has_element?(view, "#settings-form input[name='settings[tempo_bpm]'][value='#{bpm}']")
-
-  defp print(view, word) do
-    view |> form("#settings-form", settings: %{"tempo_text" => word}) |> render_change()
-  end
-
-  defp printed?(view, word),
-    do: has_element?(view, "#settings-tempo-text option[selected][value='#{word}']")
 
   test "starts from the score's settings", %{view: view} do
     assert has_element?(view, "#settings-tempo-text option[selected][value='Andante']")
@@ -76,8 +40,8 @@ defmodule DrawMusicWeb.Editor.SettingsDialogTest do
       "tempo_text" => "Adagio"
     })
 
-    assert_received {:component_sent,
-                     {:editor, {:settings, {1, :major}, %{time_num: 3, tempo_text: "Adagio"}}}}
+    assert_receive {:component_sent,
+                    {:editor, {:settings, {1, :major}, %{time_num: 3, tempo_text: "Adagio"}}}}
   end
 
   test "there is always a marking: a blank one becomes Moderato", %{view: view} do
@@ -87,7 +51,7 @@ defmodule DrawMusicWeb.Editor.SettingsDialogTest do
     |> element("#settings-form")
     |> render_submit(%{"settings" => Map.put(@settings, "tempo_text", "")})
 
-    assert_received {:component_sent, {:editor, {:settings, _key, %{tempo_text: "Moderato"}}}}
+    assert_receive {:component_sent, {:editor, {:settings, _key, %{tempo_text: "Moderato"}}}}
   end
 
   test "the pickup is at most a beat short of a bar; a shorter time brings it within",
@@ -105,8 +69,8 @@ defmodule DrawMusicWeb.Editor.SettingsDialogTest do
 
     view |> form("#settings-form") |> render_submit()
 
-    assert_received {:component_sent,
-                     {:editor, {:settings, _key, %{time_num: 2, pickup_ticks: 960}}}}
+    assert_receive {:component_sent,
+                    {:editor, {:settings, _key, %{time_num: 2, pickup_ticks: 960}}}}
   end
 
   test "a refused setting stays in the form and reports nothing", %{view: view} do
@@ -134,8 +98,8 @@ defmodule DrawMusicWeb.Editor.SettingsDialogTest do
 
       view |> form("#settings-form") |> render_submit()
 
-      assert_received {:component_sent,
-                       {:editor, {:settings, _key, %{tempo_bpm: 140, tempo_text: "Tempo giusto"}}}}
+      assert_receive {:component_sent,
+                      {:editor, {:settings, _key, %{tempo_bpm: 140, tempo_text: "Tempo giusto"}}}}
     end
 
     test "each marking shows its words in every language that has one", %{view: view} do
@@ -167,8 +131,8 @@ defmodule DrawMusicWeb.Editor.SettingsDialogTest do
 
       view |> form("#settings-form") |> render_submit()
 
-      assert_received {:component_sent,
-                       {:editor, {:settings, _key, %{tempo_text: "Tempo di valse"}}}}
+      assert_receive {:component_sent,
+                      {:editor, {:settings, _key, %{tempo_text: "Tempo di valse"}}}}
     end
 
     test "an unknown word is refused", %{view: view} do
@@ -209,9 +173,9 @@ defmodule DrawMusicWeb.Editor.SettingsDialogTest do
 
       view |> form("#settings-form") |> render_submit()
 
-      assert_received {:component_sent,
-                       {:editor,
-                        {:settings, _key, %{time_num: 4, time_den: 4, time_symbol: :common}}}}
+      assert_receive {:component_sent,
+                      {:editor,
+                       {:settings, _key, %{time_num: 4, time_den: 4, time_symbol: :common}}}}
 
       view |> form("#settings-form", settings: %{"time_symbol" => "none"}) |> render_change()
       refute has_element?(view, "#settings-form input[name='settings[time_num]'][disabled]")
@@ -230,19 +194,55 @@ defmodule DrawMusicWeb.Editor.SettingsDialogTest do
       refute has_element?(view, symbol_choice())
       apply_settings(view, %{"time_num" => "3"})
 
-      assert_received {:component_sent, {:editor, {:settings, _key, %{time_symbol: :none}}}}
+      assert_receive {:component_sent, {:editor, {:settings, _key, %{time_symbol: :none}}}}
     end
   end
 
   test "Cancel reports close", %{view: view} do
     view |> element("#settings-form button", "Cancel") |> render_click()
 
-    assert_received {:component_sent, {:editor, :close}}
+    assert_receive {:component_sent, {:editor, :close}}
   end
 
   test "needs its inputs", %{conn: conn} do
     assert_raise ArgumentError, ~r/SettingsDialog needs/, fn ->
       host(conn, %{instrument: 0})
     end
+  end
+
+  # A marking is chosen first: its words are then the ones that can be printed.
+  defp apply_settings(view, changes) do
+    settings = Map.merge(@settings, changes)
+    choose_marking(view, settings["tempo_marking"])
+    view |> form("#settings-form", settings: settings) |> render_submit()
+  end
+
+  defp bpm?(view, bpm),
+    do: has_element?(view, "#settings-form input[name='settings[tempo_bpm]'][value='#{bpm}']")
+
+  # As the browser does, the change names the field that changed.
+  defp choose_marking(view, marking) do
+    view
+    |> form("#settings-form", settings: %{"tempo_marking" => marking})
+    |> render_change(%{"_target" => ["settings", "tempo_marking"]})
+  end
+
+  defp host(conn, attrs) do
+    session = %{"component" => SettingsDialog, "attrs" => attrs, "test_pid" => self()}
+    {:ok, view, _html} = live_isolated(conn, ComponentHostLive, session: session)
+    view
+  end
+
+  defp print(view, word) do
+    view |> form("#settings-form", settings: %{"tempo_text" => word}) |> render_change()
+  end
+
+  defp printed?(view, word),
+    do: has_element?(view, "#settings-tempo-text option[selected][value='#{word}']")
+
+  defp set_bpm(view, bpm) do
+    view
+    |> form("#settings-form", settings: %{"tempo_bpm" => bpm})
+    |> render_change(%{"_target" => ["settings", "tempo_bpm"]})
   end
 end

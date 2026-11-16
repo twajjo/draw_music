@@ -14,35 +14,6 @@ defmodule DrawMusicWeb.EditorToolsTest do
     %{view: placing_mode(view, :overlay)}
   end
 
-  defp put_notes(view, notes) do
-    view |> element("#palette") |> render_hook("arm", %{"kind" => "note", "value" => "quarter"})
-    for {offset, spn} <- notes, do: place(view, 0, offset, spn)
-    canvas_hook(view, "disarm", %{})
-  end
-
-  defp id_at(view, offset) do
-    session_of(view).score.measures
-    |> hd()
-    |> then(&(&1.notes ++ &1.rests))
-    |> Enum.find(&(&1.offset == offset and &1.staff == :treble))
-    |> Map.fetch!(:id)
-  end
-
-  defp open_menu(view, offset, spn \\ "B4") do
-    {step, _alter} = MusicHelpers.pitch!(spn)
-    id = id_at(view, offset)
-
-    canvas_hook(view, "open_menu", %{
-      "id" => id,
-      "x" => 100,
-      "y" => 100,
-      "step" => step,
-      "staff" => "treble"
-    })
-
-    id
-  end
-
   describe "dragging" do
     test "dropping moves the dragged notes by scale steps and selects them", %{view: view} do
       put_notes(view, [{0, "C4"}])
@@ -268,5 +239,34 @@ defmodule DrawMusicWeb.EditorToolsTest do
       view |> element("#measure-0-delete") |> render_click()
       assert has_element?(view, "#flash-error", "A score needs at least one bar")
     end
+  end
+
+  defp id_at(view, offset) do
+    session_of(view).score.measures
+    |> hd()
+    |> then(&(&1.notes ++ &1.rests))
+    |> Enum.find(&(&1.offset == offset and &1.staff == :treble))
+    |> Map.fetch!(:id)
+  end
+
+  defp open_menu(view, offset, spn \\ "B4") do
+    {step, _alter} = MusicHelpers.pitch!(spn)
+    id = id_at(view, offset)
+
+    canvas_hook(view, "open_menu", %{
+      "id" => id,
+      "x" => 100,
+      "y" => 100,
+      "step" => step,
+      "staff" => "treble"
+    })
+
+    id
+  end
+
+  defp put_notes(view, notes) do
+    view |> element("#palette") |> render_hook("arm", %{"kind" => "note", "value" => "quarter"})
+    for {offset, spn} <- notes, do: place(view, 0, offset, spn)
+    canvas_hook(view, "disarm", %{})
   end
 end

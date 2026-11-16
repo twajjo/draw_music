@@ -12,17 +12,6 @@ defmodule DrawMusicWeb.EditorLiveTest do
 
   setup :register_and_log_in_user
 
-  # Eight bars: too many for one page-layout system.
-  defp version_with_note(scope) do
-    {score, id} =
-      note!(Score.new(8), %Context{}, 0, "E5", %{staff: :treble, offset: 0, value: :quarter})
-
-    {version_fixture(scope, version: %{score: score}), id}
-  end
-
-  defp path(version),
-    do: LibraryComponents.version_path(version.key.composition.id, version.key, version.number)
-
   test "the score hook is told whether to name the note being placed or dragged",
        %{conn: conn, scope: scope} do
     {:ok, view, _html} = live(conn, ~p"/")
@@ -130,5 +119,16 @@ defmodule DrawMusicWeb.EditorLiveTest do
       {theirs, _id} = version_with_note(user_scope_fixture())
       assert_error_sent 404, fn -> get(conn, path(theirs) <> "/score.svg") end
     end
+  end
+
+  defp path(version),
+    do: LibraryComponents.version_path(version.key.composition.id, version.key, version.number)
+
+  # Eight bars: too many for one page-layout system.
+  defp version_with_note(scope) do
+    {score, id} =
+      note!(Score.new(8), %Context{}, 0, "E5", %{staff: :treble, offset: 0, value: :quarter})
+
+    {version_fixture(scope, version: %{score: score}), id}
   end
 end

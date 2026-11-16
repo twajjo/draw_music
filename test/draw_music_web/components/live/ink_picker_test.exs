@@ -7,12 +7,6 @@ defmodule DrawMusicWeb.InkPickerTest do
 
   setup :register_and_log_in_user
 
-  defp host(conn, scope) do
-    session = %{"component" => InkPicker, "attrs" => %{scope: scope}, "test_pid" => self()}
-    {:ok, view, _html} = live_isolated(conn, ComponentHostLive, session: session)
-    view
-  end
-
   test "with no color saved, white is chosen", %{conn: conn, scope: scope} do
     view = host(conn, scope)
 
@@ -24,7 +18,7 @@ defmodule DrawMusicWeb.InkPickerTest do
 
     view |> element("#subject-ffbf47") |> render_click()
 
-    assert_received {:component_sent, {InkPicker, {:updated, %{score_ink_dark: "#ffbf47"}}}}
+    assert_receive {:component_sent, {InkPicker, {:updated, %{score_ink_dark: "#ffbf47"}}}}
   end
 
   test "a custom color too dark to read is refused, with the reason shown",
@@ -44,6 +38,12 @@ defmodule DrawMusicWeb.InkPickerTest do
     view |> form("#subject-custom", %{color: "#c0ffee"}) |> render_submit()
 
     refute has_element?(view, "#subject .text-error")
-    assert_received {:component_sent, {InkPicker, {:updated, %{score_ink_dark: "#c0ffee"}}}}
+    assert_receive {:component_sent, {InkPicker, {:updated, %{score_ink_dark: "#c0ffee"}}}}
+  end
+
+  defp host(conn, scope) do
+    session = %{"component" => InkPicker, "attrs" => %{scope: scope}, "test_pid" => self()}
+    {:ok, view, _html} = live_isolated(conn, ComponentHostLive, session: session)
+    view
   end
 end

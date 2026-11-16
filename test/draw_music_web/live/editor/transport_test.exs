@@ -33,34 +33,6 @@ defmodule DrawMusicWeb.Editor.TransportTest do
     %{attrs: attrs, notes: notes}
   end
 
-  defp note(offset_in_score) do
-    %Note{
-      id: Ecto.UUID.generate(),
-      staff: :treble,
-      offset: rem(offset_in_score, 3840),
-      value: :quarter,
-      step: 28
-    }
-  end
-
-  defp host(conn, attrs) do
-    session = %{"component" => Transport, "attrs" => attrs, "test_pid" => self()}
-    {:ok, view, _html} = live_isolated(conn, ComponentHostLive, session: session)
-    view
-  end
-
-  defp click(view, selector), do: view |> element(selector) |> render_click()
-
-  defp hook(view, event, params \\ %{}) do
-    view |> element("#transport") |> render_hook(event, params)
-  end
-
-  # The page re-renders the transport with new inputs.
-  defp give(view, changes) do
-    send(view.pid, {:host_attrs, changes})
-    render(view)
-  end
-
   test "Play plays; again pauses; again resumes", %{conn: conn, attrs: attrs} do
     view = host(conn, attrs)
 
@@ -246,5 +218,33 @@ defmodule DrawMusicWeb.Editor.TransportTest do
 
     assert_receive {:component_sent, {:editor, {:session, clear}}}
     assert clear.(Session.new(attrs.score, attrs.ctx)).selection == MapSet.new()
+  end
+
+  defp click(view, selector), do: view |> element(selector) |> render_click()
+
+  # The page re-renders the transport with new inputs.
+  defp give(view, changes) do
+    send(view.pid, {:host_attrs, changes})
+    render(view)
+  end
+
+  defp hook(view, event, params \\ %{}) do
+    view |> element("#transport") |> render_hook(event, params)
+  end
+
+  defp host(conn, attrs) do
+    session = %{"component" => Transport, "attrs" => attrs, "test_pid" => self()}
+    {:ok, view, _html} = live_isolated(conn, ComponentHostLive, session: session)
+    view
+  end
+
+  defp note(offset_in_score) do
+    %Note{
+      id: Ecto.UUID.generate(),
+      staff: :treble,
+      offset: rem(offset_in_score, 3840),
+      value: :quarter,
+      step: 28
+    }
   end
 end

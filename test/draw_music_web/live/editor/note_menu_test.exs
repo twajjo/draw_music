@@ -20,23 +20,6 @@ defmodule DrawMusicWeb.Editor.NoteMenuTest do
     %{score: score, c4: c4, e4: e4}
   end
 
-  defp host(conn, score, menu) do
-    attrs = %{menu: menu, score: score, ctx: @ctx}
-    session = %{"component" => NoteMenu, "attrs" => attrs, "test_pid" => self()}
-    {:ok, view, _html} = live_isolated(conn, ComponentHostLive, session: session)
-    view
-  end
-
-  defp menu_for(%Note{id: id}), do: %ContextMenu{id: id, ids: [id], kind: :note, x: 10, y: 10}
-
-  defp selection_menu(ids) do
-    %ContextMenu{id: hd(ids), ids: ids, kind: :selection, x: 10, y: 10}
-  end
-
-  defp note_ids(%Score{measures: measures}) do
-    Enum.flat_map(measures, fn measure -> Enum.map(measure.notes, & &1.id) end)
-  end
-
   test "Put on the bass staff moves the notes there at their own pitch",
        %{conn: conn, score: score, c4: c4, e4: e4} do
     view = host(conn, score, selection_menu([c4.id, e4.id]))
@@ -121,5 +104,22 @@ defmodule DrawMusicWeb.Editor.NoteMenuTest do
     test "none for a note that isn't there", %{score: score} do
       assert TempoTarget.at_event(score, @ctx, Ecto.UUID.generate()) == {:error, :not_found}
     end
+  end
+
+  defp host(conn, score, menu) do
+    attrs = %{menu: menu, score: score, ctx: @ctx}
+    session = %{"component" => NoteMenu, "attrs" => attrs, "test_pid" => self()}
+    {:ok, view, _html} = live_isolated(conn, ComponentHostLive, session: session)
+    view
+  end
+
+  defp menu_for(%Note{id: id}), do: %ContextMenu{id: id, ids: [id], kind: :note, x: 10, y: 10}
+
+  defp note_ids(%Score{measures: measures}) do
+    Enum.flat_map(measures, fn measure -> Enum.map(measure.notes, & &1.id) end)
+  end
+
+  defp selection_menu(ids) do
+    %ContextMenu{id: hd(ids), ids: ids, kind: :selection, x: 10, y: 10}
   end
 end

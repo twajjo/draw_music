@@ -9,13 +9,6 @@ defmodule DrawMusicWeb.ScoreSvgTest do
 
   @ctx %Context{}
 
-  defp engrave(score, layout),
-    do: Layout.layout(score, @ctx, width: ScoreComponents.layout_width(layout))
-
-  defp glyph_ids(pieces) do
-    for piece <- pieces, {_i, _y, items} <- piece.groups, %Glyph{id: id} <- items, id, do: id
-  end
-
   describe "Page layout" do
     test "a piece per system, whose bands tile the page from top to bottom" do
       engraved = engrave(Score.new(40), :page)
@@ -71,5 +64,12 @@ defmodule DrawMusicWeb.ScoreSvgTest do
     assert first.selected == MapSet.new([id])
     assert Enum.all?(rest, &(&1.selected == MapSet.new()))
     assert IO.iodata_to_binary(ScoreSvg.piece(first, 10)) =~ ~s(id="note-#{id}" class="selected")
+  end
+
+  defp engrave(score, layout),
+    do: Layout.layout(score, @ctx, width: ScoreComponents.layout_width(layout))
+
+  defp glyph_ids(pieces) do
+    for piece <- pieces, {_i, _y, items} <- piece.groups, %Glyph{id: id} <- items, id, do: id
   end
 end

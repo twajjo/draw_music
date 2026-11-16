@@ -22,23 +22,6 @@ defmodule DrawMusicWeb.EditorSettingsTest do
     "instrument" => "0"
   }
 
-  # A marking is chosen first: its words are then the ones that can be printed.
-  defp apply_settings(view, changes) do
-    settings = Map.merge(@settings, changes)
-    view |> element("#settings-button") |> render_click()
-
-    view
-    |> form("#settings-form", settings: Map.take(settings, ["tempo_marking"]))
-    |> render_change()
-
-    view |> form("#settings-form", settings: settings) |> render_submit()
-  end
-
-  defp draft(conn) do
-    {:ok, view, _html} = live(conn, ~p"/")
-    placing_mode(view, :overlay)
-  end
-
   test "a new time signature re-flows the notes into the new bars, undoably", %{conn: conn} do
     view = draft(conn)
     view |> element("#palette-half") |> render_click()
@@ -163,5 +146,22 @@ defmodule DrawMusicWeb.EditorSettingsTest do
 
     saved = Library.get_version!(scope, version.id)
     assert {saved.tempo_bpm, saved.tempo_text} == {90, "Andante"}
+  end
+
+  # A marking is chosen first: its words are then the ones that can be printed.
+  defp apply_settings(view, changes) do
+    settings = Map.merge(@settings, changes)
+    view |> element("#settings-button") |> render_click()
+
+    view
+    |> form("#settings-form", settings: Map.take(settings, ["tempo_marking"]))
+    |> render_change()
+
+    view |> form("#settings-form", settings: settings) |> render_submit()
+  end
+
+  defp draft(conn) do
+    {:ok, view, _html} = live(conn, ~p"/")
+    placing_mode(view, :overlay)
   end
 end

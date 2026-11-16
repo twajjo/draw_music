@@ -19,27 +19,6 @@ defmodule DrawMusicWeb.EditorPlayTest do
     %{view: view}
   end
 
-  defp play_mode(view), do: view |> element("#palette-mode-play") |> render_click()
-
-  defp id_at(view, offset) do
-    session_of(view).score.measures
-    |> hd()
-    |> Map.fetch!(:notes)
-    |> Enum.find(&(&1.offset == offset))
-    |> Map.fetch!(:id)
-  end
-
-  defp select(view, offsets) do
-    canvas_hook(view, "select", %{"ids" => Enum.map(offsets, &id_at(view, &1)), "add" => false})
-  end
-
-  defp play(view), do: view |> element("#palette-play") |> render_click()
-
-  # What the transport's hook sends: its keys, and the audio engine's reports.
-  defp transport(view, event, params \\ %{}) do
-    view |> element("#transport") |> render_hook(event, params)
-  end
-
   test "Play sends the score's notes to the browser and shows Pause", %{view: view} do
     play(view)
 
@@ -439,5 +418,26 @@ defmodule DrawMusicWeb.EditorPlayTest do
              "#flash-info",
              "Acoustic Grand Piano isn't available; playing with the built-in synth."
            )
+  end
+
+  defp id_at(view, offset) do
+    session_of(view).score.measures
+    |> hd()
+    |> Map.fetch!(:notes)
+    |> Enum.find(&(&1.offset == offset))
+    |> Map.fetch!(:id)
+  end
+
+  defp play(view), do: view |> element("#palette-play") |> render_click()
+
+  defp play_mode(view), do: view |> element("#palette-mode-play") |> render_click()
+
+  defp select(view, offsets) do
+    canvas_hook(view, "select", %{"ids" => Enum.map(offsets, &id_at(view, &1)), "add" => false})
+  end
+
+  # What the transport's hook sends: its keys, and the audio engine's reports.
+  defp transport(view, event, params \\ %{}) do
+    view |> element("#transport") |> render_hook(event, params)
   end
 end

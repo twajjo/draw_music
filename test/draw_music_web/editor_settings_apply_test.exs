@@ -4,18 +4,6 @@ defmodule DrawMusicWeb.EditorSettingsApplyTest do
   alias DrawMusic.Music.{Context, Note, Score, Session}
   alias DrawMusicWeb.EditorSettings
 
-  # A half and a quarter starting together in one voice: a score the bars
-  # can't be re-flowed from (as older imports left them).
-  defp clashing_session do
-    notes = [
-      %Note{id: Ecto.UUID.generate(), staff: :bass, offset: 0, value: :half, step: 15},
-      %Note{id: Ecto.UUID.generate(), staff: :bass, offset: 0, value: :quarter, step: 21}
-    ]
-
-    [measure] = Score.new().measures
-    Session.new(%Score{measures: [%{measure | notes: notes}]}, %Context{})
-  end
-
   test "a new tempo leaves the score alone" do
     session = clashing_session()
 
@@ -31,5 +19,17 @@ defmodule DrawMusicWeb.EditorSettingsApplyTest do
 
   test "a new time signature still re-flows the bars, and reports what blocks it" do
     assert {:error, :overlap} = EditorSettings.apply(clashing_session(), %{time_num: 3})
+  end
+
+  # A half and a quarter starting together in one voice: a score the bars
+  # can't be re-flowed from (as older imports left them).
+  defp clashing_session do
+    notes = [
+      %Note{id: Ecto.UUID.generate(), staff: :bass, offset: 0, value: :half, step: 15},
+      %Note{id: Ecto.UUID.generate(), staff: :bass, offset: 0, value: :quarter, step: 21}
+    ]
+
+    [measure] = Score.new().measures
+    Session.new(%Score{measures: [%{measure | notes: notes}]}, %Context{})
   end
 end

@@ -12,14 +12,6 @@ defmodule DrawMusicWeb.Editor.SaveMenuTest do
 
   setup :register_and_log_in_user
 
-  defp host(conn, attrs) do
-    session = %{"component" => SaveMenu, "attrs" => attrs, "test_pid" => self()}
-    {:ok, view, _html} = live_isolated(conn, ComponentHostLive, session: session)
-    view
-  end
-
-  defp draft, do: %Version{key: %Key{sf: 0, mode: :major}, score: Score.new(4)}
-
   test "shows the unsaved-changes dot only when there are changes",
        %{conn: conn, scope: scope} do
     clean = host(conn, %{scope: scope, version: draft(), version_attrs: version_attrs()})
@@ -43,7 +35,7 @@ defmodule DrawMusicWeb.Editor.SaveMenuTest do
     test "Save asks for a new composition", %{view: view} do
       view |> element("#save") |> render_click()
 
-      assert_received {:component_sent, {:editor, {:open, :save_as}}}
+      assert_receive {:component_sent, {:editor, {:open, :save_as}}}
     end
   end
 
@@ -61,7 +53,7 @@ defmodule DrawMusicWeb.Editor.SaveMenuTest do
     test "Save stores it and reports the same version", %{view: view, scope: scope, version: v} do
       view |> element("#save") |> render_click()
 
-      assert_received {:component_sent, {:editor, {:saved, %Version{id: id}, "Saved"}}}
+      assert_receive {:component_sent, {:editor, {:saved, %Version{id: id}, "Saved"}}}
       assert id == v.id
       assert Library.get_version!(scope, v.id).tempo_bpm == 90
     end
@@ -69,14 +61,14 @@ defmodule DrawMusicWeb.Editor.SaveMenuTest do
     test "Save as new version reports the next version", %{view: view} do
       view |> element("#save-new-version") |> render_click()
 
-      assert_received {:component_sent,
-                       {:editor, {:saved, %Version{number: 2}, "Saved as version 2"}}}
+      assert_receive {:component_sent,
+                      {:editor, {:saved, %Version{number: 2}, "Saved as version 2"}}}
     end
 
     test "Save as new composition asks for one", %{view: view} do
       view |> element("#save-as") |> render_click()
 
-      assert_received {:component_sent, {:editor, {:open, :save_as}}}
+      assert_receive {:component_sent, {:editor, {:open, :save_as}}}
     end
   end
 
@@ -87,12 +79,20 @@ defmodule DrawMusicWeb.Editor.SaveMenuTest do
 
     view |> element("#save") |> render_click()
 
-    assert_received {:component_sent, {:editor, {:flash, :error, "Couldn't save" <> _rest}}}
+    assert_receive {:component_sent, {:editor, {:flash, :error, "Couldn't save" <> _rest}}}
   end
 
   test "needs its inputs", %{conn: conn, scope: scope} do
     assert_raise ArgumentError, ~r/SaveMenu needs/, fn ->
       host(conn, %{scope: scope})
     end
+  end
+
+  defp draft, do: %Version{key: %Key{sf: 0, mode: :major}, score: Score.new(4)}
+
+  defp host(conn, attrs) do
+    session = %{"component" => SaveMenu, "attrs" => attrs, "test_pid" => self()}
+    {:ok, view, _html} = live_isolated(conn, ComponentHostLive, session: session)
+    view
   end
 end

@@ -8,16 +8,6 @@ defmodule DrawMusic.Engraving.LayoutTest do
 
   @ctx %Context{}
 
-  defp items(layout, filter) do
-    for system <- layout.systems, item <- system.items, filter.(item), do: item
-  end
-
-  defp role(layout, role), do: items(layout, &(Map.get(&1, :role) == role))
-
-  defp place(score \\ Score.new(), ctx \\ @ctx, index \\ 0, spn, attrs) do
-    note!(score, ctx, index, spn, Map.merge(%{staff: :treble, offset: 0, value: :quarter}, attrs))
-  end
-
   describe "positions on the staff" do
     test "middle C takes one ledger line on either staff" do
       for staff <- [:treble, :bass] do
@@ -174,7 +164,10 @@ defmodule DrawMusic.Engraving.LayoutTest do
         end)
 
       {whole, _id} = place("C5", %{offset: 0, value: :whole})
-      width = fn score -> hd(hd(Layout.layout(score, @ctx).systems).measures).width end
+
+      width = fn score ->
+        hd(hd(Layout.layout(score, @ctx).systems).measures).width
+      end
 
       assert width.(sixteenths) > width.(whole)
     end
@@ -262,4 +255,14 @@ defmodule DrawMusic.Engraving.LayoutTest do
       assert items(Layout.layout(Score.new(), @ctx), &match?(%TempoMark{}, &1)) == []
     end
   end
+
+  defp items(layout, filter) do
+    for system <- layout.systems, item <- system.items, filter.(item), do: item
+  end
+
+  defp place(score \\ Score.new(), ctx \\ @ctx, index \\ 0, spn, attrs) do
+    note!(score, ctx, index, spn, Map.merge(%{staff: :treble, offset: 0, value: :quarter}, attrs))
+  end
+
+  defp role(layout, role), do: items(layout, &(Map.get(&1, :role) == role))
 end

@@ -4,11 +4,6 @@ defmodule DrawMusic.Music.TempoEditingTest do
   alias DrawMusic.Music.{Context, Score, TempoChange, TempoEditing}
 
   @ctx %Context{}
-  # Two bars of 4/4: 7680 ticks.
-  defp score(tempos \\ []), do: %{Score.new(2) | tempos: tempos}
-
-  defp mark(id, tick, bpm), do: %TempoChange{id: id, tick: tick, bpm: bpm}
-  defp ticks(score), do: Enum.map(score.tempos, &{&1.tick, &1.bpm, &1.to_tick})
 
   test "a new change gets an id and goes in order" do
     {:ok, s} =
@@ -89,4 +84,11 @@ defmodule DrawMusic.Music.TempoEditingTest do
     s = TempoEditing.remove(score([mark("a", 0, 60), mark("b", 960, 80)]), ["a", "note-id"])
     assert TempoEditing.ids(s) == ["b"]
   end
+
+  defp mark(id, tick, bpm), do: %TempoChange{id: id, tick: tick, bpm: bpm}
+
+  # Two bars of 4/4: 7680 ticks.
+  defp score(tempos \\ []), do: %{Score.new(2) | tempos: tempos}
+
+  defp ticks(score), do: Enum.map(score.tempos, &{&1.tick, &1.bpm, &1.to_tick})
 end

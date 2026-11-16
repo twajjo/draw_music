@@ -112,7 +112,10 @@ defmodule DrawMusic.Library.ValidationsTest do
 
     test "score params are validated down to each note" do
       note = %{"staff" => "treble", "offset" => 0, "value" => "quarter", "step" => 28}
-      score = fn note -> %{score: %{"measures" => [%{"notes" => [note]}]}} end
+
+      score = fn note ->
+        %{score: %{"measures" => [%{"notes" => [note]}]}}
+      end
 
       assert version(score.(note)).valid?
 
