@@ -57,6 +57,15 @@ defmodule DrawMusic.Engraving.TempoMark do
   def label(%__MODULE__{bpm: bpm, ramp: :rit}), do: "= #{bpm} rit."
   def label(%__MODULE__{bpm: bpm, ramp: :accel}), do: "= #{bpm} accel."
 
+  @doc "The x where a mark ends: its label's end, or its line's and end tempo's."
+  @spec reach(t()) :: float()
+  def reach(%__MODULE__{line_to: nil} = mark), do: mark.x + mark.width
+
+  def reach(%__MODULE__{} = mark) do
+    end_width = if mark.end?, do: text_width(end_label(mark)), else: 0.0
+    max(mark.x + mark.width, mark.line_to + end_width)
+  end
+
   @doc "How wide a note and `text` are, roughly."
   @spec text_width(String.t()) :: float()
   def text_width(text), do: @note_width + @char_width * String.length(text)
