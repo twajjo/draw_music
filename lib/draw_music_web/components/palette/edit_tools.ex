@@ -17,7 +17,8 @@ defmodule DrawMusicWeb.Palette.EditTools do
   import DrawMusicWeb.Palette.KeyMenu
 
   alias DrawMusic.Music.{Chords, KeySuggestion}
-  alias DrawMusicWeb.EditorPalette
+  alias DrawMusicWeb.{Dropdown, EditorPalette}
+  alias Phoenix.LiveView.JS
 
   @values [
     {:whole, "Whole", "1", :noteWhole, :restWhole},
@@ -126,8 +127,8 @@ defmodule DrawMusicWeb.Palette.EditTools do
     assigns = assign(assigns, :qualities, @qualities)
 
     ~H"""
-    <details id="palette-chords-menu" class="dropdown join-item">
-      <summary
+    <Dropdown.dropdown id="palette-chords-menu" class="join-item">
+      <:summary
         id="palette-chords"
         aria-pressed={to_string(armed?(@armed, [:chord]))}
         aria-disabled={to_string(@row_kind == :rest)}
@@ -140,14 +141,13 @@ defmodule DrawMusicWeb.Palette.EditTools do
       >
         {chords_label(@armed, @numerals)}
         <.icon name="hero-chevron-down-micro" class="size-4 opacity-60" />
-      </summary>
+      </:summary>
       <div class="dropdown-content z-30 mt-1 w-72 rounded-box border border-base-300 bg-base-100 p-3 shadow-lg">
         <button
           :if={armed?(@armed, [:chord])}
           id="palette-single-notes"
           type="button"
-          phx-click="single_notes"
-          phx-target={@target}
+          phx-click={pick("single_notes", @target)}
           class="mb-3 w-full rounded border border-base-300 px-2 py-1 text-sm transition-colors hover:bg-base-200"
         >
           Single notes
@@ -158,9 +158,8 @@ defmodule DrawMusicWeb.Palette.EditTools do
             :for={quality <- @qualities}
             id={"palette-chord-#{quality}"}
             type="button"
-            phx-click="arm_chord"
+            phx-click={pick("arm_chord", @target)}
             phx-value-quality={quality}
-            phx-target={@target}
             class={chip_class(@armed && @armed.chord == {:quality, quality})}
           >
             {Chords.name(quality)}
@@ -172,16 +171,15 @@ defmodule DrawMusicWeb.Palette.EditTools do
             :for={{numeral, degree} <- Enum.with_index(@numerals, 1)}
             id={"palette-degree-#{degree}"}
             type="button"
-            phx-click="arm_chord"
+            phx-click={pick("arm_chord", @target)}
             phx-value-degree={degree}
-            phx-target={@target}
             class={chip_class(@armed && @armed.chord == {:degree, degree})}
           >
             {numeral}
           </button>
         </div>
       </div>
-    </details>
+    </Dropdown.dropdown>
     """
   end
 
@@ -338,6 +336,14 @@ defmodule DrawMusicWeb.Palette.EditTools do
       {if @insert?, do: "Insert", else: "Overlay"}
     </.tool_button>
     """
+  end
+
+  # A Chords menu item: the menu closes, then `event` goes to the palette
+  # (with the item's phx-value-* attributes).
+  defp pick(event, target) do
+    "palette-chords-menu"
+    |> Dropdown.close()
+    |> JS.push(event, target: target)
   end
 
   # The button shows what it switches to.

@@ -103,7 +103,7 @@ Phases 5, 6 and 7 had 104, 53 and 57 files per PR. That is far too many to revie
 
 | PR | Contents |
 |---|---|
-| 8.1 | Fix: dropdown menus close when you click away or press Escape (see below). **Partly done** (#50): the Save menu closes on a pick and on a click away. Still to do: Escape, the shared `<.dropdown>`, the Chords menu and the library dropdown |
+| 8.1 | Fix: dropdown menus close when you click away or press Escape (see below). **Done** (#50, and the shared `DrawMusicWeb.Dropdown`): Save, Chords, Suggest key and the version picker close on a click away, Escape (caught first, so it does nothing else) and a pick |
 | 8.2 | **Done differently** (#31, #35–#37): Preferences (panel or page) and Manage account, both in the account menu (see below) |
 | 8.2a | The editor header shows the version's instrument, "For <instrument>" (see below) |
 | 8.2b | Preferences saved explicitly: one form, live preview, Save / Cancel / Defaults; the theme in it; Page / Strip view-only for the session (`plans/preferences-form.md`, PRs 1–3) |

@@ -12,7 +12,7 @@ defmodule DrawMusicWeb.LibraryComponents do
   alias DrawMusic.Library.Key
   alias DrawMusic.Music.{Context, TempoMarking}
   alias DrawMusic.Samples
-  alias DrawMusicWeb.EditorSettings
+  alias DrawMusicWeb.{Dropdown, EditorSettings}
 
   @doc """
   A composition's details: its name, subtitle, credits and notes. They
@@ -336,11 +336,11 @@ defmodule DrawMusicWeb.LibraryComponents do
   @spec version_picker(map()) :: Phoenix.LiveView.Rendered.t()
   def version_picker(assigns) do
     ~H"""
-    <details id={@id} class="dropdown dropdown-end">
-      <summary class="btn btn-sm">
+    <Dropdown.dropdown id={@id} class="dropdown-end">
+      <:summary class="btn btn-sm">
         {Key.name(@version.key)} · v{@version.number}
         <.icon name="hero-chevron-down" class="size-4" />
-      </summary>
+      </:summary>
       <ul class="dropdown-content z-20 mt-1 w-64 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
         <li :for={key <- @composition.keys} class="py-1">
           <p class="px-2 text-xs font-semibold uppercase opacity-60">{Key.name(key)}</p>
@@ -358,7 +358,7 @@ defmodule DrawMusicWeb.LibraryComponents do
           </.link>
         </li>
       </ul>
-    </details>
+    </Dropdown.dropdown>
     """
   end
 
