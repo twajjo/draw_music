@@ -8,7 +8,7 @@ defmodule DrawMusicWeb.UserLive.Settings do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} import_panel={@import_panel}>
       <div class="text-center">
         <.header>Manage Account Login</.header>
       </div>

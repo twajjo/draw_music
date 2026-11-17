@@ -3,12 +3,43 @@ defmodule DrawMusicWeb.LibraryImportTest do
 
   import Phoenix.LiveViewTest
   import DrawMusic.LibraryFixtures
+  import DrawMusicWeb.EditorHelpers
 
   alias DrawMusic.{Library, MidiCodec}
   alias DrawMusic.Library.{Composition, Key, Version}
   alias DrawMusic.Music.Score
 
   setup :register_and_log_in_user
+
+  test "Import opens over the editor; Cancel leaves it as it was, unsaved work kept",
+       %{conn: conn} do
+    {:ok, editor, _html} = live(conn, ~p"/")
+    placing_mode(editor, :overlay)
+    editor |> element("#palette-quarter") |> render_click()
+    place(editor, 0, 0, "C4")
+
+    editor |> element("#nav-import") |> render_click()
+    assert_patch(editor, "/?panel=import")
+    assert has_element?(editor, "#import-dialog #import-form")
+
+    editor |> element("#import-dialog button", "Cancel") |> render_click()
+
+    assert_patch(editor, "/")
+    refute has_element?(editor, "#import-dialog")
+    assert notes_of(editor) == [{0, 0, "C4", :quarter, 0}]
+    assert session_of(editor).dirty?
+  end
+
+  test "Import opens over any signed-in page, keeping its address", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/help")
+    # Marked for the editor's guard: an import ends by leaving the page.
+    assert has_element?(view, ~s(#nav-import[href="/help?panel=import"][data-leaves-page]))
+
+    {:ok, view, _html} = live(conn, ~p"/compositions?panel=import")
+    assert has_element?(view, "#import-dialog")
+    refute has_element?(view, "#import-open")
+    refute has_element?(view, "#new-composition")
+  end
 
   test "names the piece from the file, takes an edited name, and opens it", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/compositions")
@@ -101,14 +132,14 @@ defmodule DrawMusicWeb.LibraryImportTest do
     view |> form("#import-name-form", import: %{name: name}) |> render_submit()
   end
 
-  # Where the library sent us once the dialog reported the import.
+  # Where the imported piece was opened.
   defp opened(view) do
     {to, _flash} = assert_redirect(view)
     to
   end
 
   defp upload(view, filename, content) do
-    view |> element("#import-open") |> render_click()
+    view |> element("#nav-import") |> render_click()
     file = file_input(view, "#import-form", :midi, [%{name: filename, content: content}])
     render_upload(file, filename)
     view |> form("#import-form") |> render_submit()

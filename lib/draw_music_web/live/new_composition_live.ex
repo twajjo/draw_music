@@ -42,7 +42,7 @@ defmodule DrawMusicWeb.NewCompositionLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} import_panel={@import_panel}>
       <.header>
         New composition
         <:subtitle>You can change all of this later.</:subtitle>

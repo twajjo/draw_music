@@ -121,6 +121,11 @@ defmodule DrawMusicWeb.Layouts do
     default: nil,
     doc: "the current [scope](https://phoenix.hexdocs.pm/scopes.html)"
 
+  attr :import_panel, DrawMusicWeb.ImportPanel,
+    default: nil,
+    doc:
+      "the page's `@import_panel` (`DrawMusicWeb.ImportPanel`): the top bar's Import and its dialog"
+
   attr :paper, :atom,
     default: nil,
     values: [nil, :white, :black],
@@ -147,6 +152,18 @@ defmodule DrawMusicWeb.Layouts do
         <.link id="nav-compositions" navigate={~p"/compositions"} class="btn btn-ghost btn-sm">
           Compositions
         </.link>
+        <%!-- An import ends by opening the new piece, so unsaved changes are
+             asked about before its dialog opens (data-leaves-page, for the
+             editor's guard). --%>
+        <.link
+          :if={@import_panel}
+          id="nav-import"
+          patch={@import_panel.open_path}
+          data-leaves-page
+          class="btn btn-ghost btn-sm"
+        >
+          <.icon name="hero-arrow-up-tray" class="size-4" /><span>Import</span><span>.mid</span>
+        </.link>
       </nav>
 
       <div class="ml-auto flex items-center gap-2 text-sm">
@@ -168,6 +185,11 @@ defmodule DrawMusicWeb.Layouts do
       <div class={["mx-auto space-y-4", if(@wide, do: "max-w-none", else: "max-w-2xl")]}>
         {render_slot(@inner_block)}
       </div>
+      <.import_panel
+        :if={@current_scope && @import_panel}
+        panel={@import_panel}
+        scope={@current_scope}
+      />
     </main>
 
     <footer class="flex items-center justify-center gap-4 border-t border-base-300 px-4 py-4 text-sm opacity-70">
@@ -225,6 +247,21 @@ defmodule DrawMusicWeb.Layouts do
         <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
       </.flash>
     </div>
+    """
+  end
+
+  @doc "The top bar's import dialog, over the page while it's open."
+  attr :panel, DrawMusicWeb.ImportPanel, required: true
+  attr :scope, :map, required: true
+  @spec import_panel(map()) :: Phoenix.LiveView.Rendered.t()
+  def import_panel(assigns) do
+    ~H"""
+    <.live_component
+      :if={@panel.open?}
+      module={DrawMusicWeb.ImportDialog}
+      id="import"
+      scope={@scope}
+    />
     """
   end
 

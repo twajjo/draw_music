@@ -298,6 +298,7 @@ defmodule DrawMusicWeb.EditorLive do
       flash={@flash}
       current_scope={@current_scope}
       preferences_patch={"#{@path}?panel=preferences"}
+      import_panel={@import_panel}
       paper={@view.paper}
       wide
     >
