@@ -434,6 +434,13 @@ defmodule DrawMusicWeb.Shortcuts do
       action:
         "Switch the score between black on white and your ink on black (the button shows which), for now only: each score opens on the paper set in Preferences, where the ink is chosen too. Downloads are always black on white"
     },
+    %Shortcut{
+      group: "Modes",
+      keys: ["Escape"],
+      modes: @both,
+      action:
+        "Close an open drop-down menu (Save's arrow, Chords, Suggest key, the versions) and do nothing else; a click anywhere outside it, or picking an item, closes it too"
+    },
     %Shortcut{group: "Modes", keys: ["?"], modes: @both, action: "Show this cheat-sheet"}
   ]
 

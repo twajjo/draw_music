@@ -15,6 +15,7 @@ defmodule DrawMusicWeb.Palette.KeyMenu do
 
   alias DrawMusic.Library.Key
   alias DrawMusic.Music.{KeyFit, KeySuggestion}
+  alias DrawMusicWeb.Dropdown
   alias Phoenix.LiveView.JS
 
   @doc "The Suggest key button and its drop list of keys."
@@ -23,8 +24,8 @@ defmodule DrawMusicWeb.Palette.KeyMenu do
   @spec key_menu(map()) :: Phoenix.LiveView.Rendered.t()
   def key_menu(assigns) do
     ~H"""
-    <details id="palette-key-menu" class="dropdown">
-      <summary
+    <Dropdown.dropdown id="palette-key-menu">
+      <:summary
         id="palette-suggest-key"
         aria-disabled={to_string(not @suggestion.worth_it?)}
         title={title(@suggestion)}
@@ -34,7 +35,7 @@ defmodule DrawMusicWeb.Palette.KeyMenu do
         ]}
       >
         Suggest key <.icon name="hero-chevron-down-micro" class="size-4 opacity-60" />
-      </summary>
+      </:summary>
       <div
         :if={@suggestion.worth_it?}
         class="dropdown-content z-30 mt-1 w-72 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
@@ -44,7 +45,7 @@ defmodule DrawMusicWeb.Palette.KeyMenu do
         </p>
         <.key_choice :for={fit <- @suggestion.keys} fit={fit} target={@target} />
       </div>
-    </details>
+    </Dropdown.dropdown>
     """
   end
 
@@ -60,7 +61,7 @@ defmodule DrawMusicWeb.Palette.KeyMenu do
       id={"palette-key-#{@fit.sf}-#{@fit.mode}"}
       type="button"
       phx-click={
-        JS.remove_attribute("open", to: "#palette-key-menu")
+        Dropdown.close("palette-key-menu")
         |> JS.push("rekey", value: %{sf: @fit.sf, mode: @fit.mode}, target: @target)
       }
       class="flex w-full items-baseline justify-between rounded px-2 py-1 text-sm transition-colors hover:bg-base-200"
