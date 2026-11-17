@@ -298,7 +298,7 @@ defmodule DrawMusicWeb.Shortcuts do
       mouse: "account menu › Preferences",
       modes: @both,
       action:
-        "Your own preferences (light, dark or system theme; layout, dark-mode ink, reading aids). Changes show at once but aren't kept until Save; Cancel puts back what you had, and Defaults fills in the starting values (Save to keep them). Only Save or Cancel closes it"
+        "Your own preferences (light, dark or system theme; the layout and paper each score starts with, the ink on black, reading aids). Changes show at once but aren't kept until Save; Cancel puts back what you had, and Defaults fills in the starting values (Save to keep them). Only Save or Cancel closes it"
     },
     # Playback (the play controls replace the edit palette in Play mode)
     %Shortcut{
@@ -426,6 +426,13 @@ defmodule DrawMusicWeb.Shortcuts do
       modes: @both,
       action:
         "Show the score in rows like sheet music (Page) or as one long staff (Strip), for now only: each score opens in the layout set in Preferences"
+    },
+    %Shortcut{
+      group: "Modes",
+      mouse: "Sheet, under Save",
+      modes: @both,
+      action:
+        "Switch the score between black on white and your ink on black (the button shows which), for now only: each score opens on the paper set in Preferences, where the ink is chosen too. Downloads are always black on white"
     },
     %Shortcut{group: "Modes", keys: ["?"], modes: @both, action: "Show this cheat-sheet"}
   ]

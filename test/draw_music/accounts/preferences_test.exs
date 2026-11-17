@@ -40,6 +40,11 @@ defmodule DrawMusic.Accounts.PreferencesTest do
     end
   end
 
+  test "the paper is white or black" do
+    assert prefs(%{score_paper: "black"}).valid?
+    assert %{score_paper: [_]} = errors_on(prefs(%{score_paper: "grey"}))
+  end
+
   test "the layout is strip or page" do
     assert prefs(%{score_layout: "page"}).valid?
     assert %{score_layout: [_]} = errors_on(prefs(%{score_layout: "scroll"}))

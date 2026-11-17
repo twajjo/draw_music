@@ -127,7 +127,7 @@ defmodule DrawMusicWeb.ScoreCanvas.Surface do
               [window, "contextmenu", (e) => this.contextMenu(e)],
               [window, "score:playhead", (e) => this.playhead.playing(e.detail)],
               [window, "score:play-start", (e) => this.playhead.waitAt(e.detail.tick)],
-              [window, "score:redraw", (e) => this.notes.startRedrawing(e.detail.layout)],
+              [window, "score:redraw", (e) => this.notes.startRedrawing(e.detail.layout, this.el.dataset.layout)],
             ]
             for (const [target, type, fun, capture] of this.listeners) target.addEventListener(type, fun, capture)
           },

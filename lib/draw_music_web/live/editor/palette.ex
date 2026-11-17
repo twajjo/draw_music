@@ -2,7 +2,8 @@ defmodule DrawMusicWeb.Editor.Palette do
   @moduledoc """
   The editor's toolbar, two rows tall, as a standalone LiveComponent: the
   Edit/Play switch, Edit mode's tools (`DrawMusicWeb.Palette.EditTools`),
-  the `:play_controls` slot, help and the `:trailing` slot (save). It
+  the `:play_controls` slot, help and the `:trailing` slot (save), with the
+  `:below_trailing` slot under it (the Sheet button). It
   handles its buttons and its keyboard shortcuts (the colocated
   `.PaletteKeys` hook) and reports the results.
 
@@ -21,8 +22,8 @@ defmodule DrawMusicWeb.Editor.Palette do
     * `:can_undo?`, `:can_redo?`, `:mode` (the key's), `:editor_mode`.
     * `:key_suggestion`: better keys for the score
       (`DrawMusic.Music.KeySuggestion`), for the Suggest key button.
-    * The `:below_mode`, `:play_controls` and `:trailing` slots, placed in
-      the toolbar.
+    * The `:below_mode`, `:play_controls`, `:trailing` and
+      `:below_trailing` slots, placed in the toolbar.
 
   ## Intents
     * `{:palette, changes}`: the palette's new state, what changed of
@@ -58,7 +59,8 @@ defmodule DrawMusicWeb.Editor.Palette do
     key_suggestion: %KeySuggestion{accidentals: 0, keys: [], worth_it?: false},
     below_mode: [],
     play_controls: [],
-    trailing: []
+    trailing: [],
+    below_trailing: []
   }
 
   # Edit mode's events; in Play mode (its buttons gone, its keys off) a
@@ -208,7 +210,8 @@ defmodule DrawMusicWeb.Editor.Palette do
   @impl true
   @spec render(map()) :: Phoenix.LiveView.Rendered.t()
   # A two-row grid: the Edit/Play switch top left (Page and Strip, the
-  # `:below_mode` slot, under it), help and save top right, and the current
+  # `:below_mode` slot, under it), help and save top right (the
+  # `:below_trailing` slot, Sheet, under them), and the current
   # mode's two rows of controls between them. Each row is a palette piece
   # tall (h-10) in both modes, so switching modes doesn't move the score.
   def render(assigns) do
@@ -241,6 +244,9 @@ defmodule DrawMusicWeb.Editor.Palette do
       <div class="col-start-4 row-start-1 ml-3 flex items-stretch gap-1">
         <.help_button />
         {render_slot(@trailing)}
+      </div>
+      <div class="col-start-4 row-start-2 ml-3 flex items-stretch justify-end gap-1">
+        {render_slot(@below_trailing)}
       </div>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".PaletteKeys">
         // The palette's keyboard shortcuts, sent to the palette. P works in

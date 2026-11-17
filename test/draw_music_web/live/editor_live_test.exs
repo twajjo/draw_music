@@ -83,6 +83,34 @@ defmodule DrawMusicWeb.EditorLiveTest do
     refute has_element?(view, "#system-1")
   end
 
+  test "starts on the preferred paper; Sheet switches it for the session only",
+       %{conn: conn, scope: scope, user: user} do
+    {:ok, _user} = Accounts.update_user_preferences(scope, %{score_paper: :black})
+    {version, _id} = version_with_note(scope)
+    {:ok, view, _html} = live(conn, path(version))
+    assert has_element?(view, "#app-main[data-paper=black]")
+
+    view |> element("#score-paper-toggle") |> render_click()
+
+    assert has_element?(view, "#app-main[data-paper=white]")
+    assert has_element?(view, "#score-paper-toggle[data-paper=white]")
+    assert Accounts.get_user!(user.id).score_paper == :black
+
+    {:ok, view, _html} = live(conn, path(version))
+    assert has_element?(view, "#app-main[data-paper=black]")
+  end
+
+  test "a paper preference changed in the panel is followed", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/?panel=preferences")
+    assert has_element?(view, "#app-main[data-paper=white]")
+
+    view |> form("#preferences-form", user: %{score_paper: "black"}) |> render_change()
+    assert has_element?(view, "#app-main[data-paper=black]")
+
+    view |> element("#preferences-form-cancel") |> render_click()
+    assert has_element?(view, "#app-main[data-paper=white]")
+  end
+
   test "a layout preference changed in the panel is followed", %{conn: conn, scope: scope} do
     {version, _id} = version_with_note(scope)
     {:ok, view, _html} = live(conn, path(version) <> "?panel=preferences")

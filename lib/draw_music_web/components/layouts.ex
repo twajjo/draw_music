@@ -12,7 +12,7 @@ defmodule DrawMusicWeb.Layouts do
   embed_templates "layouts/*"
 
   @doc """
-  The signed-in user's menu: the display theme, Preferences and Log out,
+  The signed-in user's menu: Preferences, the account and Log out,
   behind a button showing the user's email. Clicking elsewhere closes it.
   """
   attr :user, :map, required: true
@@ -99,8 +99,8 @@ defmodule DrawMusicWeb.Layouts do
   end
 
   @doc """
-  The app layout: the header (wordmark, navigation, theme toggle and
-  account links) above the page content.
+  The app layout: the header (wordmark, navigation and account links)
+  above the page content, whose scores are drawn on the given paper.
 
   ## Examples
 
@@ -120,6 +120,11 @@ defmodule DrawMusicWeb.Layouts do
   attr :current_scope, :map,
     default: nil,
     doc: "the current [scope](https://phoenix.hexdocs.pm/scopes.html)"
+
+  attr :paper, :atom,
+    default: nil,
+    values: [nil, :white, :black],
+    doc: "the score's paper on this page (the editor's session choice); the preference if nil"
 
   slot :inner_block, required: true
   @spec app(map()) :: Phoenix.LiveView.Rendered.t()
@@ -155,7 +160,9 @@ defmodule DrawMusicWeb.Layouts do
     </header>
 
     <main
+      id="app-main"
       class={["score-colors px-4 sm:px-6 lg:px-8", if(@wide, do: "py-6", else: "py-20")]}
+      data-paper={@paper || score_paper(@current_scope)}
       style={score_ink_style(@current_scope)}
     >
       <div class={["mx-auto space-y-4", if(@wide, do: "max-w-none", else: "max-w-2xl")]}>
@@ -222,7 +229,7 @@ defmodule DrawMusicWeb.Layouts do
   end
 
   @doc """
-  The `style` carrying the user's dark-mode score ink (see `.score-colors`
+  The `style` carrying the user's score ink on black (see `.score-colors`
   in `app.css`); nil when signed out or unset. The value is validated as
   `#rrggbb` when saved.
   """
@@ -232,4 +239,9 @@ defmodule DrawMusicWeb.Layouts do
   end
 
   def score_ink_style(_scope), do: nil
+
+  @doc "The user's preferred score paper (`:white` or `:black`); white when signed out."
+  @spec score_paper(DrawMusic.Accounts.Scope.t() | nil) :: :white | :black
+  def score_paper(%{user: %{score_paper: paper}}), do: paper
+  def score_paper(_scope), do: :white
 end

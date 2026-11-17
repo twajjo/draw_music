@@ -100,6 +100,10 @@ colour on black) are view choices:
      shows its mode: "Sheet" in black on a white background, or in the ink on
      black. One click switches the score for the session. The ink is set only
      in Preferences (white by default).
+   - Done: `score_paper` (`:white` by default) on the user, a Paper choice in
+     the form, `DrawMusicWeb.PaperToggle` in the palette's new
+     `:below_trailing` slot, the paper in `Editor.View`, and `data-paper` on
+     `Layouts.app`'s main element keying the CSS.
 
 ## Tests
 - Changing a field previews (the editor's layout or aids change) and stores

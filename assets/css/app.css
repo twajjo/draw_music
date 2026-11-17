@@ -113,9 +113,10 @@
   font-display: block;
 }
 
-/* Score colors. Traditional: black on white. Dark: the user's chosen ink
-   (--score-ink-dark, set inline on the same element by Layouts.app; white
-   by default) on black. */
+/* Score colors, set by the score's paper (data-paper, from Layouts.app), never
+   by the UI theme. White: black on white, like printed music. Black: the
+   user's ink (--score-ink-dark, set inline on the same element; white by
+   default) on black. */
 .score-colors {
   --score-ink: #000;
   --score-paper: #fff;
@@ -123,7 +124,8 @@
   --score-playhead: #dc2626;
 }
 
-[data-theme=dark] .score-colors {
+[data-paper=black].score-colors,
+[data-paper=black] .score-colors {
   --score-ink: var(--score-ink-dark, #fff);
   --score-paper: #000;
   --score-selection: #7cc4ff;

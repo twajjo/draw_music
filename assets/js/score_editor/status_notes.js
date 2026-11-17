@@ -13,8 +13,10 @@ export class StatusNotes {
   }
 
   // A new layout was picked ("score:redraw"): the note is up until the
-  // score has arrived in that layout.
-  startRedrawing(layout) {
+  // score has arrived in that layout. A score already in it (`current`)
+  // isn't drawn again, so it gets no note: nothing would take it down.
+  startRedrawing(layout, current) {
+    if (layout === current) return
     this.redrawTo = layout
     document.getElementById("score-redrawing").hidden = false
   }
