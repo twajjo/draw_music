@@ -22,7 +22,6 @@ defmodule DrawMusic.Engraving.Layout do
 
   alias DrawMusic.Engraving.{
     Anchor,
-    Beam,
     Brace,
     Column,
     Engraved,
@@ -36,6 +35,7 @@ defmodule DrawMusic.Engraving.Layout do
     Staff,
     System,
     TempoMark,
+    TempoRows,
     Tie
   }
 
@@ -65,17 +65,6 @@ defmodule DrawMusic.Engraving.Layout do
   @clearance 1.0
   @system_gap 4.0
   @tie_offset 0.6
-  @tie_extent 1
-  # Tempo marks: the bottom row's baseline sits this far above whatever is
-  # highest (clear of the editor's bar buttons, centred 2.2 above the top
-  # line: `DrawMusicWeb.EditorComponents.measure_controls/1`); rows are this
-  # far apart and this tall; marks on one row keep this gap; crowded marks
-  # go up to this row (from 0).
-  @tempo_clearance 3.5
-  @tempo_row 2.4
-  @tempo_height 2.0
-  @tempo_gap 0.8
-  @max_tempo_row 3
 
   # Time signature digits sit on the second and fourth staff lines.
   @numerator_line 1
@@ -153,8 +142,8 @@ defmodule DrawMusic.Engraving.Layout do
   defp add_measure(systems, measure, _used, _width), do: [[measure] | systems]
 
   # Each tempo change goes above the system it falls in, clear of whatever
-  # rises above the treble staff; marks that would overlap go up a row.
-  # The opening marking goes over the first beat, like a change there.
+  # rises above the treble staff where it is (`TempoRows`). The opening
+  # marking goes over the first beat, like a change there.
   defp add_tempos(systems, %Score{tempos: []}, nil), do: systems
 
   defp add_tempos(systems, %Score{tempos: tempos}, opening) do
@@ -168,7 +157,7 @@ defmodule DrawMusic.Engraving.Layout do
     Enum.map(systems, fn system ->
       case Map.get(by_system, system.index) do
         nil -> system
-        marks -> %{system | items: system.items ++ rows(marks, tempo_baseline(system))}
+        marks -> %{system | items: system.items ++ TempoRows.place(marks, system.items)}
       end
     end)
   end
@@ -306,13 +295,6 @@ defmodule DrawMusic.Engraving.Layout do
     {items, x + abs(sf) * step + @key_signature_pad}
   end
 
-  defp mark_end(%TempoMark{line_to: nil} = mark), do: mark.x + mark.width
-
-  defp mark_end(%TempoMark{} = mark) do
-    end_width = if mark.end?, do: TempoMark.text_width(TempoMark.end_label(mark)), else: 0.0
-    max(mark.x + mark.width, mark.line_to + end_width)
-  end
-
   # A measure at its natural width, x from its left edge: a column for each
   # moment something starts (and beat 1), each one gap after the room the
   # previous one needs.
@@ -380,26 +362,6 @@ defmodule DrawMusic.Engraving.Layout do
     end
   end
 
-  # Left to right, each mark takes the lowest row it fits in.
-  defp rows(marks, baseline) do
-    {placed, _row_ends} =
-      marks
-      |> Enum.sort_by(& &1.x)
-      |> Enum.map_reduce(%{}, fn mark, row_ends ->
-        row =
-          Enum.find(
-            0..@max_tempo_row,
-            @max_tempo_row,
-            &(Map.get(row_ends, &1, :none) == :none or mark.x >= row_ends[&1])
-          )
-
-        reaches = mark_end(mark) + @tempo_gap
-        {%{mark | y: baseline - row * @tempo_row}, Map.put(row_ends, row, reaches)}
-      end)
-
-    placed
-  end
-
   # Each system gets room above and below for whatever sticks out of the
   # grand staff.
   # Each system's band runs from where the one above ended to past its gap;
@@ -409,7 +371,7 @@ defmodule DrawMusic.Engraving.Layout do
       Enum.map_reduce(systems, 0.0, fn system, y ->
         {top, bottom} =
           system.items
-          |> Enum.flat_map(&y_range/1)
+          |> Enum.flat_map(&Item.y_range/1)
           |> Enum.min_max()
 
         above = max(@margin, -top + @clearance)
@@ -473,16 +435,6 @@ defmodule DrawMusic.Engraving.Layout do
         staff_lines(header.line_x, system_width) ++ barlines(geoms, last) ++ note_items
 
     {%System{index: index, width: system_width, measures: geoms, items: items}, anchors}
-  end
-
-  # The bottom row's baseline: above everything over the treble staff.
-  defp tempo_baseline(system) do
-    top =
-      system.items
-      |> Enum.flat_map(&y_range/1)
-      |> Enum.min(fn -> 0.0 end)
-
-    min(top, 0.0) - @tempo_clearance
   end
 
   defp tempo_mark(change, x, ramp) do
@@ -582,16 +534,4 @@ defmodule DrawMusic.Engraving.Layout do
     items = for staff <- [:treble, :bass], do: glyph(:time, glyph, x, Staff.middle(staff))
     {items, x + Smufl.width(glyph)}
   end
-
-  @spec y_range(Item.t()) :: [number()]
-  defp y_range(%Glyph{glyph: glyph, y: y}) do
-    {_x0, y0, _x1, y1} = Smufl.bbox(glyph)
-    [y - y1, y - y0]
-  end
-
-  defp y_range(%Line{y1: y1, y2: y2}), do: [y1, y2]
-  defp y_range(%Beam{} = b), do: [b.y1, b.y2, b.y1 + b.thickness, b.y2 + b.thickness]
-  defp y_range(%Tie{y: y}), do: [y - @tie_extent, y + @tie_extent]
-  defp y_range(%Brace{y1: y1, y2: y2}), do: [y1, y2]
-  defp y_range(%TempoMark{y: y}), do: [y - @tempo_height, y]
 end
