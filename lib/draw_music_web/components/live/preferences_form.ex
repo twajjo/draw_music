@@ -1,8 +1,8 @@
 defmodule DrawMusicWeb.PreferencesForm do
   @moduledoc """
   The user's preferences as one form: the application's theme, the score's
-  layout and dark-mode ink, and the reading aids. Nothing is stored until
-  **Save**.
+  layout, paper and ink on black, and the reading aids. Nothing is stored
+  until **Save**.
 
   While it's open, each valid change is previewed: the parent is sent the
   user with the changes applied (not stored), so the page behind shows them.
@@ -39,6 +39,7 @@ defmodule DrawMusicWeb.PreferencesForm do
 
   @fields [
     :score_layout,
+    :score_paper,
     :score_ink_dark,
     :show_note_names,
     :note_names_in_edit_only,
@@ -59,10 +60,15 @@ defmodule DrawMusicWeb.PreferencesForm do
     {:strip, "Strip", "One long staff"}
   ]
 
+  @papers [
+    {:white, "Black on white", "Like printed sheet music"},
+    {:black, "Ink on black", "Your ink color (below) on a black background"}
+  ]
+
   @type message ::
           {:preview, User.t()} | {:saved, User.t()} | {:cancelled, User.t()}
 
-  @doc "The preset dark-mode ink colors as `{name, \"#rrggbb\"}`."
+  @doc "The preset ink-on-black colors as `{name, \"#rrggbb\"}`."
   @spec presets() :: [{String.t(), String.t()}]
   def presets, do: @presets
 
@@ -188,6 +194,38 @@ defmodule DrawMusicWeb.PreferencesForm do
     |> assign_form(%{changeset | action: :validate})
   end
 
+  attr :id, :string, required: true
+  attr :value, :atom, required: true
+  attr :label, :string, required: true
+  attr :hint, :string, required: true
+  attr :current, :atom, required: true
+  attr :field_name, :string, required: true
+  attr :click, JS, default: nil, doc: "run when picked while not current"
+
+  # One of a field's values, as a button in a joined group.
+  defp choice(assigns) do
+    ~H"""
+    <label
+      id={@id}
+      title={@hint}
+      phx-click={@current != @value && @click}
+      class={[
+        "join-item btn btn-sm transition-colors",
+        if(@current == @value, do: "btn-primary", else: "btn-ghost")
+      ]}
+    >
+      <input
+        type="radio"
+        name={@field_name}
+        value={@value}
+        checked={@current == @value}
+        class="sr-only"
+      />
+      {@label}
+    </label>
+    """
+  end
+
   # The color picker always shows the current ink; a different color in it
   # is a custom pick, which beats the swatches.
   defp custom_ink(changes, nil = _picked, _current), do: changes
@@ -232,38 +270,6 @@ defmodule DrawMusicWeb.PreferencesForm do
   # The ink as shown: no ink (nil) is white.
   defp ink(%User{score_ink_dark: nil}), do: "#ffffff"
   defp ink(%User{score_ink_dark: color}), do: color
-
-  attr :id, :string, required: true
-  attr :layout, :atom, required: true
-  attr :label, :string, required: true
-  attr :hint, :string, required: true
-  attr :current, :atom, required: true
-  attr :field_name, :string, required: true
-
-  # Picking a different layout first tells a score on the page that it's
-  # being redrawn (`"score:redraw"`), as the server lays it out again.
-  defp layout_choice(assigns) do
-    ~H"""
-    <label
-      id={@id}
-      title={@hint}
-      phx-click={@current != @layout && JS.dispatch("score:redraw", detail: %{layout: @layout})}
-      class={[
-        "join-item btn btn-sm transition-colors",
-        if(@current == @layout, do: "btn-primary", else: "btn-ghost")
-      ]}
-    >
-      <input
-        type="radio"
-        name={@field_name}
-        value={@layout}
-        checked={@current == @layout}
-        class="sr-only"
-      />
-      {@label}
-    </label>
-    """
-  end
 
   defp notify(message), do: send(self(), {__MODULE__, message})
 
@@ -313,6 +319,7 @@ defmodule DrawMusicWeb.PreferencesForm do
       assign(assigns,
         presets: @presets,
         layouts: @layouts,
+        papers: @papers,
         ink: ink(assigns.draft)
       )
 
@@ -320,24 +327,43 @@ defmodule DrawMusicWeb.PreferencesForm do
     <section id="score-display" class="space-y-4">
       <.header>
         Score display
-        <:subtitle>How scores are laid out, and the notation color in dark mode</:subtitle>
+        <:subtitle>
+          How scores start out in the editor (Page / Strip and Sheet switch them there for a while). Downloads are always black on white
+        </:subtitle>
       </.header>
       <div class="space-y-2">
         <p class="text-sm font-medium">Layout</p>
         <div id={"#{@id}-layout"} class="join" role="radiogroup" aria-label="Score layout">
-          <.layout_choice
+          <%!-- A different layout first tells a score on the page that it's
+               being redrawn, as the server lays it out again. --%>
+          <.choice
             :for={{layout, label, hint} <- @layouts}
             id={"#{@id}-layout-#{layout}"}
-            layout={layout}
+            value={layout}
             label={label}
             hint={hint}
             current={@draft.score_layout}
             field_name={@form[:score_layout].name}
+            click={JS.dispatch("score:redraw", detail: %{layout: layout})}
+          />
+        </div>
+      </div>
+      <div class="space-y-2">
+        <p class="text-sm font-medium">Paper</p>
+        <div id={"#{@id}-paper"} class="join" role="radiogroup" aria-label="Score paper">
+          <.choice
+            :for={{paper, label, hint} <- @papers}
+            id={"#{@id}-paper-#{paper}"}
+            value={paper}
+            label={label}
+            hint={hint}
+            current={@draft.score_paper}
+            field_name={@form[:score_paper].name}
           />
         </div>
       </div>
       <div id={"#{@id}-ink"} class="space-y-3">
-        <p class="text-sm font-medium">Dark mode ink</p>
+        <p class="text-sm font-medium">Ink on black</p>
         <div class="flex flex-wrap gap-2 rounded-box bg-black p-3" role="radiogroup">
           <.ink_swatch
             :for={{name, color} <- @presets}

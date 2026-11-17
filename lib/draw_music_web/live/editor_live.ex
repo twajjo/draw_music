@@ -41,6 +41,7 @@ defmodule DrawMusicWeb.EditorLive do
     EditorSaving,
     EditorSettings,
     LayoutToggle,
+    PaperToggle,
     PreferencesForm,
     ReadingAids,
     ScoreSvg,
@@ -235,6 +236,12 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign_layout()}
   end
 
+  # The Sheet button: the score on that paper, for this session only. The
+  # colors are CSS (`data-paper`), so nothing is drawn again.
+  def handle_info({PaperToggle, {:chosen, paper}}, socket) do
+    {:noreply, update(socket, :view, &%{&1 | paper: paper})}
+  end
+
   # The Preferences panel's form: the editor shows its preview; Save and
   # Cancel close the panel (closing puts back what's stored, `handle_params`).
   def handle_info({PreferencesForm, {:preview, user}}, socket) do
@@ -291,6 +298,7 @@ defmodule DrawMusicWeb.EditorLive do
       flash={@flash}
       current_scope={@current_scope}
       preferences_patch={"#{@path}?panel=preferences"}
+      paper={@view.paper}
       wide
     >
       <.editor_header composition={@composition} version={@version} instrument={@extras.instrument} />
@@ -342,6 +350,9 @@ defmodule DrawMusicWeb.EditorLive do
             dirty?={@session.dirty?}
           />
         </:trailing>
+        <:below_trailing>
+          <.live_component module={PaperToggle} id="score-paper-toggle" paper={@view.paper} />
+        </:below_trailing>
       </.live_component>
 
       <.score_paper layout={@view.layout}>
@@ -445,6 +456,11 @@ defmodule DrawMusicWeb.EditorLive do
   defp closing_preferences(socket, _was_open?, _open?), do: socket
 
   # `apply_edit/2` when the outcome doesn't matter beyond the socket.
+  # What the drawing depends on: the layout, and the reading aids.
+  defp drawn(user, %View{layout: layout}) do
+    {layout, Map.take(user, [:show_note_names, :note_names_in_edit_only, :letter_staves])}
+  end
+
   defp edit(socket, fun) do
     case apply_edit(socket, fun) do
       {:ok, socket, _extra} -> socket
@@ -469,7 +485,7 @@ defmodule DrawMusicWeb.EditorLive do
 
     socket
     |> assign(current_scope: %{scope | user: user}, view: new_view)
-    |> redraw_for({scope.user, view}, {user, new_view})
+    |> redraw_for(drawn(scope.user, view), drawn(user, new_view))
   end
 
   defp history_step(session, :undo), do: Session.undo(session)
@@ -548,13 +564,11 @@ defmodule DrawMusicWeb.EditorLive do
     ScoreSvg.pieces(ReadingAids.add(engraved, user), layout)
   end
 
-  # From `{user, view}` to another: a new layout lays the score out again;
-  # other preferences redraw its pieces (the reading aids are in them; the
-  # ink is read when drawn).
+  # From what was drawn to what is (`drawn/2`): a new layout lays the score
+  # out again; new reading aids redraw its pieces (the aids are in them).
+  # The paper and ink are CSS, so they need nothing.
   defp redraw_for(socket, same, same), do: socket
-
-  defp redraw_for(socket, {_old, %View{layout: layout}}, {_new, %View{layout: layout}}),
-    do: assign_pieces(socket)
+  defp redraw_for(socket, {layout, _old_aids}, {layout, _new_aids}), do: assign_pieces(socket)
 
   defp redraw_for(socket, _old, _new), do: assign_layout(socket)
 

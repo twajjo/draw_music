@@ -11,9 +11,11 @@ defmodule DrawMusic.Accounts.User do
     field :confirmed_at, :utc_datetime
     field :authenticated_at, :utc_datetime, virtual: true
 
-    # Score display preferences: one long staff or page-style systems, and
-    # the notation color in dark mode (nil: white).
+    # Score display preferences, where an editor starts: one long staff or
+    # page-style systems; black notation on white paper, or the ink on black
+    # (nil: white). The UI theme is apart from them.
     field :score_layout, Ecto.Enum, values: [:strip, :page], default: :strip
+    field :score_paper, Ecto.Enum, values: [:white, :black], default: :white
     field :score_ink_dark, :string
     # Reading aids: name the notes being placed, moved or selected (with
     # note_names_in_edit_only off, every note at all times); letter the
@@ -33,6 +35,7 @@ defmodule DrawMusic.Accounts.User do
           confirmed_at: DateTime.t() | nil,
           authenticated_at: DateTime.t() | nil,
           score_layout: :strip | :page,
+          score_paper: :white | :black,
           score_ink_dark: String.t() | nil,
           show_note_names: boolean(),
           note_names_in_edit_only: boolean(),
@@ -42,8 +45,8 @@ defmodule DrawMusic.Accounts.User do
         }
 
   @doc """
-  A changeset for the user's preferences: the score's layout and dark-mode
-  ink, and the reading aids. The dark-mode ink must be a `#rrggbb` color
+  A changeset for the user's preferences: the score's layout, paper and
+  ink on black, and the reading aids. The ink on black must be a `#rrggbb` color
   readable on black: a WCAG contrast ratio of at least 7:1. Naming notes at
   all times (`note_names_in_edit_only` off) needs `show_note_names` on.
   """
@@ -52,6 +55,7 @@ defmodule DrawMusic.Accounts.User do
     user
     |> cast(attrs, [
       :score_layout,
+      :score_paper,
       :score_ink_dark,
       :show_note_names,
       :note_names_in_edit_only,
@@ -59,6 +63,7 @@ defmodule DrawMusic.Accounts.User do
     ])
     |> validate_required([
       :score_layout,
+      :score_paper,
       :show_note_names,
       :note_names_in_edit_only,
       :letter_staves

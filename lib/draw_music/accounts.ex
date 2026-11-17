@@ -196,7 +196,8 @@ defmodule DrawMusic.Accounts do
 
   @doc """
   Updates the user's preferences: `score_layout` (`:strip` or `:page`),
-  `score_ink_dark` (a `#rrggbb` color readable on black), and the reading
+  `score_paper` (`:white` or `:black`), `score_ink_dark` (a `#rrggbb`
+  color readable on black), and the reading
   aids (see `DrawMusic.Accounts.User.preferences_changeset/2`).
   """
   @spec update_user_preferences(Scope.t(), map()) ::

@@ -16,9 +16,10 @@ defmodule DrawMusicWeb.UserLive.PreferencesTest do
        %{conn: conn, user: user} do
     {:ok, lv, _html} = live(conn, ~p"/users/preferences")
 
-    change(lv, %{score_layout: "page", score_ink_dark: "#ffbf47"})
+    change(lv, %{score_layout: "page", score_paper: "black", score_ink_dark: "#ffbf47"})
 
     assert has_element?(lv, "#preferences-form-layout-page.btn-primary")
+    assert has_element?(lv, "#preferences-form-paper-black.btn-primary")
     assert has_element?(lv, "#preferences-form-ink-ffbf47.ring-2")
     assert has_element?(lv, "#unsaved-guard[data-dirty=true]")
     assert Accounts.get_user!(user.id).score_layout == :strip
@@ -26,7 +27,10 @@ defmodule DrawMusicWeb.UserLive.PreferencesTest do
     lv |> form("#preferences-form") |> render_submit()
 
     stored = Accounts.get_user!(user.id)
-    assert {stored.score_layout, stored.score_ink_dark} == {:page, "#ffbf47"}
+
+    assert {stored.score_layout, stored.score_paper, stored.score_ink_dark} ==
+             {:page, :black, "#ffbf47"}
+
     assert_push_event(lv, "theme:save", %{})
     assert_push_event(lv, "preferences:leave", %{to: "/compositions"})
     assert has_element?(lv, "#unsaved-guard[data-dirty=false]")
