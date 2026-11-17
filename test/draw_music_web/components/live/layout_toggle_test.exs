@@ -5,26 +5,22 @@ defmodule DrawMusicWeb.LayoutToggleTest do
 
   alias DrawMusicWeb.{ComponentHostLive, LayoutToggle}
 
-  setup :register_and_log_in_user
+  test "shows the given layout as chosen", %{conn: conn} do
+    view = host(conn, :page)
 
-  test "shows the user's layout as chosen", %{conn: conn, scope: scope} do
-    view = host(conn, scope)
-
-    assert has_element?(view, "#subject-#{scope.user.score_layout}[aria-pressed='true']")
+    assert has_element?(view, "#subject-page[aria-pressed='true']")
+    assert has_element?(view, "#subject-strip[aria-pressed='false']")
   end
 
-  test "choosing a layout saves it and reports the updated user", %{conn: conn, scope: scope} do
-    view = host(conn, scope)
+  test "choosing the other layout reports it", %{conn: conn} do
+    view = host(conn, :strip)
 
     view |> element("#subject-page") |> render_click()
-    assert_receive {:component_sent, {LayoutToggle, {:updated, %{score_layout: :page}}}}
-
-    view |> element("#subject-strip") |> render_click()
-    assert_receive {:component_sent, {LayoutToggle, {:updated, %{score_layout: :strip}}}}
+    assert_receive {:component_sent, {LayoutToggle, {:chosen, :page}}}
   end
 
-  defp host(conn, scope) do
-    attrs = %{scope: scope, id: "layout"}
+  defp host(conn, layout) do
+    attrs = %{layout: layout, id: "layout"}
     session = %{"component" => LayoutToggle, "attrs" => attrs, "test_pid" => self()}
     {:ok, view, _html} = live_isolated(conn, ComponentHostLive, session: session)
     view

@@ -61,7 +61,7 @@ defmodule DrawMusicWeb.EditorLiveTest do
     assert has_element?(view, "#note-#{note_id}")
   end
 
-  test "shows the user's preferred layout, and the toggle switches and saves it",
+  test "starts in the preferred layout; the toggle switches it for the session only",
        %{conn: conn, scope: scope, user: user} do
     {version, _id} = version_with_note(scope)
     {:ok, view, _html} = live(conn, path(version))
@@ -71,9 +71,26 @@ defmodule DrawMusicWeb.EditorLiveTest do
 
     view |> element("#score-layout-page") |> render_click()
     assert has_element?(view, "#system-1")
-    assert Accounts.get_user!(user.id).score_layout == :page
+    assert Accounts.get_user!(user.id).score_layout == :strip
 
-    view |> element("#score-layout-strip") |> render_click()
+    # Opening and cancelling Preferences, the layout untouched, keeps it.
+    view |> element("#account-menu-settings") |> render_click()
+    view |> element("#preferences-form-cancel") |> render_click()
+    assert has_element?(view, "#system-1")
+
+    # A new editor starts from the preference again.
+    {:ok, view, _html} = live(conn, path(version))
+    refute has_element?(view, "#system-1")
+  end
+
+  test "a layout preference changed in the panel is followed", %{conn: conn, scope: scope} do
+    {version, _id} = version_with_note(scope)
+    {:ok, view, _html} = live(conn, path(version) <> "?panel=preferences")
+
+    view |> form("#preferences-form", user: %{score_layout: "page"}) |> render_change()
+    assert has_element?(view, "#system-1")
+
+    view |> element("#preferences-form-cancel") |> render_click()
     refute has_element?(view, "#system-1")
   end
 

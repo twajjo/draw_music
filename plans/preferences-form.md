@@ -86,7 +86,11 @@ colour on black) are view choices:
    unsaved, so leaving by a link doesn't ask (the theme just goes back).
 3. **The session layout:** the palette's Page / Strip buttons switch the
    editor's layout for the session only (an editor assign, starting from the
-   preference), no longer saving the preference.
+   preference), no longer saving the preference. Done: the assign is
+   `DrawMusicWeb.Editor.View` (PR 4 adds the paper to it). A layout
+   preference changed in the panel (previewed, saved or put back) is
+   followed; opening and closing the panel without changing it keeps the
+   session's layout.
 4. **8.3, the score paper:** black on white / colour on black, a preference
    independent of the UI theme, in the form (the ink picker belongs to colour on
    black), and a session toggle in the editor. The CSS keys the score's colours
