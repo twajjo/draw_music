@@ -52,7 +52,6 @@ defmodule DrawMusicWeb.Editor.ScoreCanvas do
     ContextMenu,
     EditorCommands,
     EditorGeometry,
-    EditorLive,
     EditorPalette,
     EditorPlacement,
     PlaybackPayload,
@@ -60,7 +59,7 @@ defmodule DrawMusicWeb.Editor.ScoreCanvas do
     TempoTarget
   }
 
-  alias DrawMusicWeb.Editor.Intent
+  alias DrawMusicWeb.Editor.{Intent, Messages}
 
   # Edit mode's events; Play mode ignores them.
   @edit_events ~w(add_measure cut delete delete_measure drop edit_tempo insert_measure move
@@ -232,7 +231,7 @@ defmodule DrawMusicWeb.Editor.ScoreCanvas do
         Intent.notify({:edit, &EditorPlacement.place(&1, &2, armed, target, insert?)})
 
       :error ->
-        Intent.notify({:flash, :error, EditorLive.error_message(:invalid)})
+        Intent.notify({:flash, :error, Messages.refused(:invalid)})
     end
 
     {:noreply, socket}

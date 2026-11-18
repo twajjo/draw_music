@@ -121,7 +121,7 @@ Phases 5, 6 and 7 had 104, 53 and 57 files per PR. That is far too many to revie
 | 8.14 | **Done**: `Editing`: split the edit groups behind the facade (`Place`, `Pitches`, `Values`, `Time`, `ChordEdits`, `Measures` under `Editing.`, and `Clipboard`; `Editing` is 203 lines of rules and `defdelegate`s, every module under 220) |
 | 8.15 | Palette: sub-components and the shared `tool_button` |
 | 8.16 | Palette: split the module (edit tools, transport, glyphs) |
-| 8.17 | `EditorLive`: move the pure logic out |
+| 8.17 | **Done**: `EditorLive`: move the pure logic out (`Editor.Messages.refused/1`, `Drawing.basis/2`, `draw/3`, `repaint/3`, `VersionLookup.open/3`; 596 → 530 lines) |
 | 8.18 | **Done** (component refactor, PRs 11–12): `EditorLive`: the single `:dialog` assign |
 | 8.19 | **Done** (component refactor, PRs 11–12): `EditorLive`: the form dialogs as LiveComponents |
 | 8.20 | `EditorLive`: the event modules with `attach_hook` |

@@ -29,8 +29,8 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
 
   alias DrawMusic.Engraving.Smufl
   alias DrawMusic.Music.{Context, Score, Session}
-  alias DrawMusicWeb.{ContextMenu, EditorCommands, EditorLive, TempoTarget}
-  alias DrawMusicWeb.Editor.Intent
+  alias DrawMusicWeb.{ContextMenu, EditorCommands, TempoTarget}
+  alias DrawMusicWeb.Editor.{Intent, Messages}
 
   # The actions `EditorCommands.menu/4` builds.
   @actions ~w(split set_value toggle_menu_dot to_rest to_note tie_next untie add_third_above
@@ -81,7 +81,7 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
         Intent.notify({:open, {:tempo, target}})
 
       {:error, :opening_beat} ->
-        Intent.notify({:flash, :error, EditorLive.error_message(:opening_beat)})
+        Intent.notify({:flash, :error, Messages.refused(:opening_beat)})
         Intent.notify(:close)
 
       {:error, :not_found} ->

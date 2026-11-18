@@ -2,9 +2,11 @@ defmodule DrawMusicWeb.EditorLive do
   @moduledoc """
   The score editor, in the user's preferred layout (one long staff or
   page-style systems) to start with; the palette switches it for the
-  session (`DrawMusicWeb.Editor.View`). `:show` opens a saved version; `:new` (the main
-  page) starts a blank, unsaved composition: C major, 4/4, four empty
-  measures.
+  session (`DrawMusicWeb.Editor.View`). `:show` opens a saved version;
+  `:new` (the main page) starts a blank, unsaved composition
+  (`DrawMusicWeb.VersionLookup.open/3`). The score is drawn by
+  `DrawMusicWeb.Editor.Drawing`; a refused edit's message comes from
+  `DrawMusicWeb.Editor.Messages`.
 
   The score lives in a `DrawMusic.Music.Session` (selection, clipboard,
   undo/redo, unsaved changes); the palette state (armed item, note/rest
@@ -17,40 +19,27 @@ defmodule DrawMusicWeb.EditorLive do
 
   import DrawMusicWeb.{EditorComponents, EditorPage}
   import DrawMusicWeb.LibraryComponents, only: [version_path: 3]
-  import DrawMusicWeb.ScoreComponents, only: [layout_width: 1]
-
   import DrawMusicWeb.PreferencesComponents, only: [preferences_panel: 1]
 
   alias DrawMusic.Accounts
-  alias DrawMusic.Engraving.Layout
   alias DrawMusic.Library
-  alias DrawMusic.Library.{Composition, Key, Version}
-
-  alias DrawMusic.Music.{
-    Context,
-    KeySuggestion,
-    Rekey,
-    Score,
-    Session,
-    Transpose
-  }
+  alias DrawMusic.Library.{Key, Version}
+  alias DrawMusic.Music.{Context, Rekey, Score, Session, Transpose}
 
   alias DrawMusicWeb.{
     DetailsDialog,
-    EditorGeometry,
     EditorSaving,
     EditorSettings,
     LayoutToggle,
     PaperToggle,
     PreferencesForm,
-    ReadingAids,
-    ScoreSvg,
     Shortcuts,
     VersionLookup
   }
 
   alias DrawMusicWeb.Editor.{
     Drawing,
+    Messages,
     Palette,
     PaletteState,
     SaveMenu,
@@ -59,30 +48,6 @@ defmodule DrawMusicWeb.EditorLive do
     VersionExtras,
     View
   }
-
-  @draft_measures 4
-
-  @messages %{
-    measure_full: "That bar is full",
-    overlap: "Something is already there",
-    duplicate: "That note is already there",
-    out_of_range: "That would go outside the piano's range",
-    not_tieable: "Only touching notes of the same pitch can be tied",
-    last_measure: "A score needs at least one bar",
-    unrepresentable: "That length can't be written as one note",
-    no_such_measure: "That bar no longer exists",
-    before_start: "That would move before the start",
-    not_found: "That note no longer exists",
-    pickup_bar: "Remove the pickup in the score settings first",
-    past_end: "That's past the end of the score",
-    invalid_tempo: "A rit. or accel. has to end after it starts",
-    same_tempo: "A rit. or accel. has to reach a different tempo",
-    opening_beat: "The opening tempo is set in Score settings"
-  }
-
-  @doc "What to tell the user when an edit is refused for `reason`."
-  @spec error_message(atom()) :: String.t()
-  def error_message(reason), do: Map.get(@messages, reason, "That can't be done here")
 
   @impl true
   def handle_event("edit_details", _params, socket) do
@@ -223,7 +188,7 @@ defmodule DrawMusicWeb.EditorLive do
          |> in_new_key(sf, mode)}
 
       {:error, reason} ->
-        {:noreply, put_flash(socket, :error, error_message(reason))}
+        {:noreply, put_flash(socket, :error, Messages.refused(reason))}
     end
   end
 
@@ -273,7 +238,7 @@ defmodule DrawMusicWeb.EditorLive do
   @impl true
   def mount(params, _session, socket) do
     {composition, version, title} =
-      load(socket.assigns.live_action, socket.assigns.current_scope, params)
+      VersionLookup.open(socket.assigns.live_action, socket.assigns.current_scope, params)
 
     {:ok,
      socket
@@ -400,7 +365,7 @@ defmodule DrawMusicWeb.EditorLive do
          |> assign_layout(), extra}
 
       {:error, reason} ->
-        {:error, put_flash(socket, :error, error_message(reason))}
+        {:error, put_flash(socket, :error, Messages.refused(reason))}
     end
   end
 
@@ -419,28 +384,25 @@ defmodule DrawMusicWeb.EditorLive do
         |> assign_layout()
 
       {:error, reason} ->
-        put_flash(socket, :error, error_message(reason))
+        put_flash(socket, :error, Messages.refused(reason))
     end
   end
 
   # Lays the score out again (`:drawing`; LiveView reserves the `layout`
   # assign).
   defp assign_layout(socket) do
-    %{session: session, view: view} = socket.assigns
-    lay_out(socket, session.score, layout_width(view.layout), false)
+    lay_out(socket, socket.assigns.session.score, false)
   end
 
   # The pieces drawn again, for a new reading-aid preference.
   defp assign_pieces(socket) do
     %{drawing: drawing, current_scope: %{user: user}, view: view} = socket.assigns
-    assign(socket, :drawing, %{drawing | pieces: pieces(drawing.engraved, user, view)})
+    assign(socket, :drawing, Drawing.repaint(drawing, user, view))
   end
 
   # Until the score is engraved (the static page, and the join), an empty
   # bar stands in, with a note that the score is loading.
-  defp assign_placeholder(socket) do
-    lay_out(socket, Score.new(), layout_width(socket.assigns.view.layout), true)
-  end
+  defp assign_placeholder(socket), do: lay_out(socket, Score.new(), true)
 
   # Switching modes closes a right-click menu, but not a dialog.
   defp close_menu(%{assigns: %{dialog: {:menu, _menu}}} = socket),
@@ -457,11 +419,6 @@ defmodule DrawMusicWeb.EditorLive do
   defp closing_preferences(socket, _was_open?, _open?), do: socket
 
   # `apply_edit/2` when the outcome doesn't matter beyond the socket.
-  # What the drawing depends on: the layout, and the reading aids.
-  defp drawn(user, %View{layout: layout}) do
-    {layout, Map.take(user, [:show_note_names, :note_names_in_edit_only, :letter_staves])}
-  end
-
   defp edit(socket, fun) do
     case apply_edit(socket, fun) do
       {:ok, socket, _extra} -> socket
@@ -486,7 +443,7 @@ defmodule DrawMusicWeb.EditorLive do
 
     socket
     |> assign(current_scope: %{scope | user: user}, view: new_view)
-    |> redraw_for(drawn(scope.user, view), drawn(user, new_view))
+    |> redraw_for(Drawing.basis(scope.user, view), Drawing.basis(user, new_view))
   end
 
   defp history_step(session, :undo), do: Session.undo(session)
@@ -514,24 +471,19 @@ defmodule DrawMusicWeb.EditorLive do
     end
   end
 
-  defp lay_out(socket, score, width, loading?) do
+  defp lay_out(socket, score, loading?) do
     %{session: %{ctx: ctx}, extras: extras, current_scope: %{user: user}, view: view} =
       socket.assigns
 
-    engraved = Layout.layout(score, ctx, width: width, marking: extras.tempo_text)
+    drawing =
+      Drawing.draw(score, ctx,
+        user: user,
+        view: view,
+        marking: extras.tempo_text,
+        loading?: loading?
+      )
 
-    # The score goes to the browser in pieces, each one finished piece of
-    # SVG, not as a LiveView diff of every glyph and line: a long piece has
-    # tens of thousands, and building those one by one in the browser takes
-    # long enough for the connection to time out. Parsed whole, it's quick,
-    # and only the pieces an edit changes are sent again.
-    assign(socket, :drawing, %Drawing{
-      engraved: engraved,
-      pieces: pieces(engraved, user, view),
-      geometry_json: Jason.encode!(EditorGeometry.encode(engraved, ctx)),
-      loading?: loading?,
-      key_suggestion: KeySuggestion.suggest(score, {ctx.sf, ctx.mode})
-    })
+    assign(socket, :drawing, drawing)
   end
 
   # Engraving and drawing a long score takes seconds, more than joining the
@@ -542,30 +494,12 @@ defmodule DrawMusicWeb.EditorLive do
     socket
   end
 
-  defp load(:new, _scope, _params) do
-    composition = %Composition{name: EditorSaving.untitled(), keys: []}
-    key = %Key{sf: 0, mode: :major, composition: composition}
-    {composition, %Version{key: key, score: Score.new(@draft_measures)}, composition.name}
-  end
-
-  defp load(:show, scope, params) do
-    version = VersionLookup.fetch!(scope, params)
-    composition = Library.get_composition!(scope, version.key.composition.id)
-    {composition, version, "#{composition.name} · #{Key.name(version.key)} v#{version.number}"}
-  end
-
   defp narrow_selection_for(socket, :edit),
     do: update(socket, :session, &Session.collapse_selection/1)
 
   defp narrow_selection_for(socket, :play), do: socket
 
-  # The engraving drawn, with the user's reading aids (only here: the export
-  # draws the engraving without them).
-  defp pieces(engraved, user, %View{layout: layout}) do
-    ScoreSvg.pieces(ReadingAids.add(engraved, user), layout)
-  end
-
-  # From what was drawn to what is (`drawn/2`): a new layout lays the score
+  # From what was drawn to what is (`Drawing.basis/2`): a new layout lays the score
   # out again; new reading aids redraw its pieces (the aids are in them).
   # The paper and ink are CSS, so they need nothing.
   defp redraw_for(socket, same, same), do: socket
