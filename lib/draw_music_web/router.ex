@@ -50,7 +50,6 @@ defmodule DrawMusicWeb.Router do
       # unsaved composition.
       live "/", EditorLive, :new
       live "/compositions", LibraryLive, :index
-      live "/compositions/new", NewCompositionLive, :new
       live "/compositions/:id/:key/v/:number", EditorLive, :show
     end
 
