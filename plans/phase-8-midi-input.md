@@ -109,8 +109,8 @@ Phases 5, 6 and 7 had 104, 53 and 57 files per PR. That is far too many to revie
 | 8.2b | Preferences saved explicitly: one form, live preview, Save / Cancel / Defaults; the theme in it; Page / Strip view-only for the session (`plans/preferences-form.md`, PRs 1–3) |
 | 8.3 | Score paper: a user preference, independent of the interface theme, in the 8.2b form, with a session toggle in the editor (`plans/preferences-form.md`, PR 4) |
 | 8.4 | **Dropped** (2026-11-15): the paper is a view choice, never stored with a composition |
-| 8.5 | The Save menu moves to the top bar (after 8.1, which fixes the dropdown it uses; see below) |
-| 8.6 | Import .mid from the top bar (see below) |
+| 8.5 | **Dropped** (2026-11-17): Save stays in the palette, with the Sheet button beneath it |
+| 8.6 | **Done**: Import .mid from the top bar (`#nav-import`), its dialog over the current page (`?panel=import`, `DrawMusicWeb.ImportPanel`), so Cancel leaves you where you were; the Compositions page's own Import and New buttons are gone (the top bar has both) |
 | 8.7 | **Deferred to the end of the app** (2026-11-15): the DrawMusic wordmark's target (see below) |
 | 8.8 | **Done** (#53): style sweep in `lib/draw_music/music` (all but `editing.ex`, sorted when it's split) |
 | 8.9 | **Done** (#54): style sweep in `lib/draw_music/engraving`, the MIDI code, the library and samples |

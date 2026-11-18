@@ -40,7 +40,7 @@ defmodule DrawMusicWeb.Router do
     pipe_through [:browser, :require_authenticated_user]
 
     live_session :require_authenticated_user,
-      on_mount: [{DrawMusicWeb.UserAuth, :require_authenticated}] do
+      on_mount: [{DrawMusicWeb.UserAuth, :require_authenticated}, DrawMusicWeb.ImportPanel] do
       live "/users/settings", UserLive.Settings, :edit
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
       # Preferences need a signed-in user, but not a recent log-in.
@@ -62,8 +62,10 @@ defmodule DrawMusicWeb.Router do
   scope "/", DrawMusicWeb do
     pipe_through [:browser]
 
+    # The top bar's Import dialog (`?panel=import`) on every page showing it
+    # to a signed-in user, here and in the session below.
     live_session :current_user,
-      on_mount: [{DrawMusicWeb.UserAuth, :mount_current_scope}] do
+      on_mount: [{DrawMusicWeb.UserAuth, :mount_current_scope}, DrawMusicWeb.ImportPanel] do
       live "/users/register", UserLive.Registration, :new
       live "/users/log-in", UserLive.Login, :new
       live "/users/log-in/:token", UserLive.Confirmation, :new

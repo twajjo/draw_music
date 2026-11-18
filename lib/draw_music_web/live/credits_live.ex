@@ -97,7 +97,7 @@ defmodule DrawMusicWeb.CreditsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} import_panel={@import_panel}>
       <h1 class="text-2xl font-semibold">Credits</h1>
       <.authorship />
       <p class="opacity-80">

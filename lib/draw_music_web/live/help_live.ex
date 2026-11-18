@@ -18,7 +18,7 @@ defmodule DrawMusicWeb.HelpLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} import_panel={@import_panel}>
       <h1 class="text-2xl font-semibold">Keys and mouse</h1>
       <p class="opacity-80">
         Everything you can do in the editor. Press <kbd class="kbd kbd-sm">?</kbd>

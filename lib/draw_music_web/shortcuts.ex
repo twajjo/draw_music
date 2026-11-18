@@ -288,10 +288,10 @@ defmodule DrawMusicWeb.Shortcuts do
     },
     %Shortcut{
       group: "Saving",
-      mouse: "Import .mid",
+      mouse: "Import .mid, in the top bar",
       modes: @both,
       action:
-        "On the Compositions page, read a .mid file into the library under the name it carries (you can change it). If the name is taken: replace that key's versions with it, add it as a new version, or pick another name"
+        "Over the page you're on (Cancel leaves you there, unsaved work kept), read a .mid file into the library under the name it carries (you can change it). If the name is taken: replace that key's versions with it, add it as a new version, or pick another name"
     },
     %Shortcut{
       group: "Saving",

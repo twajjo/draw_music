@@ -1,8 +1,8 @@
 defmodule DrawMusicWeb.LibraryLive do
   @moduledoc """
-  The signed-in user's compositions, with their keys and versions. Importing
-  a .mid file is done by `DrawMusicWeb.ImportDialog`, and editing a
-  composition's details by `DrawMusicWeb.DetailsDialog`.
+  The signed-in user's compositions, with their keys and versions; editing
+  a composition's details is done by `DrawMusicWeb.DetailsDialog`. New and
+  Import (a .mid file) are the top bar's, as on every page.
   """
 
   use DrawMusicWeb, :live_view
@@ -10,13 +10,9 @@ defmodule DrawMusicWeb.LibraryLive do
   import DrawMusicWeb.LibraryComponents
 
   alias DrawMusic.Library
-  alias DrawMusicWeb.{DetailsDialog, ImportDialog}
+  alias DrawMusicWeb.DetailsDialog
 
   @impl true
-  def handle_event("open_import", _params, socket) do
-    {:noreply, assign(socket, :importing?, true)}
-  end
-
   def handle_event("edit_details", %{"id" => id}, socket) when is_binary(id) do
     composition = Library.get_composition!(socket.assigns.current_scope, id)
     {:noreply, assign(socket, :details_composition, composition)}
@@ -65,16 +61,6 @@ defmodule DrawMusicWeb.LibraryLive do
     {:noreply, assign(socket, :details_composition, nil)}
   end
 
-  # The import dialog's results: a stored piece opens in the editor.
-  def handle_info({ImportDialog, {:imported, version}}, socket) do
-    path = version_path(version.key.composition_id, version.key, version.number)
-    {:noreply, push_navigate(socket, to: path)}
-  end
-
-  def handle_info({ImportDialog, :closed}, socket) do
-    {:noreply, assign(socket, :importing?, false)}
-  end
-
   @impl true
   def mount(_params, _session, socket) do
     compositions = Library.list_compositions(socket.assigns.current_scope)
@@ -83,29 +69,18 @@ defmodule DrawMusicWeb.LibraryLive do
      socket
      |> assign(:page_title, "Compositions")
      |> assign(:details_composition, nil)
-     |> assign(:importing?, false)
      |> stream(:compositions, compositions)}
   end
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <.header>
-        Compositions
-        <:actions>
-          <.button id="import-open" phx-click="open_import">
-            <.icon name="hero-arrow-up-tray" class="size-4" /> Import .mid
-          </.button>
-          <.button id="new-composition" variant="primary" navigate={~p"/compositions/new"}>
-            <.icon name="hero-plus" class="size-4" /> New composition
-          </.button>
-        </:actions>
-      </.header>
+    <Layouts.app flash={@flash} current_scope={@current_scope} import_panel={@import_panel}>
+      <.header>Compositions</.header>
 
       <div id="compositions" phx-update="stream" class="space-y-3">
         <p id="compositions-empty" class="hidden only:block py-10 text-center opacity-60">
-          No compositions yet. Start one with “New composition”, or import a .mid file.
+          No compositions yet. Start one with New in the top bar, or Import a .mid file.
         </p>
         <.composition_row
           :for={{id, composition} <- @streams.compositions}
@@ -113,13 +88,6 @@ defmodule DrawMusicWeb.LibraryLive do
           composition={composition}
         />
       </div>
-
-      <.live_component
-        :if={@importing?}
-        module={ImportDialog}
-        id="import"
-        scope={@current_scope}
-      />
 
       <.live_component
         :if={@details_composition}
