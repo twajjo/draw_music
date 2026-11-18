@@ -143,7 +143,7 @@ defmodule DrawMusicWeb.EditorPlacement do
   end
 
   defp pitch(ctx, armed, %PlacementTarget{step: step, alter: alter}) do
-    {step, alter || armed.alter || Pitch.key_alter(ctx.sf, Pitch.letter(step))}
+    {step, alter || armed.alter || Pitch.in_key(step, ctx.sf)}
   end
 
   defp placement(armed, target) do

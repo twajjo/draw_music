@@ -78,6 +78,13 @@ defmodule DrawMusic.Music.Pitch do
   @spec frequency(number()) :: float()
   def frequency(midi), do: @a4_hz * :math.pow(2, (midi - @a4_midi) / @semitones_per_octave)
 
+  @doc """
+  The alteration step `step` has in the key with signature `sf`: its letter
+  as the key signature gives it (F in G major is F♯, so 1).
+  """
+  @spec in_key(integer(), -7..7) :: -1..1
+  def in_key(step, sf), do: key_alter(sf, letter(step))
+
   @spec in_range?(integer()) :: boolean()
   def in_range?(midi), do: midi in @min_midi..@max_midi
 

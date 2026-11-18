@@ -81,6 +81,13 @@ defmodule DrawMusic.Music.DurationPitchTest do
       assert Enum.map(0..6, &Pitch.key_alter(-2, &1)) == [0, 0, -1, 0, 0, 0, -1]
     end
 
+    test "a step takes its letter's alteration in the key, in any octave" do
+      {f4, f5} = {Pitch.step(3, 4), Pitch.step(3, 5)}
+      assert {Pitch.in_key(f4, 1), Pitch.in_key(f5, 1)} == {1, 1}
+      assert Pitch.in_key(Pitch.step(6, 3), -1) == -1
+      assert Pitch.in_key(f4, 0) == 0
+    end
+
     test "tonic/2 of major and relative minor keys" do
       names = fn {letter, _pc} ->
         Enum.at(~w(C D E F G A B), letter)
