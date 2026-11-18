@@ -68,7 +68,7 @@ defmodule DrawMusicWeb.Editor.ScoreCanvasTest do
     {step, _alter} = pitch!("G4")
 
     hook(view, "place", %{"measure" => 0, "offset" => 2880, "staff" => "treble", "step" => step})
-    assert_receive {:component_sent, {:editor, {:edit, fun}}}
+    assert_receive {:component_sent, {:editor, {:edit, fun, :follow}}}
     assert {0, 2880, "G4", :quarter, 0} in edited(fun, setup.session)
 
     hook(view, "place", %{"measure" => -1, "offset" => 0, "staff" => "treble", "step" => step})
@@ -87,13 +87,17 @@ defmodule DrawMusicWeb.Editor.ScoreCanvasTest do
     assert [{_measure, _offset, "E4", :quarter, 0}] = edited(fun, session)
   end
 
-  test "paste lands where empty staff was last clicked", %{conn: conn} = setup do
+  test "a click on empty music puts the cursor there, and paste lands at it",
+       %{conn: conn} = setup do
     session = setup |> with_selection([setup.c4]) |> Session.copy()
     view = host(conn, setup, %{session: session})
 
-    hook(view, "set_last_click", %{"at" => 2880})
-    refute_received {:component_sent, _anything}
+    hook(view, "set_cursor", %{"at" => 2880})
+    assert_receive {:component_sent, {:editor, {:session, put}}}
+    session = put.(session)
+    assert session.cursor == 2880
 
+    send(view.pid, {:host_attrs, %{session: session}})
     hook(view, "paste", %{})
     assert_receive {:component_sent, {:editor, {:edit, fun}}}
     assert {0, 2880, "C4", :quarter, 0} in edited(fun, session)

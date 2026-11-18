@@ -22,6 +22,7 @@ defmodule DrawMusicWeb.ScoreCanvas.Surface do
   attr :loading?, :boolean, required: true
   attr :layout, :atom, required: true, doc: "`:page` or `:strip`"
   attr :show_note_names?, :boolean, required: true
+  attr :cursor, :integer, default: nil, doc: "the insertion cursor's tick, or nil"
   slot :inner_block, required: true
   @doc "The score element, holding what the canvas draws in it."
   @spec surface(map()) :: Phoenix.LiveView.Rendered.t()
@@ -39,6 +40,7 @@ defmodule DrawMusicWeb.ScoreCanvas.Surface do
       data-loading={to_string(@loading?)}
       data-layout={@layout}
       data-show-note-names={to_string(@show_note_names?)}
+      data-cursor={@cursor}
     >
       {render_slot(@inner_block)}
       <script :type={Phoenix.LiveView.ColocatedHook} name=".ScoreCanvas">
@@ -48,13 +50,16 @@ defmodule DrawMusicWeb.ScoreCanvas.Surface do
         // sounds it, and letting go places it.
         //
         // Server state arrives as data attributes: data-geometry, data-armed,
-        // data-insert (Insert mode), data-mode, data-loading, data-layout and
+        // data-insert (Insert mode), data-mode, data-loading, data-layout,
         // data-show-note-names (the user's preference: name the note being
-        // placed or dragged). Playback is Editor.Transport's: it says where
+        // placed or dragged) and data-cursor (the insertion cursor's tick,
+        // drawn as a caret in Edit mode). Playback is Editor.Transport's: it says where
         // it is with "score:playhead" and "score:play-start" window events,
         // and the playhead is drawn here (playhead_view.js).
         import {sharedAudio} from "@/js/score_editor/audio"
         import {Band} from "@/js/score_editor/band"
+        import {Caret} from "@/js/score_editor/caret"
+        import {endTick} from "@/js/score_editor/playhead"
         import {chordAt} from "@/js/score_editor/chord"
         import {setPageCursor} from "@/js/score_editor/cursor"
         import {keyAlter, locate, pitchOf} from "@/js/score_editor/geometry"
@@ -91,6 +96,7 @@ defmodule DrawMusicWeb.ScoreCanvas.Surface do
               send: (event, payload, reply) => this.send(event, payload, reply),
             })
             this.playhead = new PlayheadView(this.el, this.overlay)
+            this.caret = new Caret(this.overlay)
             this.notes = new StatusNotes()
             this.lastSound = null
             this.readState()
@@ -144,6 +150,8 @@ defmodule DrawMusicWeb.ScoreCanvas.Surface do
             setPageCursor(this.el, this.armed && this.armed.glyph)
             if (!this.armed && !this.drag) this.overlay.clear()
             this.playhead.update(this.geometry, this.mode)
+            const cursor = this.el.dataset.cursor
+            this.caret.update(this.geometry, this.mode, cursor ? Number(cursor) : null, this.insert)
             this.notes.update({loading: this.el.dataset.loading === "true", layout: this.el.dataset.layout})
           },
 
@@ -239,13 +247,13 @@ defmodule DrawMusicWeb.ScoreCanvas.Surface do
             this.el.setPointerCapture(e.pointerId)
           },
 
-          // A click (no drag) on empty music clears the selection and remembers
-          // where, for a paste; a drag selects the range it covers.
+          // A click (no drag) on empty music clears the selection and puts the
+          // cursor there, for a paste; a drag selects the range it covers.
           endBand() {
             const {start, end} = this.band.finish()
             if (Math.hypot(end.x - start.x, end.y - start.y) < DRAG_THRESHOLD) {
               const at = tickAt(this.geometry, start)
-              if (at !== null) this.send("set_last_click", {at: Math.floor(at / CLICK_GRID) * CLICK_GRID})
+              if (at !== null) this.send("set_cursor", {at: Math.floor(at / CLICK_GRID) * CLICK_GRID})
               return this.send("clear_selection")
             }
 
@@ -415,6 +423,11 @@ defmodule DrawMusicWeb.ScoreCanvas.Surface do
               return send("move", {dir: ARROWS[e.key], by})
             }
 
+            if (ctrl && (e.key === "Home" || e.key === "End")) {
+              const at = e.key === "Home" ? 0 : endTick(this.geometry)
+              this.caret.reveal(this.geometry, this.mode, at, this.insert)
+              return send("set_cursor", {at})
+            }
             if (ctrl && k === "c") return send("copy")
             if (ctrl && k === "x") return send("cut")
             if (ctrl && k === "v") return send("paste")

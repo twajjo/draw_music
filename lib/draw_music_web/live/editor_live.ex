@@ -90,6 +90,10 @@ defmodule DrawMusicWeb.EditorLive do
     {:noreply, update(socket, :session, fun)}
   end
 
+  def handle_info({:editor, {:edit, fun, :follow}}, socket) do
+    {:noreply, Edit.edit_and_follow(socket, fun)}
+  end
+
   def handle_info({:editor, {:edit, fun, :select}}, socket) do
     {:noreply, Edit.edit_and_select(socket, fun)}
   end

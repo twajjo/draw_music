@@ -197,6 +197,34 @@
   stroke-linecap: round;
 }
 
+/* The insertion cursor (Edit mode): a thinner line in the selection colour,
+   where the next paste goes. */
+#score-overlay .insertion-caret {
+  stroke: var(--score-selection);
+  stroke-width: 0.18;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+/* In Overlay mode the caret blinks, like an editor's overwrite cursor; with
+   reduced motion it's dashed instead. */
+#score-overlay .insertion-caret.overwriting {
+  animation: caret-blink 1s steps(1) infinite;
+}
+
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #score-overlay .insertion-caret.overwriting {
+    animation: none;
+    stroke-dasharray: 0.6 0.4;
+  }
+}
+
 /* Play mode: an arrow pointer with a speaker; clicks only listen. The arrow's
    tip is the hotspot. */
 #score-editor.play-mode,

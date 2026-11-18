@@ -127,20 +127,54 @@ defmodule DrawMusic.Music.SessionTest do
     assert [%{id: ^id}] = Session.selected_events(Session.select(s, [id], false))
   end
 
-  test "paste goes at the given tick, else the last click, else after the selection",
+  test "paste goes at the given tick, else the cursor, else after the selection, else the start",
        %{session: session} do
     {:ok, s, id} = place(session, "C4", 960)
     s = Session.select(s, [id], false)
 
-    assert Session.paste_at(s, 480, 1920) == 480
-    assert Session.paste_at(s, nil, 1920) == 1920
-    assert Session.paste_at(s, "junk", nil) == 1920
-    assert Session.paste_at(Session.clear_selection(s), nil, nil) == 0
+    assert Session.paste_at(s, 480) == 480
+    assert Session.paste_at(Session.put_cursor(s, 2880), nil) == 2880
+    assert Session.paste_at(%{s | cursor: nil}, "junk") == 1920
+    assert Session.paste_at(%{Session.clear_selection(s) | cursor: nil}, nil) == 0
   end
 
   test "paste never goes past the end of the score", %{session: session} do
     end_tick = Timeline.end_tick(session.score, session.ctx)
-    assert Session.paste_at(session, 999_999, nil) == end_tick
+    assert Session.paste_at(session, 999_999) == end_tick
+  end
+
+  test "selecting one note or rest puts the cursor just after it; several leave it",
+       %{session: session} do
+    {:ok, s, c} = place(session, "C4", 960)
+    {:ok, s, e} = place(s, "E4", 1920)
+
+    assert Session.select(s, [c], false).cursor == 1920
+
+    s = Session.put_cursor(s, 0)
+    assert Session.select(s, [c, e], false).cursor == 0
+    assert Session.clear_selection(Session.select(s, [e], false)).cursor == 2880
+  end
+
+  test "after placing, the cursor goes just after what was placed; unknown ids leave it",
+       %{session: session} do
+    {:ok, s, c} = place(session, "C4", 960)
+    {:ok, s, e} = place(s, "E4", 0)
+
+    assert Session.put_cursor_after(s, c).cursor == 1920
+    assert Session.put_cursor_after(s, [e, c]).cursor == 1920
+
+    s = Session.put_cursor(s, 0)
+    assert Session.put_cursor_after(s, Ecto.UUID.generate()).cursor == 0
+  end
+
+  test "the cursor never sits past the end, after a put or an undo", %{session: session} do
+    end_tick = Timeline.end_tick(session.score, session.ctx)
+    assert Session.put_cursor(session, 999_999).cursor == end_tick
+
+    {:ok, longer, _extra} = Session.edit(session, &Editing.append_measure/2)
+    longer = Session.put_cursor(longer, end_tick + 960)
+
+    assert Session.undo(longer).cursor == end_tick
   end
 
   defp place(session, spn, offset) do

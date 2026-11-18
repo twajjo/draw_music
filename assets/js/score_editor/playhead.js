@@ -38,6 +38,14 @@ export function playheadAt(geometry, tick) {
   return {system, x: xAt(measure, measure.capacity)}
 }
 
+// The tick where the score ends: the end of its last measure (0 without
+// systems).
+export function endTick(geometry) {
+  const system = geometry.systems[geometry.systems.length - 1]
+  const measure = system?.measures[system.measures.length - 1]
+  return measure ? measure.start_tick + measure.capacity : 0
+}
+
 // The line's top and bottom, relative to its system: the grand staff with a
 // staff space to spare at each end.
 export function playheadSpan(geometry) {

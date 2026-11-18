@@ -13,6 +13,8 @@ defmodule DrawMusicWeb.Editor.Intent do
       `DrawMusic.Music.Session.edit/2` function, `(score, ctx -> result)`.
     * `{:edit, fun, :select}`: the same, and select what it reports
       (`{:ok, score, ids}`).
+    * `{:edit, fun, :follow}`: the same, and put the cursor just after
+      what it reports (a placement's `{:ok, score, id_or_ids}`).
     * `{:session, fun}`: change the selection or the clipboard, not the
       score (no undo step). `fun` takes and returns the
       `DrawMusic.Music.Session`.
@@ -49,6 +51,7 @@ defmodule DrawMusicWeb.Editor.Intent do
           | :close
           | {:edit, edit()}
           | {:edit, edit(), :select}
+          | {:edit, edit(), :follow}
           | {:session, (DrawMusic.Music.Session.t() -> DrawMusic.Music.Session.t())}
           | {:saved, Version.t(), String.t()}
           | {:flash, :info | :error, String.t()}
