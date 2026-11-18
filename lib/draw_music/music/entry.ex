@@ -47,6 +47,15 @@ defmodule DrawMusic.Music.Entry do
     end
   end
 
+  @doc "`entries` with the one for event `id` replaced by `replacements` (none, one or more)."
+  @spec replace([t()], Ecto.UUID.t(), [t()]) :: [t()]
+  def replace(entries, id, replacements) do
+    Enum.flat_map(entries, fn
+      %{event: %{id: ^id}} -> replacements
+      entry -> [entry]
+    end)
+  end
+
   @doc "`entries` split into those for events among `ids` and the rest, in order."
   @spec select([t()], Enumerable.t()) :: {[t()], [t()]}
   def select(entries, ids) do
