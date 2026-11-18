@@ -103,7 +103,7 @@ defmodule DrawMusic.Music.Editing.Rebuild do
 
   defp check_voice([entry | rest]) do
     rest
-    |> Enum.take_while(&(&1.start < entry.start + entry.ticks))
+    |> Enum.take_while(&(&1.start < Entry.end_tick(entry)))
     |> Enum.reduce_while(:ok, fn other, :ok ->
       entry
       |> collision(other)

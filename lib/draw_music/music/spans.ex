@@ -70,7 +70,7 @@ defmodule DrawMusic.Music.Spans do
   @spec mirror_sum([Entry.t(), ...]) :: non_neg_integer()
   def mirror_sum(entries) do
     first = Enum.min_by(entries, & &1.start).start
-    last = Enum.max(Enum.map(entries, &(&1.start + &1.ticks)))
+    last = Enum.max(Enum.map(entries, &Entry.end_tick/1))
     first + last
   end
 
@@ -78,8 +78,8 @@ defmodule DrawMusic.Music.Spans do
   @spec overlapping_in_voice?(Entry.t(), Entry.t()) :: boolean()
   def overlapping_in_voice?(a, b) do
     a.event.staff == b.event.staff and a.event.voice == b.event.voice and
-      a.start < b.start + b.ticks and b.start < a.start + a.ticks
+      a.start < Entry.end_tick(b) and b.start < Entry.end_tick(a)
   end
 
-  defp of(entry), do: {entry.start, entry.start + entry.ticks}
+  defp of(entry), do: {entry.start, Entry.end_tick(entry)}
 end

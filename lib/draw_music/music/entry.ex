@@ -24,4 +24,33 @@ defmodule DrawMusic.Music.Entry do
   """
   @spec chord_key(t()) :: {Note.staff(), Note.voice(), non_neg_integer()}
   def chord_key(%__MODULE__{event: event, start: start}), do: {event.staff, event.voice, start}
+
+  @doc "The tick where an entry ends (and the next may start)."
+  @spec end_tick(t()) :: non_neg_integer()
+  def end_tick(%__MODULE__{start: start, ticks: ticks}), do: start + ticks
+
+  @doc "The entry for event `id` among `entries`."
+  @spec find([t()], Ecto.UUID.t()) :: {:ok, t()} | {:error, :not_found}
+  def find(entries, id) do
+    case Enum.find(entries, &(&1.event.id == id)) do
+      nil -> {:error, :not_found}
+      entry -> {:ok, entry}
+    end
+  end
+
+  @doc "The entries for events among `ids`, in order; at least one must be found."
+  @spec find_all([t()], Enumerable.t()) :: {:ok, [t(), ...]} | {:error, :not_found}
+  def find_all(entries, ids) do
+    case select(entries, ids) do
+      {[], _rest} -> {:error, :not_found}
+      {found, _rest} -> {:ok, found}
+    end
+  end
+
+  @doc "`entries` split into those for events among `ids` and the rest, in order."
+  @spec select([t()], Enumerable.t()) :: {[t()], [t()]}
+  def select(entries, ids) do
+    ids = MapSet.new(ids)
+    Enum.split_with(entries, &(&1.event.id in ids))
+  end
 end

@@ -43,6 +43,16 @@ defmodule DrawMusic.Music.Rest do
     |> Duration.validate_dots()
   end
 
+  @doc """
+  A rest where `source` is (a placement, note or rest): its staff, voice,
+  offset, value and dots, with `fields` on top (the id at least).
+  """
+  @spec from(map(), map() | keyword()) :: t()
+  def from(source, fields) do
+    position = Map.take(source, [:staff, :voice, :offset, :value, :dots])
+    struct!(__MODULE__, Map.merge(position, Map.new(fields)))
+  end
+
   @doc "Length in ticks."
   @spec ticks(t()) :: pos_integer()
   def ticks(%__MODULE__{value: value, dots: dots}), do: Duration.ticks(value, dots)
