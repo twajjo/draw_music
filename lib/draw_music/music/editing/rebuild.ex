@@ -35,6 +35,11 @@ defmodule DrawMusic.Music.Editing.Rebuild do
     end)
   end
 
+  @doc "A yes/no check as an edit step: `:ok`, or `{:error, reason}`."
+  @spec ensure(boolean(), Editing.reason()) :: :ok | {:error, Editing.reason()}
+  def ensure(true, _reason), do: :ok
+  def ensure(false, reason), do: {:error, reason}
+
   @doc """
   The score's entries with `fun` applied to those among `ids`; `fun`
   returns `{:ok, entry}` or an error, which stops it.
