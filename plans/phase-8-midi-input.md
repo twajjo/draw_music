@@ -116,7 +116,7 @@ Phases 5, 6 and 7 had 104, 53 and 57 files per PR. That is far too many to revie
 | 8.9 | **Done** (#54): style sweep in `lib/draw_music/engraving`, the MIDI code, the library and samples |
 | 8.10 | **Done** (#55): style sweep in `lib/draw_music_web` (non-generated) |
 | 8.11 | **Done** (#56): style sweep in the tests; component tests wait for messages |
-| 8.12 | `Editing`: pull out `Spans` and `Ties` |
+| 8.12 | **Done**: `Editing`: pull out `Spans` and `Ties` (1,414 → 1,223 lines; `Entry.chord_key/1` shared) |
 | 8.13 | `Editing`: pull out `Fillers` and `Rebuild`; fix the redundancies |
 | 8.14 | `Editing`: split the edit groups behind the facade |
 | 8.15 | Palette: sub-components and the shared `tool_button` |

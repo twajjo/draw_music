@@ -29,6 +29,7 @@ defmodule DrawMusic.Music.Editing do
     Clipboard,
     Context,
     Duration,
+    Entry,
     Gaps,
     Measure,
     Note,
@@ -36,8 +37,10 @@ defmodule DrawMusic.Music.Editing do
     Placement,
     Rest,
     Score,
+    Spans,
     StaffCrossing,
     TempoChange,
+    Ties,
     Timeline
   }
 
@@ -161,7 +164,7 @@ defmodule DrawMusic.Music.Editing do
   end
 
   defp trim_before(entry, from) when entry.start < from do
-    [%{entry | ticks: from - entry.start, event: put_tie(entry.event, nil)}]
+    [%{entry | ticks: from - entry.start, event: Ties.put(entry.event, nil)}]
   end
 
   defp trim_before(_entry, _from), do: []
@@ -367,7 +370,7 @@ defmodule DrawMusic.Music.Editing do
            map_entries(score, ctx, ids, fn entry ->
              {:ok, %{entry | start: entry.start + delta, event: claim(entry.event)}}
            end) do
-      rebuild(score, ctx, merge_ties(entries))
+      rebuild(score, ctx, Ties.merge(entries))
     end
   end
 
@@ -399,7 +402,7 @@ defmodule DrawMusic.Music.Editing do
           [entry]
       end)
 
-    rebuild(score, ctx, merge_ties(entries))
+    rebuild(score, ctx, Ties.merge(entries))
   end
 
   @doc """
@@ -416,16 +419,7 @@ defmodule DrawMusic.Music.Editing do
       for %{event: %{staff: ^staff}} = entry <- Timeline.flatten(score, ctx),
           do: {entry.kind, entry.start, entry.start + entry.ticks}
 
-    cursor(spans, at)
-  end
-
-  # Out of whatever item `at` falls inside: a note's end, a rest's start.
-  defp cursor(spans, at) do
-    case Enum.find(spans, fn {_kind, from, to} -> from < at and at < to end) do
-      nil -> at
-      {:note, _from, to} -> cursor(spans, to)
-      {_rest, from, _to} -> from
-    end
+    Spans.cursor(spans, at)
   end
 
   @doc """
@@ -448,7 +442,7 @@ defmodule DrawMusic.Music.Editing do
       |> Enum.group_by(& &1.event.staff)
       |> Map.new(fn {staff, removed} ->
         covers = Enum.filter(kept, &(&1.event.staff == staff and not filler?(&1)))
-        {staff, emptied(removed, covers)}
+        {staff, Spans.emptied(removed, covers)}
       end)
 
     shifted =
@@ -461,37 +455,7 @@ defmodule DrawMusic.Music.Editing do
         %{entry | start: entry.start - Enum.sum(closed)}
       end)
 
-    rebuild(score, ctx, merge_ties(shifted))
-  end
-
-  # The removed events' spans, merged, minus time still covered by others.
-  defp emptied(removed, kept) do
-    covers = Enum.map(kept, &{&1.start, &1.start + &1.ticks})
-
-    removed
-    |> Enum.map(&{&1.start, &1.start + &1.ticks})
-    |> merge_spans()
-    |> Enum.flat_map(fn span -> Enum.reduce(covers, [span], &cut_out/2) end)
-  end
-
-  defp merge_spans(spans) do
-    spans
-    |> Enum.sort()
-    |> Enum.reduce([], fn
-      {from, to}, [{prev_from, prev_to} | rest] when from <= prev_to ->
-        [{prev_from, max(to, prev_to)} | rest]
-
-      span, acc ->
-        [span | acc]
-    end)
-    |> Enum.reverse()
-  end
-
-  # Removes the cover {cs, ce} from each span.
-  defp cut_out({cs, ce}, spans) do
-    Enum.flat_map(spans, fn {s, e} ->
-      Enum.reject([{s, min(e, cs)}, {max(s, ce), e}], fn {a, b} -> a >= b end)
-    end)
+    rebuild(score, ctx, Ties.merge(shifted))
   end
 
   @doc "Moves notes by `semitones`, spelled to suit the key."
@@ -534,30 +498,18 @@ defmodule DrawMusic.Music.Editing do
         {:ok, score}
 
       selected ->
-        span = span(selected)
-        flipped = flipped(selected, ids)
-        rebuild(score, ctx, Enum.map(entries, &mirror(&1, ids, span, flipped)))
+        sum = Spans.mirror_sum(selected)
+        flipped = Ties.flipped(selected, ids)
+        rebuild(score, ctx, Enum.map(entries, &mirror(&1, ids, sum, flipped)))
     end
   end
 
-  # First tick plus last tick of the events: a start `s` mirrors to `span - s`.
-  defp span(entries) do
-    first = Enum.min_by(entries, & &1.start).start
-    last = Enum.max(Enum.map(entries, &(&1.start + &1.ticks)))
-    first + last
-  end
-
-  # Selected tie targets => the note now tied to them, reversed.
-  defp flipped(selected, ids) do
-    for %{event: %Note{id: from, tie_to: to}} <- selected, to in ids, into: %{}, do: {to, from}
-  end
-
-  defp mirror(entry, ids, span, flipped) do
+  defp mirror(entry, ids, sum, flipped) do
     if entry.event.id in ids do
       %{
         entry
-        | start: span - (entry.start + entry.ticks),
-          event: put_tie(entry.event, flipped[entry.event.id])
+        | start: sum - (entry.start + entry.ticks),
+          event: Ties.put(entry.event, flipped[entry.event.id])
       }
     else
       entry
@@ -597,7 +549,7 @@ defmodule DrawMusic.Music.Editing do
     head = %{
       entry
       | ticks: head_ticks,
-        event: put_tie(%{event | value: head_value, dots: head_dots}, second)
+        event: Ties.put(%{event | value: head_value, dots: head_dots}, second)
     }
 
     tail = %{
@@ -825,7 +777,7 @@ defmodule DrawMusic.Music.Editing do
     chords =
       entries
       |> Enum.filter(&(&1.kind == :note and &1.event.id in ids))
-      |> Enum.map(&chord_key/1)
+      |> Enum.map(&Entry.chord_key/1)
       |> Enum.uniq()
 
     with {:ok, entries, new_ids} <- rebuild_chords(entries, chords, pitches_for),
@@ -834,11 +786,9 @@ defmodule DrawMusic.Music.Editing do
     end
   end
 
-  defp chord_key(%{event: event, start: start}), do: {event.staff, event.voice, start}
-
   defp rebuild_chords(entries, chords, pitches_for) do
     Enum.reduce_while(chords, {:ok, entries, []}, fn key, {:ok, entries, new_ids} ->
-      {old, kept} = Enum.split_with(entries, &(&1.kind == :note and chord_key(&1) == key))
+      {old, kept} = Enum.split_with(entries, &(&1.kind == :note and Entry.chord_key(&1) == key))
       root = Enum.min_by(old, & &1.event.step)
 
       case pitches_for.(root.event.step, root.event.alter) do
@@ -871,7 +821,7 @@ defmodule DrawMusic.Music.Editing do
   def rebar_to(%Score{} = score, %Context{} = from_ctx, %Context{} = to_ctx) do
     bars = bars_spanning(to_ctx, Timeline.end_tick(score, from_ctx))
     fresh = %{Score.new(bars) | tempos: score.tempos}
-    rebuild(fresh, to_ctx, merge_ties(Timeline.flatten(score, from_ctx)))
+    rebuild(fresh, to_ctx, Ties.merge(Timeline.flatten(score, from_ctx)))
   end
 
   # How many bars of `ctx` it takes to reach tick `last` (at least one).
@@ -899,7 +849,7 @@ defmodule DrawMusic.Music.Editing do
   # Head up to `at` (keeping the id), tail moved `gap` later with a fresh id
   # and whatever tie the event had.
   defp split_at(entry, at, gap) do
-    head = %{entry | ticks: at - entry.start, event: put_tie(entry.event, nil)}
+    head = %{entry | ticks: at - entry.start, event: Ties.put(entry.event, nil)}
 
     tail = %{
       entry
@@ -910,9 +860,6 @@ defmodule DrawMusic.Music.Editing do
 
     [head, tail]
   end
-
-  defp put_tie(%Note{} = note, target), do: %{note | tie_to: target}
-  defp put_tie(event, _target), do: event
 
   defp note_only(%{kind: :note} = entry, fun), do: {:ok, %{entry | event: fun.(entry.event)}}
   defp note_only(entry, _fun), do: {:ok, entry}
@@ -959,85 +906,15 @@ defmodule DrawMusic.Music.Editing do
   defp collect({:ok, entry}, acc), do: {:cont, {:ok, [entry | acc]}}
   defp collect(error, _acc), do: {:halt, error}
 
-  ## Ties
+  ## Ties (`DrawMusic.Music.Ties`)
 
-  @doc """
-  Ties two notes, given in either order: the earlier is tied to the later.
-  They must be on the same staff, sound the same pitch, and the later must
-  start exactly where the earlier ends.
-  """
+  @doc "Ties two notes, given in either order (see `DrawMusic.Music.Ties.tie/4`)."
   @spec tie(Score.t(), Context.t(), id(), id()) :: result()
-  def tie(%Score{} = score, %Context{} = ctx, id_a, id_b) do
-    notes = note_entries(score, ctx)
-
-    with {:ok, a} <- fetch(notes, id_a),
-         {:ok, b} <- fetch(notes, id_b),
-         [first, second] = Enum.sort_by([a, b], & &1.start),
-         :ok <- check_tieable(first, second) do
-      {:ok, update_notes(score, &tie_note(&1, first.event.id, second.event.id))}
-    end
-  end
+  defdelegate tie(score, ctx, id_a, id_b), to: Ties
 
   @doc "Removes the ties into and out of a note."
   @spec untie(Score.t(), id()) :: Score.t()
-  def untie(%Score{} = score, id) do
-    update_notes(score, fn
-      %Note{id: ^id} = note -> %{note | tie_to: nil}
-      %Note{tie_to: ^id} = note -> %{note | tie_to: nil}
-      note -> note
-    end)
-  end
-
-  defp tie_note(%Note{id: id} = note, id, target), do: %{note | tie_to: target}
-  defp tie_note(note, _id, _target), do: note
-
-  defp check_tieable(first, second) do
-    if tieable?(first, second), do: :ok, else: {:error, :not_tieable}
-  end
-
-  # Distinct notes on one staff, the same pitch, the second starting where
-  # the first ends.
-  defp tieable?(%{event: %{id: id}}, %{event: %{id: id}}), do: false
-
-  defp tieable?(%{event: %{staff: staff}} = first, %{event: %{staff: staff}} = second) do
-    Note.midi(first.event) == Note.midi(second.event) and
-      first.start + first.ticks == second.start
-  end
-
-  defp tieable?(_first, _second), do: false
-
-  defp fetch(notes, id) do
-    case Map.fetch(notes, id) do
-      {:ok, entry} -> {:ok, entry}
-      :error -> {:error, :not_found}
-    end
-  end
-
-  defp note_entries(score, ctx) do
-    for %{kind: :note} = entry <- Timeline.flatten(score, ctx), into: %{} do
-      {entry.event.id, entry}
-    end
-  end
-
-  # Drops ties that no longer join a note to the same pitch right after it.
-  defp prune_ties(score, ctx) do
-    notes = note_entries(score, ctx)
-
-    update_notes(score, fn
-      %Note{tie_to: nil} = note -> note
-      note -> keep_tie(note, notes[note.id], Map.get(notes, note.tie_to))
-    end)
-  end
-
-  defp keep_tie(note, _entry, nil = _target), do: %{note | tie_to: nil}
-
-  defp keep_tie(note, entry, target) do
-    if tieable?(entry, target), do: note, else: %{note | tie_to: nil}
-  end
-
-  defp update_notes(%Score{measures: measures} = score, fun) do
-    %{score | measures: Enum.map(measures, fn m -> %{m | notes: Enum.map(m.notes, fun)} end)}
-  end
+  defdelegate untie(score, id), to: Ties
 
   ## Measures
 
@@ -1060,7 +937,7 @@ defmodule DrawMusic.Music.Editing do
 
     with {:ok, score} <- insert_measure(score, index) do
       tempos = shift_tempos(score.tempos, at, Context.capacity(ctx, index))
-      {:ok, %{score | tempos: tempos} |> prune_ties(ctx) |> fill_rests(ctx)}
+      {:ok, %{score | tempos: tempos} |> Ties.prune(ctx) |> fill_rests(ctx)}
     end
   end
 
@@ -1106,7 +983,7 @@ defmodule DrawMusic.Music.Editing do
       end)
       |> shift_tempos(at + length, -length)
 
-    {:ok, prune_ties(%{score | measures: List.delete_at(measures, index), tempos: tempos}, ctx)}
+    {:ok, Ties.prune(%{score | measures: List.delete_at(measures, index), tempos: tempos}, ctx)}
   end
 
   def delete_measure(_score, _ctx, _index), do: {:error, :no_such_measure}
@@ -1172,16 +1049,10 @@ defmodule DrawMusic.Music.Editing do
     %Clipboard{
       entries:
         Enum.map(selected, fn entry ->
-          %{entry | start: entry.start - origin, event: drop_outside_tie(entry.event, ids)}
+          %{entry | start: entry.start - origin, event: Ties.drop_outside(entry.event, ids)}
         end)
     }
   end
-
-  defp drop_outside_tie(%Note{tie_to: target} = note, ids) when not is_nil(target) do
-    if target in ids, do: note, else: %{note | tie_to: nil}
-  end
-
-  defp drop_outside_tie(event, _ids), do: event
 
   @doc """
   Pastes a clipboard from `copy/3` starting at absolute tick `at`, with
@@ -1195,20 +1066,14 @@ defmodule DrawMusic.Music.Editing do
 
     pasted =
       Enum.map(entries, fn entry ->
-        event = renumber(%{claim(entry.event) | id: fresh[entry.event.id]}, fresh)
+        event = Ties.renumber(%{claim(entry.event) | id: fresh[entry.event.id]}, fresh)
         %{entry | start: entry.start + at, event: event}
       end)
 
-    entries = merge_ties(clear_rests_under(Timeline.flatten(score, ctx), pasted) ++ pasted)
+    entries = Ties.merge(clear_rests_under(Timeline.flatten(score, ctx), pasted) ++ pasted)
 
     with {:ok, score} <- rebuild(score, ctx, entries), do: {:ok, score, Map.values(fresh)}
   end
-
-  defp renumber(%Note{tie_to: target} = note, fresh) when not is_nil(target) do
-    %{note | tie_to: fresh[target]}
-  end
-
-  defp renumber(event, _fresh), do: event
 
   ## Rests
 
@@ -1260,57 +1125,6 @@ defmodule DrawMusic.Music.Editing do
   defp claim(%Rest{} = rest), do: %{rest | filler: false}
   defp claim(event), do: event
 
-  # Tied pieces of a lone note (no chord partner in its voice) that follow
-  # one another become one entry, keeping the first piece's id; rebarring
-  # splits it again only where bar lines and note values need it.
-  defp merge_ties(entries) do
-    notes = for %{kind: :note} = entry <- entries, into: %{}, do: {entry.event.id, entry}
-    sizes = notes |> Map.values() |> Enum.frequencies_by(&chord_key/1)
-    lone? = &(sizes[chord_key(&1)] == 1)
-
-    links =
-      notes
-      |> Map.values()
-      |> Enum.flat_map(fn entry ->
-        case Map.get(notes, entry.event.tie_to) do
-          nil -> []
-          target -> mergeable(entry, target, lone?)
-        end
-      end)
-      |> Map.new()
-
-    absorbed = MapSet.new(Map.values(links), & &1.event.id)
-
-    entries
-    |> Enum.reject(&(&1.event.id in absorbed))
-    |> Enum.map(&extend(&1, links))
-  end
-
-  defp mergeable(entry, target, lone?) do
-    if entry.event.voice == target.event.voice and lone?.(entry) and lone?.(target) and
-         tieable?(entry, target) do
-      [{entry.event.id, target}]
-    else
-      []
-    end
-  end
-
-  defp extend(entry, links) do
-    case Map.get(links, entry.event.id) do
-      nil ->
-        entry
-
-      next ->
-        merged = extend(next, links)
-
-        %{
-          entry
-          | ticks: entry.ticks + merged.ticks,
-            event: put_tie(entry.event, merged.event.tie_to)
-        }
-    end
-  end
-
   ## Rebuilding
 
   # New notes take the place of the rests they cover in their voice.
@@ -1326,13 +1140,8 @@ defmodule DrawMusic.Music.Editing do
     notes = Enum.filter(new_entries, &(&1.kind == :note))
 
     Enum.reject(entries, fn entry ->
-      entry.kind == :rest and Enum.any?(notes, &overlapping_in_voice?(&1, entry))
+      entry.kind == :rest and Enum.any?(notes, &Spans.overlapping_in_voice?(&1, entry))
     end)
-  end
-
-  defp overlapping_in_voice?(a, b) do
-    a.event.staff == b.event.staff and a.event.voice == b.event.voice and
-      a.start < b.start + b.ticks and b.start < a.start + a.ticks
   end
 
   # Filler is dropped and written afresh once the events are in their bars.
@@ -1341,7 +1150,7 @@ defmodule DrawMusic.Music.Editing do
 
     with :ok <- check_layout(entries),
          {:ok, rebarred} <- Timeline.rebar(score, ctx, entries) do
-      {:ok, rebarred |> prune_ties(ctx) |> refill(ctx, filler_ids(score))}
+      {:ok, rebarred |> Ties.prune(ctx) |> refill(ctx, filler_ids(score))}
     end
   end
 
