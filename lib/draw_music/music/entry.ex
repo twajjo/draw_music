@@ -16,4 +16,12 @@ defmodule DrawMusic.Music.Entry do
           ticks: pos_integer(),
           event: Note.t() | Rest.t()
         }
+
+  @doc """
+  Which chord an entry belongs to: its staff, voice and start. Notes with
+  the same key sound together as one chord (a voice's notes that start
+  together have the same length, or the edit was refused).
+  """
+  @spec chord_key(t()) :: {Note.staff(), Note.voice(), non_neg_integer()}
+  def chord_key(%__MODULE__{event: event, start: start}), do: {event.staff, event.voice, start}
 end
