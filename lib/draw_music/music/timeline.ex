@@ -14,6 +14,12 @@ defmodule DrawMusic.Music.Timeline do
   @typedoc "A measure's first tick and length in ticks."
   @type bar :: {non_neg_integer(), pos_integer()}
 
+  @doc "The bar among `bars` holding tick `tick`, or nil past the last."
+  @spec bar_at([bar()], non_neg_integer()) :: bar() | nil
+  def bar_at(bars, tick) do
+    Enum.find(bars, fn {start, capacity} -> tick >= start and tick < start + capacity end)
+  end
+
   @doc "`{start, capacity}` of each measure."
   @spec bars(Score.t() | non_neg_integer(), Context.t()) :: [bar()]
   def bars(%Score{measures: measures}, ctx), do: bars(length(measures), ctx)
@@ -41,6 +47,11 @@ defmodule DrawMusic.Music.Timeline do
   def entry(%Rest{} = rest, bar_start) do
     %Entry{kind: :rest, start: bar_start + rest.offset, ticks: Rest.ticks(rest), event: rest}
   end
+
+  @doc "Whether `ticks` from tick `at` stay inside `bar` (no bar: no)."
+  @spec fits?(bar() | nil, integer(), pos_integer()) :: boolean()
+  def fits?({start, capacity}, at, ticks), do: at >= start and at + ticks <= start + capacity
+  def fits?(nil, _at, _ticks), do: false
 
   @doc "All notes and rests as entries, in measure order."
   @spec flatten(Score.t(), Context.t()) :: [Entry.t()]

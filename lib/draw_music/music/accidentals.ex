@@ -35,7 +35,7 @@ defmodule DrawMusic.Music.Accidentals do
   defp mark(%{alter: alter} = note, false, sf, {shown, in_effect}) do
     position = {note.staff, note.step}
 
-    case Map.get(in_effect, position, Pitch.key_alter(sf, Pitch.letter(note.step))) do
+    case Map.get(in_effect, position, Pitch.in_key(note.step, sf)) do
       ^alter -> {shown, in_effect}
       _other -> {Map.put(shown, note.id, alter), Map.put(in_effect, position, alter)}
     end

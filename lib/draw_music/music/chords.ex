@@ -100,7 +100,7 @@ defmodule DrawMusic.Music.Chords do
 
     for third <- 0..(chord_size(Keyword.get(opts, :seventh, false)) - 1) do
       step = root_step + @steps_per_third * third
-      key_alter = Pitch.key_alter(sf, Pitch.letter(step))
+      key_alter = Pitch.in_key(step, sf)
       {step, key_alter + harmonic_minor_raise(mode, root_degree, degree_of.(step))}
     end
     |> checked()

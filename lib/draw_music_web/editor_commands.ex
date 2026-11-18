@@ -123,7 +123,7 @@ defmodule DrawMusicWeb.EditorCommands do
   end
 
   def menu("to_note", _params, %{step: step} = menu, _insert?) when is_integer(step) do
-    &Editing.to_note(&1, &2, menu.id, step, Pitch.key_alter(&2.sf, Pitch.letter(step)))
+    &Editing.to_note(&1, &2, menu.id, step, Pitch.in_key(step, &2.sf))
   end
 
   def menu("tie_next", _params, menu, _insert?), do: &tie_next(&1, &2, menu.id)

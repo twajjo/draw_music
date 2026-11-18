@@ -207,35 +207,27 @@ defmodule DrawMusic.Music.Editing do
     Note.from(placement, id: Ecto.UUID.generate(), voice: voice, step: step, alter: alter)
   end
 
+  # The tick where `event` starts in bar `index`. It must fit in the bar, or,
+  # placed to cross bar lines (`cross?`), just start inside it.
   defp locate(score, ctx, index, event, cross?) when is_integer(index) and index >= 0 do
     case Enum.at(Timeline.bars(score, ctx), index) do
       nil ->
         {:error, :no_such_measure}
 
-      {start, capacity} ->
-        place_within(
-          start,
-          capacity,
-          event.offset,
-          Duration.ticks(event.value, event.dots),
-          cross?
-        )
+      {start, _capacity} = bar ->
+        at = start + event.offset
+
+        with :ok <- ensure(Timeline.fits?(bar, at, room(event, cross?)), :measure_full),
+             do: {:ok, at}
     end
   end
 
   defp locate(_score, _ctx, _index, _event, _cross?), do: {:error, :no_such_measure}
 
-  defp place_within(start, capacity, offset, _ticks, true = _cross?)
-       when offset >= 0 and offset < capacity do
-    {:ok, start + offset}
-  end
-
-  defp place_within(start, capacity, offset, ticks, _cross?)
-       when offset >= 0 and offset + ticks <= capacity do
-    {:ok, start + offset}
-  end
-
-  defp place_within(_start, _capacity, _offset, _ticks, _cross?), do: {:error, :measure_full}
+  # How much of `event` must fit in its bar: one tick (its start) when it may
+  # cross the bar line, else all of it.
+  defp room(_event, true = _cross?), do: 1
+  defp room(event, _cross?), do: Duration.ticks(event.value, event.dots)
 
   ## Changing selected events
 
@@ -579,7 +571,7 @@ defmodule DrawMusic.Music.Editing do
           edge.event
           | id: Ecto.UUID.generate(),
             step: step,
-            alter: Pitch.key_alter(ctx.sf, Pitch.letter(step)),
+            alter: Pitch.in_key(step, ctx.sf),
             tie_to: nil
         }
 
@@ -649,18 +641,10 @@ defmodule DrawMusic.Music.Editing do
     end
   end
 
+  # A new length for what starts at `start` must still end in its bar.
   defp fits_bar(bars, start, ticks) do
-    bars
-    |> bar_of(start)
-    |> within_bar(start, ticks)
+    ensure(Timeline.fits?(Timeline.bar_at(bars, start), start, ticks), :measure_full)
   end
-
-  defp within_bar({bar_start, capacity}, start, ticks)
-       when start + ticks <= bar_start + capacity do
-    :ok
-  end
-
-  defp within_bar(_bar, _start, _ticks), do: {:error, :measure_full}
 
   @doc """
   Turns a note (or, given a chord's ids, the whole chord) into one rest of
@@ -804,9 +788,9 @@ defmodule DrawMusic.Music.Editing do
   # A moved note's new alteration: the key's version of letter `step`,
   # sharpened or flattened as much as the note was from its own key letter.
   defp kept_alter(sf, note, step) do
-    accidental = note.alter - Pitch.key_alter(sf, Pitch.letter(note.step))
+    accidental = note.alter - Pitch.in_key(note.step, sf)
 
-    (Pitch.key_alter(sf, Pitch.letter(step)) + accidental)
+    (Pitch.in_key(step, sf) + accidental)
     |> max(-2)
     |> min(2)
   end
@@ -987,8 +971,4 @@ defmodule DrawMusic.Music.Editing do
   @doc "Rewrites the filler rests (see `DrawMusic.Music.Fillers.fill/2`)."
   @spec fill_rests(Score.t(), Context.t()) :: Score.t()
   defdelegate fill_rests(score, ctx), to: Fillers, as: :fill
-
-  defp bar_of(bars, tick) do
-    Enum.find(bars, fn {start, capacity} -> tick >= start and tick < start + capacity end)
-  end
 end
