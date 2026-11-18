@@ -10,36 +10,35 @@ defmodule DrawMusicWeb.EditorLive do
 
   The score lives in a `DrawMusic.Music.Session` (selection, clipboard,
   undo/redo, unsaved changes); the palette state (armed item, note/rest
-  row, Insert mode) is kept beside it. Every change goes through
-  `apply_edit/2`; the edits themselves are built by
+  row, Insert mode) is kept beside it. Every edit goes through
+  `DrawMusicWeb.EditorLive.Edit`; the edits themselves are built by
   `DrawMusicWeb.EditorCommands` and `DrawMusicWeb.EditorPlacement`.
+
+  The components report their results as messages. This module takes the
+  editing ones; two `:handle_info` hooks take the rest first:
+  `DrawMusicWeb.EditorLive.ViewChanges` (Page / Strip, Sheet, the
+  Preferences form) and `DrawMusicWeb.EditorLive.Versions` (Score
+  settings, the key, the instrument, saving).
   """
 
   use DrawMusicWeb, :live_view
 
   import DrawMusicWeb.{EditorComponents, EditorPage}
-  import DrawMusicWeb.LibraryComponents, only: [version_path: 3]
   import DrawMusicWeb.PreferencesComponents, only: [preferences_panel: 1]
 
   alias DrawMusic.Accounts
-  alias DrawMusic.Library
-  alias DrawMusic.Library.{Key, Version}
-  alias DrawMusic.Music.{Context, Rekey, Score, Session, Transpose}
+  alias DrawMusic.Music.{Context, Session}
 
   alias DrawMusicWeb.{
     DetailsDialog,
-    EditorSaving,
     EditorSettings,
     LayoutToggle,
     PaperToggle,
-    PreferencesForm,
     Shortcuts,
     VersionLookup
   }
 
   alias DrawMusicWeb.Editor.{
-    Drawing,
-    Messages,
     Palette,
     PaletteState,
     SaveMenu,
@@ -48,6 +47,8 @@ defmodule DrawMusicWeb.EditorLive do
     VersionExtras,
     View
   }
+
+  alias DrawMusicWeb.EditorLive.{Edit, Versions, ViewChanges}
 
   @impl true
   def handle_event("edit_details", _params, socket) do
@@ -60,7 +61,7 @@ defmodule DrawMusicWeb.EditorLive do
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_info(:lay_out, socket), do: {:noreply, assign_layout(socket)}
+  def handle_info(:lay_out, socket), do: {:noreply, Edit.assign_layout(socket)}
 
   # The details dialog's results (see `DrawMusicWeb.DetailsDialog`).
   def handle_info({DetailsDialog, {:saved, composition}}, socket) do
@@ -72,13 +73,8 @@ defmodule DrawMusicWeb.EditorLive do
 
   def handle_info({DetailsDialog, :closed}, socket), do: {:noreply, assign(socket, :dialog, nil)}
 
-  # The editor components' results (see `DrawMusicWeb.Editor.Intent`).
-  # Play mode doesn't change the score's settings or its key.
-  def handle_info({:editor, {intent, _key, _value}}, %{assigns: %{editor_mode: :play}} = socket)
-      when intent in [:settings, :transpose] do
-    {:noreply, socket}
-  end
-
+  # The editor components' results (see `DrawMusicWeb.Editor.Intent`); the
+  # settings, key, instrument and saving ones go to `EditorLive.Versions`.
   # Play mode doesn't edit the score, step through its history or arm the
   # palette.
   def handle_info({:editor, intent}, %{assigns: %{editor_mode: :play}} = socket)
@@ -88,14 +84,14 @@ defmodule DrawMusicWeb.EditorLive do
 
   def handle_info({:editor, :close}, socket), do: {:noreply, assign(socket, :dialog, nil)}
 
-  def handle_info({:editor, {:edit, fun}}, socket), do: {:noreply, edit(socket, fun)}
+  def handle_info({:editor, {:edit, fun}}, socket), do: {:noreply, Edit.edit(socket, fun)}
 
   def handle_info({:editor, {:session, fun}}, socket) do
     {:noreply, update(socket, :session, fun)}
   end
 
   def handle_info({:editor, {:edit, fun, :select}}, socket) do
-    {:noreply, edit_and_select(socket, fun)}
+    {:noreply, Edit.edit_and_select(socket, fun)}
   end
 
   def handle_info({:editor, {:flash, kind, message}}, socket) do
@@ -125,99 +121,7 @@ defmodule DrawMusicWeb.EditorLive do
     {:noreply,
      socket
      |> update(:session, &history_step(&1, direction))
-     |> assign_layout()}
-  end
-
-  # The playback instrument, made the version's: unsaved work until saved.
-  def handle_info({:editor, {:instrument, program}}, socket) do
-    %{session: session, extras: extras} = socket.assigns
-
-    {:noreply,
-     assign(socket,
-       session: touched(session, program, extras.instrument),
-       extras: %{extras | instrument: program}
-     )}
-  end
-
-  # The version being edited was stored: carry on with it.
-  def handle_info(
-        {:editor, {:saved, %Version{id: id} = saved, message}},
-        %{assigns: %{version: %Version{id: id}}} = socket
-      ) do
-    {:noreply,
-     socket
-     |> assign(version: saved, session: Session.saved(socket.assigns.session))
-     |> put_flash(:info, message)}
-  end
-
-  # A new version or composition: open it.
-  def handle_info({:editor, {:saved, saved, message}}, socket) do
-    {:noreply, saved_and_open(socket, saved, message)}
-  end
-
-  # Settings apply at once; a new key is confirmed in the transpose dialog.
-  def handle_info({:editor, {:settings, key, fields}}, socket) do
-    {:noreply, apply_settings(socket, key, fields)}
-  end
-
-  # Suggest key: the same sounds in the chosen key, saved in it as a new key
-  # change would be.
-  def handle_info({:editor, {:rekey, {sf, mode}}}, socket) do
-    %{session: session} = socket.assigns
-    score = Rekey.to_signature(session.score, sf)
-    session = Session.change_context(session, %{session.ctx | sf: sf, mode: mode}, score)
-
-    {:noreply,
-     socket
-     |> assign(:session, session)
-     |> in_new_key(sf, mode)}
-  end
-
-  def handle_info({:editor, {:transpose, {sf, mode}, direction}}, socket) do
-    %{session: session} = socket.assigns
-    from = {session.ctx.sf, session.ctx.mode}
-    socket = assign(socket, :dialog, nil)
-
-    case Transpose.to_key(session.score, from, {sf, mode}, direction) do
-      {:ok, score} ->
-        session = Session.change_context(session, %{session.ctx | sf: sf, mode: mode}, score)
-
-        {:noreply,
-         socket
-         |> assign(:session, session)
-         |> in_new_key(sf, mode)}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, Messages.refused(reason))}
-    end
-  end
-
-  # The palette's Page / Strip: the score in that layout, for this session
-  # only (the preference stays as it is).
-  def handle_info({LayoutToggle, {:chosen, layout}}, socket) do
-    {:noreply,
-     socket
-     |> update(:view, &%{&1 | layout: layout})
-     |> assign_layout()}
-  end
-
-  # The Sheet button: the score on that paper, for this session only. The
-  # colors are CSS (`data-paper`), so nothing is drawn again.
-  def handle_info({PaperToggle, {:chosen, paper}}, socket) do
-    {:noreply, update(socket, :view, &%{&1 | paper: paper})}
-  end
-
-  # The Preferences panel's form: the editor shows its preview; Save and
-  # Cancel close the panel (closing puts back what's stored, `handle_params`).
-  def handle_info({PreferencesForm, {:preview, user}}, socket) do
-    {:noreply, follow_user(socket, user)}
-  end
-
-  def handle_info({PreferencesForm, {_saved_or_cancelled, user}}, socket) do
-    {:noreply,
-     socket
-     |> follow_user(user)
-     |> push_patch(to: socket.assigns.path, replace: true)}
+     |> Edit.assign_layout()}
   end
 
   # The Preferences panel is part of the address (`?panel=preferences`), so
@@ -252,8 +156,13 @@ defmodule DrawMusicWeb.EditorLive do
      |> assign(:editor_mode, :edit)
      |> assign(:extras, VersionExtras.from_version(version))
      |> assign(:view, View.from_user(socket.assigns.current_scope.user))
-     |> assign_placeholder()
-     |> lay_out_after_join()}
+     |> Edit.assign_placeholder()
+     |> lay_out_after_join()
+     # Hooks taking some components' results before `handle_info/2`: the
+     # view (Page / Strip, Sheet, the Preferences form), then the version
+     # (settings, key, instrument, saving).
+     |> ViewChanges.attach()
+     |> Versions.attach()}
   end
 
   @impl true
@@ -353,57 +262,6 @@ defmodule DrawMusicWeb.EditorLive do
     """
   end
 
-  # Runs `fun.(score, ctx)` through the session. On error the score stays
-  # as it was and the reason is shown.
-  defp apply_edit(socket, fun) do
-    case Session.edit(socket.assigns.session, fun) do
-      {:ok, session, extra} ->
-        {:ok,
-         socket
-         |> clear_flash()
-         |> assign(:session, session)
-         |> assign_layout(), extra}
-
-      {:error, reason} ->
-        {:error, put_flash(socket, :error, Messages.refused(reason))}
-    end
-  end
-
-  defp apply_settings(socket, key, fields) do
-    case EditorSettings.apply(socket.assigns.session, fields) do
-      {:ok, session} ->
-        %{extras: old} = socket.assigns
-        extras = %VersionExtras{tempo_text: fields.tempo_text, instrument: fields.instrument}
-
-        socket
-        |> assign(
-          session: touched(session, extras, old),
-          dialog: transpose_prompt(key, session.ctx)
-        )
-        |> assign(:extras, extras)
-        |> assign_layout()
-
-      {:error, reason} ->
-        put_flash(socket, :error, Messages.refused(reason))
-    end
-  end
-
-  # Lays the score out again (`:drawing`; LiveView reserves the `layout`
-  # assign).
-  defp assign_layout(socket) do
-    lay_out(socket, socket.assigns.session.score, false)
-  end
-
-  # The pieces drawn again, for a new reading-aid preference.
-  defp assign_pieces(socket) do
-    %{drawing: drawing, current_scope: %{user: user}, view: view} = socket.assigns
-    assign(socket, :drawing, Drawing.repaint(drawing, user, view))
-  end
-
-  # Until the score is engraved (the static page, and the join), an empty
-  # bar stands in, with a note that the score is loading.
-  defp assign_placeholder(socket), do: lay_out(socket, Score.new(), true)
-
   # Switching modes closes a right-click menu, but not a dialog.
   defp close_menu(%{assigns: %{dialog: {:menu, _menu}}} = socket),
     do: assign(socket, :dialog, nil)
@@ -413,78 +271,13 @@ defmodule DrawMusicWeb.EditorLive do
   # Closing the Preferences panel, however it happened: back to what's
   # stored, which drops a preview that Save or Cancel didn't settle.
   defp closing_preferences(socket, true = _was_open?, false = _open?) do
-    follow_user(socket, Accounts.get_user!(socket.assigns.current_scope.user.id))
+    ViewChanges.follow_user(socket, Accounts.get_user!(socket.assigns.current_scope.user.id))
   end
 
   defp closing_preferences(socket, _was_open?, _open?), do: socket
 
-  # `apply_edit/2` when the outcome doesn't matter beyond the socket.
-  defp edit(socket, fun) do
-    case apply_edit(socket, fun) do
-      {:ok, socket, _extra} -> socket
-      {:error, socket} -> socket
-    end
-  end
-
-  # For edits that give the ids of the notes they made or moved (a drop, a
-  # chord from the selection): those notes end up selected.
-  defp edit_and_select(socket, fun) do
-    case apply_edit(socket, fun) do
-      {:ok, socket, ids} -> update(socket, :session, &Session.select(&1, ids, false))
-      {:error, socket} -> socket
-    end
-  end
-
-  # The editor in `user`'s preferences (stored or previewed); the view
-  # follows a changed layout preference.
-  defp follow_user(socket, user) do
-    %{current_scope: scope, view: view} = socket.assigns
-    new_view = View.follow(view, scope.user, user)
-
-    socket
-    |> assign(current_scope: %{scope | user: user}, view: new_view)
-    |> redraw_for(Drawing.basis(scope.user, view), Drawing.basis(user, new_view))
-  end
-
   defp history_step(session, :undo), do: Session.undo(session)
   defp history_step(session, :redo), do: Session.redo(session)
-
-  # A key change on a saved version is stored as a new version in that key;
-  # on the draft it just applies.
-  defp in_new_key(%{assigns: %{version: %Version{id: nil}}} = socket, _sf, _mode) do
-    assign_layout(socket)
-  end
-
-  defp in_new_key(socket, sf, mode) do
-    %{current_scope: scope, composition: composition, version: old} = socket.assigns
-
-    case Library.save_in_key(scope, composition, %{sf: sf, mode: mode}, version_attrs(socket)) do
-      {:ok, saved} ->
-        message =
-          "Saved as #{Key.name(sf, mode)} v#{saved.number} " <>
-            "(#{Key.name(old.key)} v#{old.number} is kept)"
-
-        saved_and_open(socket, saved, message)
-
-      {:error, changeset} ->
-        put_flash(socket, :error, EditorSaving.error_message(changeset))
-    end
-  end
-
-  defp lay_out(socket, score, loading?) do
-    %{session: %{ctx: ctx}, extras: extras, current_scope: %{user: user}, view: view} =
-      socket.assigns
-
-    drawing =
-      Drawing.draw(score, ctx,
-        user: user,
-        view: view,
-        marking: extras.tempo_text,
-        loading?: loading?
-      )
-
-    assign(socket, :drawing, drawing)
-  end
 
   # Engraving and drawing a long score takes seconds, more than joining the
   # LiveView may: the join answers with a placeholder, and the score follows
@@ -498,33 +291,4 @@ defmodule DrawMusicWeb.EditorLive do
     do: update(socket, :session, &Session.collapse_selection/1)
 
   defp narrow_selection_for(socket, :play), do: socket
-
-  # From what was drawn to what is (`Drawing.basis/2`): a new layout lays the score
-  # out again; new reading aids redraw its pieces (the aids are in them).
-  # The paper and ink are CSS, so they need nothing.
-  defp redraw_for(socket, same, same), do: socket
-  defp redraw_for(socket, {layout, _old_aids}, {layout, _new_aids}), do: assign_pieces(socket)
-
-  defp redraw_for(socket, _old, _new), do: assign_layout(socket)
-
-  defp saved_and_open(socket, saved, message) do
-    socket
-    |> assign(:session, Session.saved(socket.assigns.session))
-    |> put_flash(:info, message)
-    |> push_navigate(to: version_path(saved.key.composition.id, saved.key, saved.number))
-  end
-
-  # The marking and instrument live beside the session; changing them is
-  # still unsaved work.
-  defp touched(session, same, same), do: session
-  defp touched(session, _new, _old), do: %{session | dirty?: true}
-
-  # A key other than the current one waits for the transpose dialog; the
-  # same key closes the settings with nothing more to ask.
-  defp transpose_prompt({sf, mode}, %Context{sf: sf, mode: mode}), do: nil
-  defp transpose_prompt(key, _ctx), do: {:transpose, key}
-
-  defp version_attrs(%{assigns: %{session: session, extras: extras}}) do
-    EditorSettings.version_attrs(session, extras)
-  end
 end
