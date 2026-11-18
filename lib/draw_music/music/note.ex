@@ -18,6 +18,9 @@ defmodule DrawMusic.Music.Note do
 
   @voices 1..4
 
+  # Where an event is and how long: what `from/2` takes from its source.
+  @position [:staff, :voice, :offset, :value, :dots]
+
   @primary_key {:id, :binary_id, autogenerate: true}
   embedded_schema do
     field :staff, Ecto.Enum, values: [:treble, :bass]
@@ -58,6 +61,16 @@ defmodule DrawMusic.Music.Note do
     |> Duration.validate_dots()
     |> validate_inclusion(:alter, Pitch.alters())
     |> validate_range()
+  end
+
+  @doc """
+  A note where `source` is (a placement, note or rest): its staff, voice,
+  offset, value and dots, with `fields` on top (the id, step and alter at
+  least).
+  """
+  @spec from(map(), map() | keyword()) :: t()
+  def from(source, fields) do
+    struct!(__MODULE__, Map.merge(Map.take(source, @position), Map.new(fields)))
   end
 
   @doc "Sounding pitch as a MIDI number."

@@ -112,7 +112,7 @@ defmodule DrawMusic.Music.Ties do
 
   def tieable?(%{event: %{staff: staff}} = first, %{event: %{staff: staff}} = second) do
     Note.midi(first.event) == Note.midi(second.event) and
-      first.start + first.ticks == second.start
+      Entry.end_tick(first) == second.start
   end
 
   def tieable?(_first, _second), do: false

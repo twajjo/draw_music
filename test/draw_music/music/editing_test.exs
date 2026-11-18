@@ -438,7 +438,7 @@ defmodule DrawMusic.Music.EditingTest do
       score = Editing.fill_rests(Score.new(), @ctx)
       [whole] = for m <- score.measures, r <- m.rests, r.staff == :treble, do: r.id
 
-      {:ok, score} = Editing.set_value(score, @ctx, whole, :half, 0)
+      {:ok, score} = Editing.set_value(score, @ctx, [whole], :half, 0)
 
       assert rests(score) == [{0, 0, :half, 0}]
       assert fillers(score, :treble) == [{0, 1920, :half, 0}]
@@ -473,7 +473,7 @@ defmodule DrawMusic.Music.EditingTest do
       {score, id} =
         note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
 
-      {:ok, score, [^id, second]} = Editing.split(score, @ctx, id)
+      {:ok, score, [^id, second]} = Editing.split(score, @ctx, [id])
 
       assert notes(score) == [{0, 0, "C4", :eighth, 0}, {0, 480, "C4", :eighth, 0}]
       assert tie_chain(score, id) == [id, second]
@@ -483,7 +483,7 @@ defmodule DrawMusic.Music.EditingTest do
       {score, id} =
         note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter, dots: 1})
 
-      {:ok, score, _ids} = Editing.split(score, @ctx, id)
+      {:ok, score, _ids} = Editing.split(score, @ctx, [id])
       assert notes(score) == [{0, 0, "C4", :quarter, 0}, {0, 960, "C4", :eighth, 0}]
     end
 
@@ -496,7 +496,7 @@ defmodule DrawMusic.Music.EditingTest do
           placement(%{staff: :treble, offset: 0, value: :quarter})
         )
 
-      {:ok, score, _ids} = Editing.split(score, @ctx, id)
+      {:ok, score, _ids} = Editing.split(score, @ctx, [id])
       assert rests(score) == [{0, 0, :eighth, 0}, {0, 480, :eighth, 0}]
     end
 
@@ -508,7 +508,7 @@ defmodule DrawMusic.Music.EditingTest do
           value: :two_hundred_fifty_sixth
         })
 
-      assert Editing.split(score, @ctx, id) == {:error, :unrepresentable}
+      assert Editing.split(score, @ctx, [id]) == {:error, :unrepresentable}
     end
 
     test "a 256th takes no dot, a 128th one" do
@@ -520,9 +520,9 @@ defmodule DrawMusic.Music.EditingTest do
         })
 
       assert Editing.set_dots(score, @ctx, [id], 1) == {:error, :unrepresentable}
-      assert {:ok, _score} = Editing.set_value(score, @ctx, id, :hundred_twenty_eighth, 1)
+      assert {:ok, _score} = Editing.set_value(score, @ctx, [id], :hundred_twenty_eighth, 1)
 
-      assert Editing.set_value(score, @ctx, id, :hundred_twenty_eighth, 2) ==
+      assert Editing.set_value(score, @ctx, [id], :hundred_twenty_eighth, 2) ==
                {:error, :unrepresentable}
     end
   end
@@ -532,7 +532,7 @@ defmodule DrawMusic.Music.EditingTest do
       {score, id} =
         note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 0, value: :quarter})
 
-      {:ok, score} = Editing.set_value(score, @ctx, id, :half, 0)
+      {:ok, score} = Editing.set_value(score, @ctx, [id], :half, 0)
       assert notes(score) == [{0, 0, "C4", :half, 0}]
     end
 
@@ -540,7 +540,7 @@ defmodule DrawMusic.Music.EditingTest do
       {score, id} =
         note!(Score.new(), @ctx, 0, "C4", %{staff: :treble, offset: 2880, value: :quarter})
 
-      assert Editing.set_value(score, @ctx, id, :half, 0) == {:error, :measure_full}
+      assert Editing.set_value(score, @ctx, [id], :half, 0) == {:error, :measure_full}
     end
 
     test "refuses to run into the next note of the voice" do
@@ -549,7 +549,7 @@ defmodule DrawMusic.Music.EditingTest do
 
       {score, _id} = note!(score, @ctx, 0, "E4", %{staff: :treble, offset: 960, value: :quarter})
 
-      assert Editing.set_value(score, @ctx, id, :half, 0) == {:error, :overlap}
+      assert Editing.set_value(score, @ctx, [id], :half, 0) == {:error, :overlap}
     end
 
     @tag timeout: 1_000
@@ -569,7 +569,7 @@ defmodule DrawMusic.Music.EditingTest do
       {score, b} = note!(score, @ctx, 0, "C4", %{staff: :treble, offset: 960, value: :quarter})
       {:ok, score} = Editing.tie(score, @ctx, a, b)
 
-      {:ok, score, _rest_id} = Editing.to_rest(score, @ctx, b)
+      {:ok, score, _rest_id} = Editing.to_rest(score, @ctx, [b])
 
       assert notes(score) == [{0, 0, "C4", :quarter, 0}]
       assert rests(score) == [{0, 960, :quarter, 0}]

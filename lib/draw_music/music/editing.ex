@@ -107,16 +107,7 @@ defmodule DrawMusic.Music.Editing do
           {:ok, Score.t(), id()} | {:error, reason()}
   def place_rest(%Score{} = score, %Context{} = ctx, index, %Placement{} = placement) do
     build = fn voice ->
-      [
-        %Rest{
-          id: Ecto.UUID.generate(),
-          staff: placement.staff,
-          voice: voice,
-          offset: placement.offset,
-          value: placement.value,
-          dots: placement.dots
-        }
-      ]
+      [Rest.from(placement, id: Ecto.UUID.generate(), voice: voice)]
     end
 
     with {:ok, score, [rest]} <- place(score, ctx, index, placement, build) do
@@ -153,7 +144,7 @@ defmodule DrawMusic.Music.Editing do
   defp clear_span(entries, [first | _] = new_entries) do
     staff = first.event.staff
     from = first.start
-    to = Enum.max(Enum.map(new_entries, &(&1.start + &1.ticks)))
+    to = Enum.max(Enum.map(new_entries, &Entry.end_tick/1))
 
     Enum.flat_map(entries, fn
       %{event: %{staff: ^staff}} = entry
@@ -213,16 +204,7 @@ defmodule DrawMusic.Music.Editing do
   end
 
   defp new_note(%Placement{} = placement, voice, step, alter) do
-    %Note{
-      id: Ecto.UUID.generate(),
-      staff: placement.staff,
-      voice: voice,
-      offset: placement.offset,
-      value: placement.value,
-      dots: placement.dots,
-      step: step,
-      alter: alter
-    }
+    Note.from(placement, id: Ecto.UUID.generate(), voice: voice, step: step, alter: alter)
   end
 
   defp locate(score, ctx, index, event, cross?) when is_integer(index) and index >= 0 do
@@ -260,8 +242,8 @@ defmodule DrawMusic.Music.Editing do
   @doc "Removes the notes and rests with the given ids."
   @spec remove(Score.t(), Context.t(), [id()]) :: result()
   def remove(%Score{} = score, %Context{} = ctx, ids) do
-    ids = MapSet.new(ids)
-    Rebuild.rebuild(score, ctx, Enum.reject(Timeline.flatten(score, ctx), &(&1.event.id in ids)))
+    {_removed, kept} = Entry.select(Timeline.flatten(score, ctx), ids)
+    Rebuild.rebuild(score, ctx, kept)
   end
 
   @doc """
@@ -275,19 +257,12 @@ defmodule DrawMusic.Music.Editing do
     bars = Timeline.bars(score, ctx)
 
     Rebuild.map_selected(score, ctx, ids, fn entry ->
-      with :ok <- dots_allowed(entry.event.value, dots),
+      with :ok <- ensure(Duration.dots_allowed?(entry.event.value, dots), :unrepresentable),
            ticks = Duration.ticks(entry.event.value, dots),
            :ok <- fits_bar(bars, entry.start, ticks) do
         {:ok, %{entry | ticks: ticks, event: Fillers.claim(%{entry.event | dots: dots})}}
       end
     end)
-  end
-
-  defp dots_allowed(value, dots) do
-    case Duration.dots_allowed?(value, dots) do
-      true -> :ok
-      false -> {:error, :unrepresentable}
-    end
   end
 
   @doc "Sets the absolute alteration (-2..2) of the given notes."
@@ -339,7 +314,7 @@ defmodule DrawMusic.Music.Editing do
   def move_to_staff(%Score{} = score, %Context{} = ctx, id, staff, step) do
     entries = Timeline.flatten(score, ctx)
 
-    case find_entry(entries, id) do
+    case Entry.find(entries, id) do
       {:ok, %{kind: :note, event: note} = entry} ->
         moved = %{entry | event: %{note | step: step, alter: kept_alter(ctx.sf, note, step)}}
 
@@ -419,7 +394,7 @@ defmodule DrawMusic.Music.Editing do
   def insert_point(%Score{} = score, %Context{} = ctx, staff, at) do
     spans =
       for %{event: %{staff: ^staff}} = entry <- Timeline.flatten(score, ctx),
-          do: {entry.kind, entry.start, entry.start + entry.ticks}
+          do: {entry.kind, entry.start, Entry.end_tick(entry)}
 
     Spans.cursor(spans, at)
   end
@@ -432,12 +407,7 @@ defmodule DrawMusic.Music.Editing do
   """
   @spec delete(Score.t(), Context.t(), [id()]) :: result()
   def delete(%Score{} = score, %Context{} = ctx, ids) do
-    ids = MapSet.new(ids)
-
-    {gone, kept} =
-      score
-      |> Timeline.flatten(ctx)
-      |> Enum.split_with(&(&1.event.id in ids))
+    {gone, kept} = Entry.select(Timeline.flatten(score, ctx), ids)
 
     gaps =
       gone
@@ -495,11 +465,11 @@ defmodule DrawMusic.Music.Editing do
     ids = MapSet.new(ids)
     entries = Timeline.flatten(score, ctx)
 
-    case Enum.filter(entries, &(&1.event.id in ids)) do
-      [] ->
+    case Entry.select(entries, ids) do
+      {[], _others} ->
         {:ok, score}
 
-      selected ->
+      {selected, _others} ->
         sum = Spans.mirror_sum(selected)
         flipped = Ties.flipped(selected, ids)
         Rebuild.rebuild(score, ctx, Enum.map(entries, &mirror(&1, ids, sum, flipped)))
@@ -510,7 +480,7 @@ defmodule DrawMusic.Music.Editing do
     if entry.event.id in ids do
       %{
         entry
-        | start: sum - (entry.start + entry.ticks),
+        | start: sum - Entry.end_tick(entry),
           event: Ties.put(entry.event, flipped[entry.event.id])
       }
     else
@@ -526,12 +496,12 @@ defmodule DrawMusic.Music.Editing do
   the events' ids. Give the ids of a whole chord (see `chord_ids/3`) to
   split it together.
   """
-  @spec split(Score.t(), Context.t(), id() | [id()]) ::
+  @spec split(Score.t(), Context.t(), [id()]) ::
           {:ok, Score.t(), [id()]} | {:error, reason()}
   def split(%Score{} = score, %Context{} = ctx, ids) when is_list(ids) do
     entries = Timeline.flatten(score, ctx)
 
-    with {:ok, [first | _] = chosen} <- find_entries(entries, ids),
+    with {:ok, [first | _] = chosen} <- Entry.find_all(entries, ids),
          {:ok, head, tail} <- halves(first.event.value, first.event.dots),
          pieces = Map.new(chosen, &{&1.event.id, split_entry(&1, head, tail)}),
          {:ok, score} <-
@@ -543,8 +513,6 @@ defmodule DrawMusic.Music.Editing do
       {:ok, score, for(entry <- chosen, piece <- pieces[entry.event.id], do: piece.event.id)}
     end
   end
-
-  def split(%Score{} = score, %Context{} = ctx, id), do: split(score, ctx, [id])
 
   defp split_entry(entry, {head_value, head_dots}, {tail_value, tail_dots}) do
     second = Ecto.UUID.generate()
@@ -576,7 +544,7 @@ defmodule DrawMusic.Music.Editing do
   def chord_ids(%Score{} = score, %Context{} = ctx, id) do
     entries = Timeline.flatten(score, ctx)
 
-    case find_entry(entries, id) do
+    case Entry.find(entries, id) do
       {:ok, %{kind: :note} = entry} ->
         for other <- entries, same_chord?(entry, other), do: other.event.id
 
@@ -596,7 +564,7 @@ defmodule DrawMusic.Music.Editing do
       when is_integer(steps) and steps != 0 do
     entries = Timeline.flatten(score, ctx)
 
-    case find_entry(entries, id) do
+    case Entry.find(entries, id) do
       {:ok, %{kind: :note} = entry} ->
         chord = Enum.filter(entries, &same_chord?(entry, &1))
 
@@ -626,21 +594,13 @@ defmodule DrawMusic.Music.Editing do
     end
   end
 
-  defp same_chord?(
-         %{kind: :note, start: start, ticks: ticks, event: %{staff: staff, voice: voice}},
-         %{kind: :note, start: start, ticks: ticks, event: %{staff: staff, voice: voice}}
-       ) do
-    true
+  # Notes of one chord share its key (`Entry.chord_key/1`): a voice's notes
+  # that start together have the same length, or the edit was refused.
+  defp same_chord?(%{kind: :note} = entry, %{kind: :note} = other) do
+    Entry.chord_key(entry) == Entry.chord_key(other)
   end
 
   defp same_chord?(_entry, _other), do: false
-
-  defp find_entries(entries, ids) do
-    case Enum.filter(entries, &(&1.event.id in ids)) do
-      [] -> {:error, :not_found}
-      found -> {:ok, found}
-    end
-  end
 
   defp halves(value, 0) do
     case Enum.drop_while(@values, &(&1 != value)) do
@@ -663,11 +623,7 @@ defmodule DrawMusic.Music.Editing do
   whole chord) in place. It must still fit in its bar (`:measure_full`) and
   its voice (`:overlap`).
   """
-  @spec set_value(Score.t(), Context.t(), id() | [id()], Duration.value(), 0..2) :: result()
-  def set_value(%Score{} = score, %Context{} = ctx, id, value, dots) when not is_list(id) do
-    set_value(score, ctx, [id], value, dots)
-  end
-
+  @spec set_value(Score.t(), Context.t(), [id()], Duration.value(), 0..2) :: result()
   def set_value(_score, _ctx, _ids, value, _dots) when value not in @values do
     {:error, :unrepresentable}
   end
@@ -675,9 +631,9 @@ defmodule DrawMusic.Music.Editing do
   def set_value(%Score{} = score, %Context{} = ctx, ids, value, dots) when dots in 0..2 do
     entries = Timeline.flatten(score, ctx)
 
-    with :ok <- dots_allowed(value, dots),
+    with :ok <- ensure(Duration.dots_allowed?(value, dots), :unrepresentable),
          ticks = Duration.ticks(value, dots),
-         {:ok, [first | _] = chosen} <- find_entries(entries, ids),
+         {:ok, [first | _] = chosen} <- Entry.find_all(entries, ids),
          :ok <- fits_bar(Timeline.bars(score, ctx), first.start, ticks) do
       changed =
         Map.new(chosen, fn entry ->
@@ -711,33 +667,18 @@ defmodule DrawMusic.Music.Editing do
   the same length and position, keeping the first note's id; ties into or
   out of it are removed.
   """
-  @spec to_rest(Score.t(), Context.t(), id() | [id()]) ::
+  @spec to_rest(Score.t(), Context.t(), [id()]) ::
           {:ok, Score.t(), id()} | {:error, reason()}
   def to_rest(%Score{} = score, %Context{} = ctx, ids) when is_list(ids) do
     entries = Timeline.flatten(score, ctx)
 
-    with {:ok, [%{event: %{id: first_id}} = first | _]} <- find_entries(entries, ids),
-         others = Enum.reject(ids, &(&1 == first_id)),
-         replaced =
-           entries
-           |> replace_entry(first_id, [%{first | kind: :rest, event: rest_from(first.event)}])
-           |> Enum.reject(&(&1.event.id in others)),
+    with {:ok, [%{event: %{id: first_id}} = first | _]} <- Entry.find_all(entries, ids),
+         rest = Rest.from(first.event, id: first_id),
+         {_others, kept} = Entry.select(entries, List.delete(ids, first_id)),
+         replaced = replace_entry(kept, first_id, [%{first | kind: :rest, event: rest}]),
          {:ok, score} <- Rebuild.rebuild(score, ctx, replaced) do
       {:ok, score, first_id}
     end
-  end
-
-  def to_rest(%Score{} = score, %Context{} = ctx, id), do: to_rest(score, ctx, [id])
-
-  defp rest_from(event) do
-    %Rest{
-      id: event.id,
-      staff: event.staff,
-      voice: event.voice,
-      offset: event.offset,
-      value: event.value,
-      dots: event.dots
-    }
   end
 
   @doc """
@@ -749,24 +690,12 @@ defmodule DrawMusic.Music.Editing do
   def to_note(%Score{} = score, %Context{} = ctx, id, step, alter) when alter in -2..2 do
     entries = Timeline.flatten(score, ctx)
 
-    with {:ok, entry} <- find_entry(entries, id),
-         note_entry = %{entry | kind: :note, event: note_from(entry.event, step, alter)},
+    with {:ok, entry} <- Entry.find(entries, id),
+         note = Note.from(entry.event, id: id, step: step, alter: alter),
+         note_entry = %{entry | kind: :note, event: note},
          {:ok, score} <- Rebuild.rebuild(score, ctx, replace_entry(entries, id, [note_entry])) do
       {:ok, score, id}
     end
-  end
-
-  defp note_from(event, step, alter) do
-    %Note{
-      id: event.id,
-      staff: event.staff,
-      voice: event.voice,
-      offset: event.offset,
-      value: event.value,
-      dots: event.dots,
-      step: step,
-      alter: alter
-    }
   end
 
   @doc """
@@ -843,12 +772,9 @@ defmodule DrawMusic.Music.Editing do
   defp bars_after(first, last, _bar) when last <= first, do: 1
   defp bars_after(first, last, bar), do: 1 + div(last - first + bar - 1, bar)
 
-  defp find_entry(entries, id) do
-    case Enum.find(entries, &(&1.event.id == id)) do
-      nil -> {:error, :not_found}
-      entry -> {:ok, entry}
-    end
-  end
+  # A check as an edit step: `:ok`, or the reason it's refused.
+  defp ensure(true, _reason), do: :ok
+  defp ensure(false, reason), do: {:error, reason}
 
   defp replace_entry(entries, id, replacements) do
     Enum.flat_map(entries, fn
@@ -865,7 +791,7 @@ defmodule DrawMusic.Music.Editing do
     tail = %{
       entry
       | start: at + gap,
-        ticks: entry.start + entry.ticks - at,
+        ticks: Entry.end_tick(entry) - at,
         event: %{entry.event | id: Ecto.UUID.generate()}
     }
 
@@ -906,34 +832,26 @@ defmodule DrawMusic.Music.Editing do
 
   ## Measures
 
-  @doc "Inserts an empty measure before `index` (`index == length` appends)."
-  @spec insert_measure(Score.t(), non_neg_integer()) :: result()
-  @spec insert_measure(Score.t(), Context.t(), non_neg_integer()) :: result()
-  def insert_measure(%Score{measures: measures} = score, index)
-      when is_integer(index) and index >= 0 and index <= length(measures) do
-    {:ok, %{score | measures: List.insert_at(measures, index, Measure.new())}}
-  end
-
-  def insert_measure(_score, _index), do: {:error, :no_such_measure}
-
   @doc """
-  Inserts a measure of filler rests before `index`, dropping ties the new
-  bar separates. Tempo changes after it move with the music.
+  Inserts a measure of filler rests before `index` (`index == length`
+  appends), dropping ties the new bar separates. Tempo changes after it
+  move with the music.
   """
+  @spec insert_measure(Score.t(), Context.t(), non_neg_integer()) :: result()
   def insert_measure(%Score{} = score, %Context{} = ctx, index) do
-    at = Context.span(ctx, index)
-
-    with {:ok, score} <- insert_measure(score, index) do
+    with {:ok, score} <- empty_measure_at(score, index) do
+      at = Context.span(ctx, index)
       tempos = shift_tempos(score.tempos, at, Context.capacity(ctx, index))
       {:ok, %{score | tempos: tempos} |> Ties.prune(ctx) |> fill_rests(ctx)}
     end
   end
 
-  @doc "Appends an empty measure."
-  @spec append_measure(Score.t()) :: result()
-  def append_measure(%Score{measures: measures} = score) do
-    insert_measure(score, length(measures))
+  defp empty_measure_at(%Score{measures: measures} = score, index)
+       when is_integer(index) and index >= 0 and index <= length(measures) do
+    {:ok, %{score | measures: List.insert_at(measures, index, Measure.new())}}
   end
+
+  defp empty_measure_at(_score, _index), do: {:error, :no_such_measure}
 
   @doc "Appends a measure of filler rests."
   @spec append_measure(Score.t(), Context.t()) :: result()
@@ -1015,7 +933,7 @@ defmodule DrawMusic.Music.Editing do
     for entry <- Timeline.flatten(score, ctx),
         entry.start >= from and entry.start < to,
         entry.event.staff in staves,
-        not Fillers.filler?(entry) or entry.start + entry.ticks <= to do
+        not Fillers.filler?(entry) or Entry.end_tick(entry) <= to do
       entry.event.id
     end
   end
@@ -1027,7 +945,7 @@ defmodule DrawMusic.Music.Editing do
   @spec copy(Score.t(), Context.t(), [id()]) :: Clipboard.t()
   def copy(%Score{} = score, %Context{} = ctx, ids) do
     ids = MapSet.new(ids)
-    selected = Enum.filter(Timeline.flatten(score, ctx), &(&1.event.id in ids))
+    {selected, _others} = Entry.select(Timeline.flatten(score, ctx), ids)
 
     origin =
       selected
