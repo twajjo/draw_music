@@ -159,12 +159,17 @@ defmodule DrawMusicWeb.EditorCommands do
   def menu(_event, _params, _menu, _insert?), do: refused(:not_found)
 
   @doc """
-  Pastes a clipboard at absolute tick `at`. Paste always inserts: each staff
-  the clipboard covers first makes room, so existing music from `at` on
-  moves right.
+  Pastes a clipboard at absolute tick `at` (where the selection starts, or
+  the cursor), as `insert?` says, onto the staves the clipboard covers:
+
+    * Insert: each of those staves first makes room, so existing music
+      from `at` on, the selection `ids` included, moves right.
+    * Overlay: the selection `ids` goes (leaving rests, as Delete does in
+      Overlay), then the clipboard's length from `at` is cleared, so the
+      paste replaces what was there and nothing moves.
   """
-  @spec paste(Clipboard.t(), non_neg_integer()) :: edit()
-  def paste(clipboard, at) do
+  @spec paste(Clipboard.t(), non_neg_integer(), boolean(), [Ecto.UUID.t()]) :: edit()
+  def paste(clipboard, at, insert?, ids) do
     length =
       clipboard.entries
       |> Enum.map(&(&1.start + &1.ticks))
@@ -176,7 +181,7 @@ defmodule DrawMusicWeb.EditorCommands do
       |> Enum.uniq()
 
     fn score, ctx ->
-      with {:ok, score} <- insert_on(score, ctx, staves, at, length) do
+      with {:ok, score} <- make_room_to_paste(score, ctx, insert?, ids, staves, at, length) do
         Editing.paste(score, ctx, clipboard, at)
       end
     end
@@ -300,6 +305,18 @@ defmodule DrawMusicWeb.EditorCommands do
   end
 
   defp make_room(score, _ctx, _entry, _extra, _insert?), do: {:ok, score}
+
+  # Before a paste: Insert makes room on each staff; Overlay takes the
+  # selection out and clears the clipboard's time.
+  defp make_room_to_paste(score, ctx, true = _insert?, _ids, staves, at, length) do
+    insert_on(score, ctx, staves, at, length)
+  end
+
+  defp make_room_to_paste(score, ctx, false = _insert?, ids, staves, at, length) do
+    with {:ok, score} <- delete_events(score, ctx, ids, false) do
+      Editing.clear_time(score, ctx, at, at + length, staves)
+    end
+  end
 
   defp maybe_alter(score, _ctx, _ids, nil), do: {:ok, score}
   defp maybe_alter(score, ctx, ids, alter), do: Editing.set_alter(score, ctx, ids, alter)

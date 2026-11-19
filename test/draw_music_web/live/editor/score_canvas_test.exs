@@ -94,12 +94,13 @@ defmodule DrawMusicWeb.Editor.ScoreCanvasTest do
 
     hook(view, "set_cursor", %{"at" => 2880})
     assert_receive {:component_sent, {:editor, {:session, put}}}
-    session = put.(session)
+    # The click also cleared the selection.
+    session = session |> put.() |> Session.clear_selection()
     assert session.cursor == 2880
 
     send(view.pid, {:host_attrs, %{session: session}})
     hook(view, "paste", %{})
-    assert_receive {:component_sent, {:editor, {:edit, fun}}}
+    assert_receive {:component_sent, {:editor, {:edit, fun, :follow}}}
     assert {0, 2880, "C4", :quarter, 0} in edited(fun, session)
   end
 

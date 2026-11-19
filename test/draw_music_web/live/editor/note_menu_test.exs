@@ -76,10 +76,10 @@ defmodule DrawMusicWeb.Editor.NoteMenuTest do
     assert has_element?(view, "#menu-paste[disabled]")
 
     session = score |> Session.new(@ctx) |> Session.select([c4.id], false) |> Session.copy()
-    view = host(conn, score, menu_for(e4), %{clipboard: session.clipboard})
+    view = host(conn, score, menu_for(e4), %{clipboard: session.clipboard, insert?: true})
     view |> element("#menu-paste") |> render_click()
 
-    assert_receive {:component_sent, {:editor, {:edit, paste}}}
+    assert_receive {:component_sent, {:editor, {:edit, paste, :follow}}}
     assert_receive {:component_sent, {:editor, :close}}
     {:ok, pasted, _ids} = paste.(score, @ctx)
     [bar | _rest] = pasted.measures

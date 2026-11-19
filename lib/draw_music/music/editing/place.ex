@@ -15,11 +15,10 @@ defmodule DrawMusic.Music.Editing.Place do
     Placement,
     Rest,
     Score,
-    Ties,
     Timeline
   }
 
-  alias DrawMusic.Music.Editing.Rebuild
+  alias DrawMusic.Music.Editing.{Rebuild, Time}
 
   @doc """
   Places a chord: one note per `{step, alter}` in `pitches`, all at the
@@ -67,23 +66,11 @@ defmodule DrawMusic.Music.Editing.Place do
     end
   end
 
-  # The new entries' time on their staff, in every voice, becomes theirs:
-  # an item sounding into it from earlier is shortened to end where it
-  # starts, and every other item touching it goes (rests refill whatever
-  # of its time is left uncovered).
+  # The new entries' time on their staff, in every voice, becomes theirs
+  # (see `DrawMusic.Music.Editing.Time.clear_span/4`).
   defp clear_span(entries, [first | _] = new_entries) do
-    staff = first.event.staff
-    from = first.start
     to = Enum.max(Enum.map(new_entries, &Entry.end_tick/1))
-
-    Enum.flat_map(entries, fn
-      %{event: %{staff: ^staff}} = entry
-      when entry.start < to and from < entry.start + entry.ticks ->
-        trim_before(entry, from)
-
-      entry ->
-        [entry]
-    end)
+    Time.clear_span(entries, [first.event.staff], first.start, to)
   end
 
   # The tick where `event` starts in bar `index`. It must fit in the bar, or,
@@ -171,12 +158,6 @@ defmodule DrawMusic.Music.Editing.Place do
   # cross the bar line, else all of it.
   defp room(_event, true = _cross?), do: 1
   defp room(event, _cross?), do: Duration.ticks(event.value, event.dots)
-
-  defp trim_before(entry, from) when entry.start < from do
-    [%{entry | ticks: from - entry.start, event: Ties.put(entry.event, nil)}]
-  end
-
-  defp trim_before(_entry, _from), do: []
 
   defp voices_to_try(nil), do: Note.voices()
   defp voices_to_try(voice), do: [voice]

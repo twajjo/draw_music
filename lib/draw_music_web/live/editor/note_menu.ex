@@ -75,14 +75,15 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
   end
 
   # "Paste here": the clipboard goes in where the menu's note or rest (or
-  # the earliest of the selection) starts, as Ctrl+V does at the cursor.
+  # the earliest of the selection) starts, as Ctrl+V does: ahead of them in
+  # Insert, replacing them in Overlay.
   def handle_event("paste", _params, %{assigns: %{clipboard: %Clipboard{} = clipboard}} = socket) do
-    %{menu: menu, score: score, ctx: ctx} = socket.assigns
+    %{menu: menu, score: score, ctx: ctx, insert?: insert?} = socket.assigns
 
     case Entry.find_all(Timeline.flatten(score, ctx), menu.ids) do
       {:ok, entries} ->
         at = entries |> Enum.map(& &1.start) |> Enum.min()
-        Intent.notify({:edit, EditorCommands.paste(clipboard, at)})
+        Intent.notify({:edit, EditorCommands.paste(clipboard, at, insert?, menu.ids), :follow})
 
       {:error, :not_found} ->
         :nothing_to_paste_before

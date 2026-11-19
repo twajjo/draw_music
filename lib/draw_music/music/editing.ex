@@ -76,6 +76,11 @@ defmodule DrawMusic.Music.Editing do
           {:ok, Score.t(), [id()]} | {:error, reason()}
   defdelegate chordify(score, ctx, ids, pitches_for), to: ChordEdits
 
+  @doc "Clears time for overwriting (see `DrawMusic.Music.Editing.Time.clear_time/5`)."
+  @spec clear_time(Score.t(), Context.t(), non_neg_integer(), non_neg_integer(), [Note.staff()]) ::
+          result()
+  defdelegate clear_time(score, ctx, from, to, staves), to: Time
+
   @doc "Copies events (see `DrawMusic.Music.Clipboard.copy/3`)."
   @spec copy(Score.t(), Context.t(), [id()]) :: Clipboard.t()
   defdelegate copy(score, ctx, ids), to: Clipboard
