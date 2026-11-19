@@ -181,6 +181,11 @@ defmodule DrawMusic.Music.Editing do
   @spec split(Score.t(), Context.t(), [id()]) :: {:ok, Score.t(), [id()]} | {:error, reason()}
   defdelegate split(score, ctx, ids), to: Values
 
+  @doc "Moves a rest by one item (see `DrawMusic.Music.Editing.Time.step_rest/4`)."
+  @spec step_rest(Score.t(), Context.t(), id(), :earlier | :later) ::
+          {:ok, Score.t(), [id()]} | {:error, reason()}
+  defdelegate step_rest(score, ctx, id, direction), to: Time
+
   @doc "Ties two notes, given in either order (see `DrawMusic.Music.Ties.tie/4`)."
   @spec tie(Score.t(), Context.t(), id(), id()) :: result()
   defdelegate tie(score, ctx, id_a, id_b), to: Ties

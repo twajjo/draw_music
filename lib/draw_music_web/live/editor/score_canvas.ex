@@ -50,7 +50,7 @@ defmodule DrawMusicWeb.Editor.ScoreCanvas do
   import DrawMusicWeb.{EditorComponents, ScoreComponents}
   import DrawMusicWeb.ScoreCanvas.Surface
 
-  alias DrawMusic.Music.{Editing, Playback, Session, TempoEditing, Timeline}
+  alias DrawMusic.Music.{Editing, Playback, Rest, Session, TempoEditing, Timeline}
 
   alias DrawMusicWeb.{
     ContextMenu,
@@ -176,8 +176,19 @@ defmodule DrawMusicWeb.Editor.ScoreCanvas do
   end
 
   # ↑/↓ by scale step (Shift: octave, Ctrl: semitone); ←/→ by beat.
+  # ←/→: one rest selected moves by one item (it trades places with its
+  # neighbour); anything else moves a beat.
   def handle_event("move", %{"dir" => dir}, socket) when dir in ~w(left right) do
-    edit_selection(socket, fn ids -> &Editing.shift(&1, &2, ids, beats(dir)) end)
+    session = socket.assigns.session
+
+    case Session.selected_events(session) do
+      [%Rest{id: id}] ->
+        Intent.notify({:edit, &Editing.step_rest(&1, &2, id, direction(dir)), :select})
+
+      _notes_or_several ->
+        edit_selection(socket, fn ids -> &Editing.shift(&1, &2, ids, beats(dir)) end)
+    end
+
     {:noreply, socket}
   end
 
@@ -347,6 +358,9 @@ defmodule DrawMusicWeb.Editor.ScoreCanvas do
   # What was under a right-click; the browser sends none off the notes.
   defp clicked_id(%{"id" => id}) when is_binary(id), do: id
   defp clicked_id(_params), do: nil
+
+  defp direction("left"), do: :earlier
+  defp direction("right"), do: :later
 
   # Edits the selection with the edit `command.(ids)` makes; with nothing
   # selected there is nothing to do.

@@ -112,6 +112,21 @@ defmodule DrawMusicWeb.Editor.ScoreCanvasTest do
     assert has_element?(view, "#score-editor[data-selected=true]")
   end
 
+  # The bar's half rest (beats 3–4) trades places with E4 (beat 2).
+  test "← on one selected rest moves it past the note before it, and keeps it selected",
+       %{conn: conn} = setup do
+    rest =
+      Enum.find(setup.session.score.measures |> hd() |> Map.get(:rests), &(&1.staff == :treble))
+
+    session = with_selection(setup, [rest.id])
+    view = host(conn, setup, %{session: session})
+
+    hook(view, "move", %{"dir" => "left"})
+    assert_receive {:component_sent, {:editor, {:edit, fun, :select}}}
+    assert {:ok, moved, [_still_selected]} = fun.(session.score, session.ctx)
+    assert {0, 2880, "E4", :quarter, 0} in notes(moved)
+  end
+
   test "the bar buttons add, insert and delete bars", %{conn: conn} = setup do
     view = host(conn, setup)
 

@@ -199,12 +199,53 @@ defmodule DrawMusic.Music.Editing.Time do
     end
   end
 
+  @doc """
+  Moves the rest `id` one item `:earlier` or `:later` on its staff and
+  voice: it trades places with the note or rest beside it, which moves by
+  the rest's length the other way. A rest is only silence, so the moved
+  rest becomes filler again: the rebuild rewrites the gaps of every bar it
+  touches as rests on the beats, and splits a note pushed over a bar line
+  into tied notes. Returns the id of the rest now where the moved one
+  starts, to keep it selected. Nothing beside it: nothing changes.
+  """
+  @spec step_rest(Score.t(), Context.t(), Editing.id(), :earlier | :later) ::
+          {:ok, Score.t(), [Editing.id()]} | {:error, Editing.reason()}
+  def step_rest(%Score{} = score, %Context{} = ctx, id, direction)
+      when direction in [:earlier, :later] do
+    entries = Timeline.flatten(score, ctx)
+
+    with {:ok, %{kind: :rest} = rest} <- Entry.find(entries, id),
+         %{} = other <- beside(entries, rest, direction) do
+      {rest, other} = trade(rest, other, direction)
+      moved = %{rest | event: %{rest.event | filler: true}}
+      others = Enum.reject(entries, &(&1.event.id in [rest.event.id, other.event.id]))
+
+      with {:ok, score} <- Rebuild.rebuild(score, ctx, Ties.merge([moved, other | others])) do
+        {:ok, score, rest_at(score, ctx, moved)}
+      end
+    else
+      {:ok, _note} -> {:error, :not_found}
+      nil -> {:ok, score, [id]}
+      {:error, _reason} = error -> error
+    end
+  end
+
   defp bars_after(first, last, _bar) when last <= first, do: 1
   defp bars_after(first, last, bar), do: 1 + div(last - first + bar - 1, bar)
 
   # How many bars of `ctx` it takes to reach tick `last` (at least one).
   defp bars_spanning(ctx, last) do
     bars_after(Context.capacity(ctx, 0), last, Context.measure_ticks(ctx))
+  end
+
+  # The item right before or after `rest` on its staff and voice, or nil.
+  defp beside(entries, rest, direction) do
+    %{staff: staff, voice: voice} = rest.event
+
+    Enum.find(entries, fn entry ->
+      entry.event.staff == staff and entry.event.voice == voice and
+        touches?(entry, rest, direction)
+    end)
   end
 
   defp mirror(entry, ids, sum, flipped) do
@@ -217,6 +258,18 @@ defmodule DrawMusic.Music.Editing.Time do
     else
       entry
     end
+  end
+
+  # The rest in the rebuilt score covering where `moved` now starts, on its
+  # staff and voice (the refill may have joined it to a neighbour).
+  defp rest_at(score, ctx, moved) do
+    %{staff: staff, voice: voice} = moved.event
+
+    for entry <- Timeline.flatten(score, ctx),
+        entry.kind == :rest,
+        entry.event.staff == staff and entry.event.voice == voice,
+        entry.start <= moved.start and moved.start < Entry.end_tick(entry),
+        do: entry.event.id
   end
 
   # Head up to `at` (keeping the id), tail moved `gap` later with a fresh id
@@ -232,6 +285,20 @@ defmodule DrawMusic.Music.Editing.Time do
     }
 
     [head, tail]
+  end
+
+  # Whether `entry` ends where `rest` starts (:earlier) or starts where it
+  # ends (:later).
+  defp touches?(entry, rest, :earlier), do: Entry.end_tick(entry) == rest.start
+  defp touches?(entry, rest, :later), do: entry.start == Entry.end_tick(rest)
+
+  # The rest and its neighbour trade places in the time they share.
+  defp trade(rest, other, :earlier) do
+    {%{rest | start: other.start}, %{other | start: other.start + rest.ticks}}
+  end
+
+  defp trade(rest, other, :later) do
+    {%{rest | start: rest.start + other.ticks}, %{other | start: rest.start}}
   end
 
   # An item sounding into cleared time from before `from` keeps its part
