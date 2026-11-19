@@ -84,6 +84,7 @@ defmodule DrawMusicWeb.EditorPage do
       id="note-menu"
       menu={@menu}
       insert?={@insert?}
+      clipboard={@session.clipboard}
       score={@session.score}
       ctx={@session.ctx}
     />
