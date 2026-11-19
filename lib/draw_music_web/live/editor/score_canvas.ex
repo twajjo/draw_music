@@ -212,15 +212,18 @@ defmodule DrawMusicWeb.Editor.ScoreCanvas do
     {:noreply, socket}
   end
 
-  # At the tick the browser gives, else at the cursor, else after the
-  # selection.
+  # At the tick the browser gives, else where the selection starts, else at
+  # the cursor (see `Session.paste_at/2`): ahead of the selection in Insert,
+  # over it in Overlay. The cursor then follows the pasted music.
   def handle_event(
         "paste",
         params,
         %{assigns: %{session: %{clipboard: %{} = clipboard}}} = socket
       ) do
-    at = Session.paste_at(socket.assigns.session, params["at"])
-    Intent.notify({:edit, EditorCommands.paste(clipboard, at)})
+    %{session: session, insert?: insert?} = socket.assigns
+    at = Session.paste_at(session, params["at"])
+    paste = EditorCommands.paste(clipboard, at, insert?, Session.selection_ids(session))
+    Intent.notify({:edit, paste, :follow})
     {:noreply, socket}
   end
 

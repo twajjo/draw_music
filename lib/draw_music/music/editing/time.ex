@@ -23,6 +23,30 @@ defmodule DrawMusic.Music.Editing.Time do
   alias DrawMusic.Music.Editing.Rebuild
 
   @doc """
+  `entries` with the time from `from` to `to` cleared on each of `staves`,
+  in every voice: an item sounding into it from earlier is shortened to
+  end at `from`, and every other item touching it goes. Nothing moves; the
+  rebuild refills with rests whatever is left uncovered.
+  """
+  @spec clear_span([Entry.t()], [Note.staff()], non_neg_integer(), non_neg_integer()) ::
+          [Entry.t()]
+  def clear_span(entries, staves, from, to) do
+    Enum.flat_map(entries, fn entry ->
+      touched? =
+        entry.event.staff in staves and entry.start < to and from < Entry.end_tick(entry)
+
+      if touched?, do: trim_before(entry, from), else: [entry]
+    end)
+  end
+
+  @doc "Clears the time from `from` to `to` on `staves` (see `clear_span/4`), for overwriting."
+  @spec clear_time(Score.t(), Context.t(), non_neg_integer(), non_neg_integer(), [Note.staff()]) ::
+          Editing.result()
+  def clear_time(%Score{} = score, %Context{} = ctx, from, to, staves) do
+    Rebuild.rebuild(score, ctx, clear_span(Timeline.flatten(score, ctx), staves, from, to))
+  end
+
+  @doc """
   Deletes events and closes the gap on each staff they were on: every
   later event on that staff moves left by the time emptied before it. Time
   another voice on the staff still sounds (with a note or a placed rest) is
@@ -209,4 +233,12 @@ defmodule DrawMusic.Music.Editing.Time do
 
     [head, tail]
   end
+
+  # An item sounding into cleared time from before `from` keeps its part
+  # before it (untied); one starting inside it goes.
+  defp trim_before(entry, from) when entry.start < from do
+    [%{entry | ticks: from - entry.start, event: Ties.put(entry.event, nil)}]
+  end
+
+  defp trim_before(_entry, _from), do: []
 end

@@ -1,7 +1,7 @@
 defmodule DrawMusicWeb.EditorCommandsTest do
   use ExUnit.Case, async: true
 
-  alias DrawMusic.Music.{Context, Note, Rest, Score}
+  alias DrawMusic.Music.{Context, Editing, Note, Rest, Score}
   alias DrawMusicWeb.EditorCommands
 
   @ctx %Context{}
@@ -43,7 +43,42 @@ defmodule DrawMusicWeb.EditorCommandsTest do
     end
   end
 
+  describe "paste/4" do
+    setup %{score: score, c4: c4} do
+      %{clipboard: Editing.copy(score, @ctx, [c4.id])}
+    end
+
+    test "Insert goes ahead of the selection, which moves right",
+         %{score: score, clipboard: clipboard, e4: e4} do
+      edit = EditorCommands.paste(clipboard, 1920, true, [e4.id])
+      assert {:ok, pasted, _ids} = edit.(score, @ctx)
+      assert notes(pasted) == [{0, 28}, {1920, 28}, {2880, 30}]
+    end
+
+    test "Overlay replaces the selection; nothing moves",
+         %{score: score, clipboard: clipboard, e4: e4} do
+      edit = EditorCommands.paste(clipboard, 1920, false, [e4.id])
+      assert {:ok, pasted, _ids} = edit.(score, @ctx)
+      assert notes(pasted) == [{0, 28}, {1920, 28}]
+    end
+
+    test "Overlay with nothing selected overwrites the clipboard's length from the tick",
+         %{score: score, clipboard: clipboard} do
+      edit = EditorCommands.paste(clipboard, 1440, false, [])
+      assert {:ok, pasted, _ids} = edit.(score, @ctx)
+      # E4 starts inside the pasted quarter (1440 to 2400), so it goes.
+      assert notes(pasted) == [{0, 28}, {1440, 28}]
+    end
+  end
+
   defp event(%Score{measures: [bar | _]}, id) do
     Enum.find(bar.notes ++ bar.rests, &(&1.id == id))
+  end
+
+  # {offset, step} of the first bar's notes, in time order.
+  defp notes(%Score{measures: [bar | _]}) do
+    bar.notes
+    |> Enum.map(&{&1.offset, &1.step})
+    |> Enum.sort()
   end
 end

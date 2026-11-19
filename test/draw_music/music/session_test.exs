@@ -127,15 +127,18 @@ defmodule DrawMusic.Music.SessionTest do
     assert [%{id: ^id}] = Session.selected_events(Session.select(s, [id], false))
   end
 
-  test "paste goes at the given tick, else the cursor, else after the selection, else the start",
+  test "paste goes at the given tick, else where the selection starts, else the cursor, else the start",
        %{session: session} do
-    {:ok, s, id} = place(session, "C4", 960)
-    s = Session.select(s, [id], false)
+    {:ok, s, c} = place(session, "C4", 960)
+    {:ok, s, e} = place(s, "E4", 1920)
+    s = s |> Session.select([e, c], false) |> Session.put_cursor(2880)
 
     assert Session.paste_at(s, 480) == 480
-    assert Session.paste_at(Session.put_cursor(s, 2880), nil) == 2880
-    assert Session.paste_at(%{s | cursor: nil}, "junk") == 1920
-    assert Session.paste_at(%{Session.clear_selection(s) | cursor: nil}, nil) == 0
+    assert Session.paste_at(s, "junk") == 960
+
+    unselected = Session.clear_selection(s)
+    assert Session.paste_at(unselected, nil) == 2880
+    assert Session.paste_at(%{unselected | cursor: nil}, nil) == 0
   end
 
   test "paste never goes past the end of the score", %{session: session} do

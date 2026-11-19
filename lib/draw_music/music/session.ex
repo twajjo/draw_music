@@ -115,8 +115,9 @@ defmodule DrawMusic.Music.Session do
   end
 
   @doc """
-  Where to paste: tick `at` if one is given, else the cursor, else
-  straight after the selection, else the start. Never past the end of the
+  Where to paste: tick `at` if one is given, else where the selection
+  starts (the paste goes ahead of it, or replaces it in Overlay), else the
+  cursor, else the start. Never past the end of the
   score: the browser's numbers are untrusted.
   """
   @spec paste_at(t(), term()) :: non_neg_integer()
@@ -259,13 +260,15 @@ defmodule DrawMusic.Music.Session do
   defp selected(_current, known, false), do: known
 
   defp wanted_paste_at(_session, at) when is_integer(at) and at >= 0, do: at
-  defp wanted_paste_at(%__MODULE__{cursor: cursor}, _at) when is_integer(cursor), do: cursor
 
-  defp wanted_paste_at(%__MODULE__{score: score, ctx: ctx, selection: selection}, _at) do
-    score
-    |> Timeline.flatten(ctx)
-    |> Enum.filter(&(&1.event.id in selection))
-    |> Enum.map(&Entry.end_tick/1)
-    |> Enum.max(fn -> 0 end)
+  defp wanted_paste_at(%__MODULE__{score: score, ctx: ctx, selection: selection} = session, _at) do
+    starts =
+      for entry <- Timeline.flatten(score, ctx), entry.event.id in selection, do: entry.start
+
+    case {starts, session.cursor} do
+      {[_one | _more], _cursor} -> Enum.min(starts)
+      {[], cursor} when is_integer(cursor) -> cursor
+      {[], nil} -> 0
+    end
   end
 end
