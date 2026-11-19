@@ -175,9 +175,15 @@ defmodule DrawMusicWeb.Editor.ScoreCanvas do
     {:noreply, socket}
   end
 
-  # ↑/↓ by scale step (Shift: octave, Ctrl: semitone); ←/→ by beat.
+  # ↑/↓ by scale step (Shift: octave, Ctrl: semitone); ←/→ move the
+  # selection whole, past the item beside it (`Editing.step/4`), and it
+  # stays selected.
   def handle_event("move", %{"dir" => dir}, socket) when dir in ~w(left right) do
-    edit_selection(socket, fn ids -> &Editing.shift(&1, &2, ids, beats(dir)) end)
+    case Session.selection_ids(socket.assigns.session) do
+      [] -> :ok
+      ids -> Intent.notify({:edit, &Editing.step(&1, &2, ids, direction(dir)), :select})
+    end
+
     {:noreply, socket}
   end
 
@@ -341,12 +347,12 @@ defmodule DrawMusicWeb.Editor.ScoreCanvas do
   # The palette's alteration of a dropped note, if a modifier was held.
   defp alter(params), do: EditorPalette.alter(to_string(params["alter"]))
 
-  defp beats("left"), do: -1
-  defp beats("right"), do: 1
-
   # What was under a right-click; the browser sends none off the notes.
   defp clicked_id(%{"id" => id}) when is_binary(id), do: id
   defp clicked_id(_params), do: nil
+
+  defp direction("left"), do: :earlier
+  defp direction("right"), do: :later
 
   # Edits the selection with the edit `command.(ids)` makes; with nothing
   # selected there is nothing to do.
