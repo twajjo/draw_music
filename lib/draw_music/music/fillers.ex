@@ -53,7 +53,7 @@ defmodule DrawMusic.Music.Fillers do
 
         fillers =
           %{measure | rests: kept}
-          |> Gaps.rests(capacity)
+          |> Gaps.rests(capacity, ctx)
           |> Enum.map(fn rest ->
             %{rest | id: Map.get_lazy(old_ids, key(measure, rest), &Ecto.UUID.generate/0)}
           end)
