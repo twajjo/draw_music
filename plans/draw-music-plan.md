@@ -359,6 +359,8 @@ Pedagogical reference: *Music Moves for Piano, Read & Write Book 1* (Marilyn Low
         - a note's right-click menu adds a 3rd above or below its chord;
         - chordify turns selected notes into the picked chord.
       - Insert and Overlay as in a text editor: Insert puts the new item in front of the one you click before and moves later music right; Overlay types over the time the new item covers.
+      - Moving a selection with ← and →: it moves whole, never split or tied over a bar line; the music it passes moves back to fill its place; a rest lands only where the rules for rests allow (in 4/4 never across beats 2–3). See plans/moving-selections.md.
+      - The rules for rests: they show the beats; a whole rest for any empty bar; dotted rests in compound meters.
       - The playback instrument vs the version's instrument, and "Set selection to version Instrument".
       - Score paper: your default in Settings, and a composition's own in Details. It is separate from the interface theme.
       - Where things live: Settings and Import in the top bar, Account (email, password) and the interface theme in the account menu.

@@ -148,7 +148,7 @@ defmodule DrawMusic.Engraving.Notes do
 
     items =
       Enum.flat_map(laid, fn {_key, chord} -> chord.items end) ++
-        stems ++ Enum.flat_map(groups, &beam(&1, laid)) ++ rests(measure, geom, voice_counts)
+        stems ++ Enum.flat_map(groups, &beam(&1, laid)) ++ rests(measure, geom, ctx, voice_counts)
 
     anchors = for {_key, chord} <- laid, anchor <- chord.anchors, into: %{}, do: anchor
     {items, anchors}
@@ -424,7 +424,7 @@ defmodule DrawMusic.Engraving.Notes do
 
   # Stored rests, then implied ones: a whole-bar rest on an empty staff, and
   # rests in the gaps of each voice on a staff with notes.
-  defp rests(measure, geom, voice_counts) do
+  defp rests(measure, geom, ctx, voice_counts) do
     stored = Enum.flat_map(measure.rests, &rest(&1, geom, voice_counts[&1.staff]))
 
     empty_staves =
@@ -433,7 +433,7 @@ defmodule DrawMusic.Engraving.Notes do
       end
 
     gaps =
-      for rest <- Gaps.rests(measure, geom.capacity),
+      for rest <- Gaps.rests(measure, geom.capacity, ctx),
           Map.has_key?(voice_counts, rest.staff),
           item <- rest(rest, geom, voice_counts[rest.staff]),
           do: item
