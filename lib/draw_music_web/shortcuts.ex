@@ -121,6 +121,13 @@ defmodule DrawMusicWeb.Shortcuts do
     },
     %Shortcut{
       group: "Selecting and moving",
+      mouse: "click empty music",
+      modes: @edit,
+      action:
+        "Put the cursor there: a thin line in the selection colour, where the next paste goes. It blinks in Overlay mode, where a paste overwrites what follows it. Placing a note, rest or chord, or selecting one note or rest, puts it just after it"
+    },
+    %Shortcut{
+      group: "Selecting and moving",
       mouse: "drag empty area",
       modes: @edit,
       action:
@@ -216,7 +223,19 @@ defmodule DrawMusicWeb.Shortcuts do
       group: "Editing",
       keys: ["Ctrl+V"],
       modes: @edit,
-      action: "Paste where you last clicked; later music moves right"
+      action: "Paste at the cursor (the thin blue line); later music moves right"
+    },
+    %Shortcut{
+      group: "Editing",
+      keys: ["Ctrl+Home"],
+      modes: @edit,
+      action: "Put the cursor at the start of the piece, and scroll to it"
+    },
+    %Shortcut{
+      group: "Editing",
+      keys: ["Ctrl+End"],
+      modes: @edit,
+      action: "Put the cursor at the end of the piece, and scroll to it, to add music after it"
     },
     %Shortcut{group: "Editing", keys: ["Ctrl+Z"], modes: @edit, action: "Undo"},
     %Shortcut{group: "Editing", keys: ["Ctrl+Shift+Z", "Ctrl+Y"], modes: @edit, action: "Redo"},

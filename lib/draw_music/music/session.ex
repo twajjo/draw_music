@@ -1,20 +1,26 @@
 defmodule DrawMusic.Music.Session do
   @moduledoc """
   An editing session over one score: the score and the context it is read
-  against, the selection, the clipboard, undo/redo history and whether
-  there are unsaved changes. Pure data; `DrawMusicWeb.EditorLive` keeps one
-  per open score.
+  against, the selection, the insertion cursor, the clipboard, undo/redo
+  history and whether there are unsaved changes. Pure data;
+  `DrawMusicWeb.EditorLive` keeps one per open score.
 
   Every change goes through `edit/2` (or `change_context/3`), which records
   the previous state for undo. The selection only ever holds ids of events
   in the current score.
+
+  The **cursor** is a tick: where the next paste (and, with a MIDI
+  keyboard, the next entry) goes. A click on empty music puts it there
+  (`put_cursor/2`); selecting one note or rest puts it just after it. It
+  never sits past the score's end: edits, undo and redo bring it back.
   """
 
-  alias DrawMusic.Music.{Context, Editing, Note, Rest, Score, Timeline}
+  alias DrawMusic.Music.{Context, Editing, Entry, Note, Rest, Score, Timeline}
 
   defstruct score: nil,
             ctx: %Context{},
             selection: MapSet.new(),
+            cursor: nil,
             clipboard: nil,
             undo: [],
             redo: [],
@@ -24,6 +30,7 @@ defmodule DrawMusic.Music.Session do
           score: Score.t(),
           ctx: Context.t(),
           selection: MapSet.t(Ecto.UUID.t()),
+          cursor: non_neg_integer() | nil,
           clipboard: DrawMusic.Music.Clipboard.t() | nil,
           undo: [{Score.t(), Context.t()}],
           redo: [{Score.t(), Context.t()}],
@@ -108,13 +115,32 @@ defmodule DrawMusic.Music.Session do
   end
 
   @doc """
-  Where to paste: tick `at` if one is given, else `last_click`, else
+  Where to paste: tick `at` if one is given, else the cursor, else
   straight after the selection, else the start. Never past the end of the
   score: the browser's numbers are untrusted.
   """
-  @spec paste_at(t(), term(), non_neg_integer() | nil) :: non_neg_integer()
-  def paste_at(%__MODULE__{score: score, ctx: ctx} = session, at, last_click) do
-    min(wanted_paste_at(session, at, last_click), Timeline.end_tick(score, ctx))
+  @spec paste_at(t(), term()) :: non_neg_integer()
+  def paste_at(%__MODULE__{score: score, ctx: ctx} = session, at) do
+    min(wanted_paste_at(session, at), Timeline.end_tick(score, ctx))
+  end
+
+  @doc "Puts the cursor at tick `at` (no further than the score's end)."
+  @spec put_cursor(t(), non_neg_integer()) :: t()
+  def put_cursor(%__MODULE__{} = session, at) when is_integer(at) and at >= 0 do
+    clamp_cursor(%{session | cursor: at})
+  end
+
+  @doc """
+  Puts the cursor just after the event (or the latest-ending of the
+  events) `ids`, as after placing a note, rest or chord; ids not in the
+  score leave it where it is.
+  """
+  @spec put_cursor_after(t(), Ecto.UUID.t() | [Ecto.UUID.t()]) :: t()
+  def put_cursor_after(%__MODULE__{score: score, ctx: ctx} = session, ids) do
+    case Entry.find_all(Timeline.flatten(score, ctx), List.wrap(ids)) do
+      {:ok, entries} -> %{session | cursor: entries |> Enum.map(&Entry.end_tick/1) |> Enum.max()}
+      {:error, :not_found} -> session
+    end
   end
 
   @doc "Re-applies the last undone change; does nothing if there is none."
@@ -131,13 +157,18 @@ defmodule DrawMusic.Music.Session do
         dirty?: true
     }
     |> prune_selection()
+    |> clamp_cursor()
   end
 
   @doc "Marks the session as saved."
   @spec saved(t()) :: t()
   def saved(%__MODULE__{} = session), do: %{session | dirty?: false}
 
-  @doc "Selects `ids` (unknown ones are ignored), adding to the selection when `add?`."
+  @doc """
+  Selects `ids` (unknown ones are ignored), adding to the selection when
+  `add?`. When one note or rest ends up selected, the cursor goes just
+  after it.
+  """
   @spec select(t(), [Ecto.UUID.t()], boolean()) :: t()
   def select(%__MODULE__{} = session, ids, add?) do
     known =
@@ -145,7 +176,7 @@ defmodule DrawMusic.Music.Session do
       |> event_ids()
       |> MapSet.intersection(MapSet.new(ids))
 
-    %{session | selection: selected(session.selection, known, add?)}
+    follow_selection(%{session | selection: selected(session.selection, known, add?)})
   end
 
   @doc "The selected notes and rests (not tempo changes)."
@@ -182,6 +213,25 @@ defmodule DrawMusic.Music.Session do
         dirty?: true
     }
     |> prune_selection()
+    |> clamp_cursor()
+  end
+
+  # A cursor past the score's end (after an edit shortened it) goes back to
+  # the end.
+  defp clamp_cursor(%__MODULE__{cursor: nil} = session), do: session
+
+  defp clamp_cursor(%__MODULE__{cursor: cursor, score: score, ctx: ctx} = session) do
+    %{session | cursor: min(cursor, Timeline.end_tick(score, ctx))}
+  end
+
+  # One note or rest selected: the cursor goes just after it.
+  defp follow_selection(%__MODULE__{selection: selection} = session) do
+    with [id] <- MapSet.to_list(selection),
+         {:ok, entry} <- Entry.find(Timeline.flatten(session.score, session.ctx), id) do
+      %{session | cursor: Entry.end_tick(entry)}
+    else
+      _none_or_several -> session
+    end
   end
 
   # An edit that changes nothing leaves history and the saved state alone.
@@ -202,19 +252,20 @@ defmodule DrawMusic.Music.Session do
         dirty?: true
     }
     |> prune_selection()
+    |> clamp_cursor()
   end
 
   defp selected(current, known, true = _add?), do: MapSet.union(current, known)
   defp selected(_current, known, false), do: known
 
-  defp wanted_paste_at(_session, at, _last_click) when is_integer(at) and at >= 0, do: at
-  defp wanted_paste_at(_session, _at, last_click) when is_integer(last_click), do: last_click
+  defp wanted_paste_at(_session, at) when is_integer(at) and at >= 0, do: at
+  defp wanted_paste_at(%__MODULE__{cursor: cursor}, _at) when is_integer(cursor), do: cursor
 
-  defp wanted_paste_at(%__MODULE__{score: score, ctx: ctx, selection: selection}, _at, _last) do
+  defp wanted_paste_at(%__MODULE__{score: score, ctx: ctx, selection: selection}, _at) do
     score
     |> Timeline.flatten(ctx)
     |> Enum.filter(&(&1.event.id in selection))
-    |> Enum.map(&(&1.start + &1.ticks))
+    |> Enum.map(&Entry.end_tick/1)
     |> Enum.max(fn -> 0 end)
   end
 end

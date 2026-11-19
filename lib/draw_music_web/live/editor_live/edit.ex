@@ -65,6 +65,21 @@ defmodule DrawMusicWeb.EditorLive.Edit do
   end
 
   @doc """
+  For edits that place notes, rests or chords and give their ids: the
+  cursor moves just after what was placed, as typing moves a text cursor.
+  """
+  @spec edit_and_follow(Socket.t(), function()) :: Socket.t()
+  def edit_and_follow(%Socket{} = socket, fun) do
+    case apply_edit(socket, fun) do
+      {:ok, socket, ids} ->
+        assign(socket, :session, Session.put_cursor_after(socket.assigns.session, ids))
+
+      {:error, socket} ->
+        socket
+    end
+  end
+
+  @doc """
   For edits that give the ids of the notes they made or moved (a drop, a
   chord from the selection): those notes end up selected.
   """

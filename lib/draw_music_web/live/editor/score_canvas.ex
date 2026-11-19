@@ -10,8 +10,9 @@ defmodule DrawMusicWeb.Editor.ScoreCanvas do
   paste), the bar controls, selecting (a click, a band and its preview),
   the tempo marks (opening, moving and resizing them), the right-click
   menu, Play mode's audition, disarming (Esc, a right-click while placing)
-  and the opening marking's settings. It remembers where empty staff was
-  last clicked, for the next paste.
+  and the opening marking's settings. A click on empty music puts the
+  session's cursor there (drawn as a caret in Edit mode), for the next
+  paste.
 
   ## Inputs
     * `:id`: the component's id (required by LiveView).
@@ -26,9 +27,12 @@ defmodule DrawMusicWeb.Editor.ScoreCanvas do
       still a placeholder; `:show_note_names?`: the user's preference.
 
   ## Intents
-    * `{:session, fun}`: a new selection, or the selection copied.
-    * `{:edit, fun}`: an edit (a placement, a tie, a key's edit, paste, a
-      bar inserted, deleted or added).
+    * `{:session, fun}`: a new selection, the cursor put somewhere, or the
+      selection copied.
+    * `{:edit, fun}`: an edit (a tie, a key's edit, paste, a bar
+      inserted, deleted or added).
+    * `{:edit, fun, :follow}`: a placement; the cursor goes just after
+      what was placed.
     * `{:edit, fun, :select}`: an edit whose notes end up selected (a drop,
       a tempo mark moved or resized).
     * `{:flash, :error, message}`: a placement the browser got wrong.
@@ -208,14 +212,14 @@ defmodule DrawMusicWeb.Editor.ScoreCanvas do
     {:noreply, socket}
   end
 
-  # At the tick the browser gives, else where empty staff was last clicked,
-  # else after the selection.
+  # At the tick the browser gives, else at the cursor, else after the
+  # selection.
   def handle_event(
         "paste",
         params,
         %{assigns: %{session: %{clipboard: %{} = clipboard}}} = socket
       ) do
-    at = Session.paste_at(socket.assigns.session, params["at"], socket.assigns.last_click)
+    at = Session.paste_at(socket.assigns.session, params["at"])
     Intent.notify({:edit, EditorCommands.paste(clipboard, at)})
     {:noreply, socket}
   end
@@ -228,7 +232,7 @@ defmodule DrawMusicWeb.Editor.ScoreCanvas do
 
     case EditorPlacement.parse(params) do
       {:ok, target} ->
-        Intent.notify({:edit, &EditorPlacement.place(&1, &2, armed, target, insert?)})
+        Intent.notify({:edit, &EditorPlacement.place(&1, &2, armed, target, insert?), :follow})
 
       :error ->
         Intent.notify({:flash, :error, Messages.refused(:invalid)})
@@ -269,9 +273,11 @@ defmodule DrawMusicWeb.Editor.ScoreCanvas do
     {:noreply, socket}
   end
 
-  # A click on empty staff: where the next paste goes.
-  def handle_event("set_last_click", %{"at" => at}, socket) when is_integer(at) and at >= 0 do
-    {:noreply, assign(socket, :last_click, at)}
+  # A click on empty music puts the cursor there: where the next paste goes.
+  # Ctrl+Home and Ctrl+End send it too, at the start and the end.
+  def handle_event("set_cursor", %{"at" => at}, socket) when is_integer(at) and at >= 0 do
+    Intent.notify({:session, &Session.put_cursor(&1, at)})
+    {:noreply, socket}
   end
 
   def handle_event("tie", %{"from" => from, "to" => to}, socket)
@@ -284,10 +290,6 @@ defmodule DrawMusicWeb.Editor.ScoreCanvas do
   # audition in Edit mode, paste with nothing copied, a placement with
   # nothing armed) are ignored rather than crashing the editor.
   def handle_event(_event, _params, socket), do: {:noreply, socket}
-
-  @impl true
-  @spec mount(Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
-  def mount(socket), do: {:ok, assign(socket, :last_click, nil)}
 
   @impl true
   @spec render(map()) :: Phoenix.LiveView.Rendered.t()
@@ -305,6 +307,7 @@ defmodule DrawMusicWeb.Editor.ScoreCanvas do
         loading?={@loading?}
         layout={@layout}
         show_note_names?={@show_note_names?}
+        cursor={@session.cursor}
       >
         <.score
           id="score"

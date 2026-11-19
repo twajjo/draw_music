@@ -126,7 +126,7 @@ Phases 5, 6 and 7 had 104, 53 and 57 files per PR. That is far too many to revie
 | 8.19 | **Done** (component refactor, PRs 11–12): `EditorLive`: the form dialogs as LiveComponents |
 | 8.20 | **Done**: `EditorLive`: the event modules with `attach_hook` (the events already went to the components in 8.18–8.21, so the hooks take their results: `EditorLive.ViewChanges` and `EditorLive.Versions` on `:handle_info`, the shared `EditorLive.Edit`; 530 → 288 lines) |
 | 8.21 | **Done** (#49, #52): `EditorLive`: grouped assigns, composed `render/1` |
-| 8.22 | The insertion cursor (server, caret, cheat sheet) |
+| 8.22 | **Done**: the insertion cursor (`Session.cursor`, replacing the canvas's `last_click`: a click on empty music, or selecting one note or rest, puts it; edits and undo clamp it; paste uses it), the caret in Edit mode (`caret.js`), the cheat sheet. Shown whenever it's set, not only with MIDI on: it's where paste goes |
 | 8.23 | MIDI in the browser: WEBMIDI.js, the device menu, sounding the keys |
 | 8.24 | MIDI into the score: `KeyEntry`, `play_keys`, the `midi_length` preference (on the 8.2 Settings page), the cheat sheet |
 

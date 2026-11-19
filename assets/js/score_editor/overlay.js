@@ -1,8 +1,9 @@
 // Drawing on the score's overlay (an <svg> over the score, in staff-space
 // coordinates): the armed piece's ghost, a chord, dragged notes, the
 // selection band and the guide lines of the tie and tempo drags. The
-// playhead (class "playhead") is drawn there too, by playhead_view.js, and
-// clearing leaves it.
+// playhead (class "playhead", by playhead_view.js) and the insertion caret
+// (class "insertion-caret", by caret.js) are drawn there too, and clearing
+// leaves them.
 
 import {keyAlter, ledgerSteps, stepY} from "./geometry"
 import {chordAt} from "./chord"
@@ -24,6 +25,8 @@ const NAME_OUTLINE = 0.35
 // grand staff; a staff is four spaces tall.
 const BAND_PAD = 1.5
 const STAFF_SPACES = 4
+// What clear() leaves: lines other modules own.
+const KEPT = ["playhead", "insertion-caret"]
 
 function element(name, attributes) {
   const el = document.createElementNS(SVG, name)
@@ -93,9 +96,9 @@ export class Overlay {
     return point.matrixTransform(this.svg.getScreenCTM().inverse())
   }
 
-  // Empties it, all but the playhead.
+  // Empties it, all but the playhead and the insertion caret.
   clear() {
-    for (const child of [...this.svg.children]) if (!child.classList.contains("playhead")) child.remove()
+    for (const child of [...this.svg.children]) if (!KEPT.some(name => child.classList.contains(name))) child.remove()
   }
 
   // The armed piece drawn where it would land (`t`, from placementAt), with
