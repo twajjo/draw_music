@@ -39,7 +39,7 @@ defmodule DrawMusic.Music.Editing do
   """
 
   alias DrawMusic.Music.{Clipboard, Context, Duration, Fillers, Note, Placement, Score, Ties}
-  alias DrawMusic.Music.Editing.{ChordEdits, Measures, Pitches, Place, Time, Values}
+  alias DrawMusic.Music.Editing.{ChordEdits, Measures, Moves, Pitches, Place, Time, Values}
 
   @typedoc "Why an edit was refused (see the module doc)."
   @type reason ::
@@ -180,6 +180,11 @@ defmodule DrawMusic.Music.Editing do
   @doc "Splits events in two (see `DrawMusic.Music.Editing.Values.split/3`)."
   @spec split(Score.t(), Context.t(), [id()]) :: {:ok, Score.t(), [id()]} | {:error, reason()}
   defdelegate split(score, ctx, ids), to: Values
+
+  @doc "Moves a selection whole by one step (see `DrawMusic.Music.Editing.Moves.step/4`)."
+  @spec step(Score.t(), Context.t(), [id()], :earlier | :later) ::
+          {:ok, Score.t(), [id()]} | {:error, reason()}
+  defdelegate step(score, ctx, ids, direction), to: Moves
 
   @doc "Ties two notes, given in either order (see `DrawMusic.Music.Ties.tie/4`)."
   @spec tie(Score.t(), Context.t(), id(), id()) :: result()

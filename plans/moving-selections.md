@@ -24,8 +24,8 @@ the place it left. Notes and rests are treated alike.
 4. **What moves the other way** is not selected: it may be split and tied
    over a bar line like any other music, and its rests are rewritten.
 5. **Afterwards:** every bar touched is rewritten (filler rests whole, on
-   the beats); the moved items stay selected; the cursor goes just after
-   them. At the start or end of the score nothing moves (→ at the end does
+   the beats); the moved items stay selected; one moved item puts the
+   cursor just after it (as selecting one does). At the start or end of the score nothing moves (→ at the end does
    not add bars).
 6. **One undo step** per press.
 
@@ -62,7 +62,7 @@ the place it left. Notes and rests are treated alike.
      rests; it should be drawn as one whole-bar rest. That is the
      engraver's (`Engraving.Notes`, already 507 lines: split it first).
    Step 3 above leans on these rules.
-2. **Moving a selection whole** (replaces #78): `Editing.Time.step/4`
+2. **Moving a selection whole** (replaces #78, closed; done): `Editing.Time.step/4`
    (the block move with displacement, rules 1–6), the arrow wiring, the
    cheat sheet's ←/→ entry. Tests: the worked example, a note jumping a
    bar line, a chord, a selection on both staves, the ends of the score.

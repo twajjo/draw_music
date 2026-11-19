@@ -158,7 +158,7 @@ defmodule DrawMusicWeb.Shortcuts do
       keys: ["ArrowLeft", "ArrowRight"],
       modes: @edit,
       action:
-        "Move it a beat earlier or later. With nothing selected: move the cursor back or on to where the previous or next note or rest starts, on either staff (Esc clears the selection)"
+        "Move the selection whole, past the note or rest beside it: it is never split or tied by the move, and the music it passes moves back to fill its place. Near a bar line it jumps the bar line whole; a rest lands only where the rules for rests allow (in 4/4 a half rest on beat 1 or 3), passing more music if it must. It stays selected. With nothing selected: move the cursor back or on to where the previous or next note or rest starts, on either staff (Esc clears the selection)"
     },
     %Shortcut{
       group: "Selecting and moving",

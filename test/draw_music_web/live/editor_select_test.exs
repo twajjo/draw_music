@@ -85,13 +85,15 @@ defmodule DrawMusicWeb.EditorSelectTest do
     refute has_element?(view, "#note-#{id}.selected")
   end
 
-  test "arrows move the selection by scale steps and beats", %{view: view} do
+  # → takes the note past the half rest beside it (beats 3–4), whole.
+  test "arrows move the selection by scale steps, and past the item beside it",
+       %{view: view} do
     select(view, [id_at(view, 960)])
 
     canvas_hook(view, "move", %{"dir" => "up"})
     canvas_hook(view, "move", %{"dir" => "right"})
 
-    assert {0, 1920, "F4", :quarter, 0} in notes_of(view)
+    assert {0, 2880, "F4", :quarter, 0} in notes_of(view)
   end
 
   test "in Overlay, delete removes the selection and leaves the rest where it was",
