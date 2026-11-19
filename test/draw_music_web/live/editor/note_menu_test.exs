@@ -69,6 +69,28 @@ defmodule DrawMusicWeb.Editor.NoteMenuTest do
     assert note_ids(cut) == [notes.e4.id]
   end
 
+  test "one note's menu copies too; Paste here pastes where it starts, once something is copied",
+       %{conn: conn, score: score, c4: c4, e4: e4} do
+    view = host(conn, score, menu_for(e4))
+    assert has_element?(view, "#menu-copy")
+    assert has_element?(view, "#menu-paste[disabled]")
+
+    session = score |> Session.new(@ctx) |> Session.select([c4.id], false) |> Session.copy()
+    view = host(conn, score, menu_for(e4), %{clipboard: session.clipboard})
+    view |> element("#menu-paste") |> render_click()
+
+    assert_receive {:component_sent, {:editor, {:edit, paste}}}
+    assert_receive {:component_sent, {:editor, :close}}
+    {:ok, pasted, _ids} = paste.(score, @ctx)
+    [bar | _rest] = pasted.measures
+
+    assert bar.notes |> Enum.map(&{&1.offset, &1.step}) |> Enum.sort() == [
+             {0, 28},
+             {960, 28},
+             {1920, 30}
+           ]
+  end
+
   test "a selection gets transpose and reverse, not a note's actions",
        %{conn: conn, score: score, c4: c4, e4: e4} do
     view = host(conn, score, selection_menu([c4.id, e4.id]))
@@ -106,8 +128,8 @@ defmodule DrawMusicWeb.Editor.NoteMenuTest do
     end
   end
 
-  defp host(conn, score, menu) do
-    attrs = %{menu: menu, score: score, ctx: @ctx}
+  defp host(conn, score, menu, changes \\ %{}) do
+    attrs = Map.merge(%{menu: menu, score: score, ctx: @ctx}, changes)
     session = %{"component" => NoteMenu, "attrs" => attrs, "test_pid" => self()}
     {:ok, view, _html} = live_isolated(conn, ComponentHostLive, session: session)
     view

@@ -124,7 +124,7 @@ defmodule DrawMusicWeb.Shortcuts do
       mouse: "click empty music",
       modes: @edit,
       action:
-        "Put the cursor there: a thin line in the selection colour, where the next paste goes. It blinks in Overlay mode, where a paste overwrites what follows it. Placing a note, rest or chord, or selecting one note or rest, puts it just after it"
+        "Put the cursor there: a thin line in the selection colour, where the next paste goes. It blinks in Overlay mode, where a placed note replaces what it covers (a paste still makes room). Placing a note, rest or chord, or selecting one note or rest, puts it just after it"
     },
     %Shortcut{
       group: "Selecting and moving",
@@ -259,7 +259,7 @@ defmodule DrawMusicWeb.Shortcuts do
       mouse: "right-click",
       modes: @edit,
       action:
-        "The menu for what's selected, wherever you right-click in the music. One note or rest: its own menu (split, length, rest or note, ties, a tempo change here, delete); one tempo mark: its dialog. Two or more: the selection's menu (transpose, reverse, copy, cut, delete). With nothing selected, right-click a note or rest for its menu"
+        "The menu for what's selected, wherever you right-click in the music. One note or rest: its own menu (split, length, rest or note, ties, a tempo change here, copy, cut, paste here, delete); one tempo mark: its dialog. Two or more: the selection's menu (transpose, reverse, copy, cut, paste here, delete). Paste here puts what you copied in where the note or rest (or the selection) starts. With nothing selected, right-click a note or rest for its menu"
     },
     %Shortcut{
       group: "Editing",

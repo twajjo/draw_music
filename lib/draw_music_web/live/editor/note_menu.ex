@@ -2,8 +2,8 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
   @moduledoc """
   The right-click menu, at the pointer: for one note or rest (split, length,
   a third above or below, rest or note, ties, which staff, a tempo change
-  there, delete), or for a selection (transpose, which staff, reverse, copy,
-  cut, delete).
+  there, copy, cut, paste here, delete), or for a selection (transpose,
+  which staff, reverse, copy, cut, paste here, delete).
 
   A standalone LiveComponent: its actions are built by
   `DrawMusicWeb.EditorCommands.menu/4` and reported to the editor. Its
@@ -14,9 +14,12 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
     * `:menu`: the open `DrawMusicWeb.ContextMenu` (required).
     * `:score` and `:ctx`: the score, to start a tempo change in it (required).
     * `:insert?`: whether Insert mode is on (a longer length makes room).
+    * `:clipboard`: the copied `DrawMusic.Music.Clipboard`, or nil (Paste
+      here is greyed out).
 
   ## Intents
-    * `{:edit, fun}`: an action on the score; then `:close`.
+    * `{:edit, fun}`: an action on the score (Paste here among them); then
+      `:close`.
     * `{:session, fun}`: Copy (and Cut, before its edit) selects the menu's
       notes and copies them.
     * `{:open, {:tempo, target}}`: "Tempo change here…" opens the tempo
@@ -28,7 +31,7 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
   use DrawMusicWeb, :live_component
 
   alias DrawMusic.Engraving.Smufl
-  alias DrawMusic.Music.{Context, Score, Session}
+  alias DrawMusic.Music.{Clipboard, Context, Entry, Score, Session, Timeline}
   alias DrawMusicWeb.{ContextMenu, EditorCommands, TempoTarget}
   alias DrawMusicWeb.Editor.{Intent, Messages}
 
@@ -71,6 +74,29 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
     {:noreply, socket}
   end
 
+  # "Paste here": the clipboard goes in where the menu's note or rest (or
+  # the earliest of the selection) starts, as Ctrl+V does at the cursor.
+  def handle_event("paste", _params, %{assigns: %{clipboard: %Clipboard{} = clipboard}} = socket) do
+    %{menu: menu, score: score, ctx: ctx} = socket.assigns
+
+    case Entry.find_all(Timeline.flatten(score, ctx), menu.ids) do
+      {:ok, entries} ->
+        at = entries |> Enum.map(& &1.start) |> Enum.min()
+        Intent.notify({:edit, EditorCommands.paste(clipboard, at)})
+
+      {:error, :not_found} ->
+        :nothing_to_paste_before
+    end
+
+    Intent.notify(:close)
+    {:noreply, socket}
+  end
+
+  def handle_event("paste", _params, socket) do
+    Intent.notify(:close)
+    {:noreply, socket}
+  end
+
   # "Tempo change here…": a new change where the note or rest starts, at
   # the tempo already in force there; its dialog takes the menu's place.
   def handle_event("tempo", _params, %{assigns: %{menu: menu}} = socket) do
@@ -109,8 +135,8 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
         <.staff_items target={@myself} />
         <.separator />
         <.item id="menu-reverse" action="reverse" target={@myself}>Reverse</.item>
-        <.item id="menu-copy" action="copy" target={@myself}>Copy</.item>
-        <.item id="menu-cut" action="cut" target={@myself}>Cut</.item>
+        <.separator />
+        <.clipboard_items clipboard?={@clipboard != nil} target={@myself} />
         <.separator />
         <.item id="menu-delete" action="menu_delete" target={@myself} danger>Delete</.item>
       </.menu_box>
@@ -134,6 +160,8 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
           Tempo change here…
         </.item>
         <.separator />
+        <.clipboard_items clipboard?={@clipboard != nil} target={@myself} />
+        <.separator />
         <.item id="menu-delete" action="menu_delete" target={@myself} danger>Delete</.item>
       </.menu_box>
     </div>
@@ -143,11 +171,29 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
   @impl true
   @spec update(map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   def update(%{menu: %ContextMenu{}, score: %Score{}, ctx: %Context{}} = assigns, socket) do
-    {:ok, assign(socket, Map.put_new(assigns, :insert?, false))}
+    assigns =
+      assigns
+      |> Map.put_new(:insert?, false)
+      |> Map.put_new(:clipboard, nil)
+
+    {:ok, assign(socket, assigns)}
   end
 
   def update(_assigns, _socket) do
     raise ArgumentError, "NoteMenu needs a :menu, a :score and a :ctx"
+  end
+
+  attr :clipboard?, :boolean, required: true
+  attr :target, :any, required: true
+  # Copy, Cut and Paste here; Paste is greyed out until something is copied.
+  defp clipboard_items(assigns) do
+    ~H"""
+    <.item id="menu-copy" action="copy" target={@target}>Copy</.item>
+    <.item id="menu-cut" action="cut" target={@target}>Cut</.item>
+    <.item id="menu-paste" action="paste" target={@target} disabled={not @clipboard?}>
+      Paste here
+    </.item>
+    """
   end
 
   # DOM ids must not differ only by case (m3 vs M3).
@@ -160,6 +206,7 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
   attr :action, :string, required: true
   attr :target, :any, required: true
   attr :danger, :boolean, default: false
+  attr :disabled, :boolean, default: false
   slot :inner_block, required: true
 
   defp item(assigns) do
@@ -170,8 +217,10 @@ defmodule DrawMusicWeb.Editor.NoteMenu do
       role="menuitem"
       phx-click={@action}
       phx-target={@target}
+      disabled={@disabled}
       class={[
-        "block w-full rounded px-2 py-1 text-left transition-colors hover:bg-base-200",
+        "block w-full rounded px-2 py-1 text-left transition-colors",
+        if(@disabled, do: "cursor-default opacity-40", else: "hover:bg-base-200"),
         @danger && "text-error"
       ]}
     >
