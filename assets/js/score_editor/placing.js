@@ -5,7 +5,7 @@ import {locate, snap, staffItems, xAt, columnAt, insertColumn} from "./geometry"
 
 // About a notehead's width (staff spaces): a click this far right of a
 // column is still on its note or rest.
-const HEAD_WIDTH = 1.3
+export const HEAD_WIDTH = 1.3
 
 // The accidental a held key adds: Shift sharpens, Ctrl or Alt flattens.
 export function modifierOf(e) {

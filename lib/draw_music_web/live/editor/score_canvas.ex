@@ -311,6 +311,7 @@ defmodule DrawMusicWeb.Editor.ScoreCanvas do
         layout={@layout}
         show_note_names?={@show_note_names?}
         cursor={@session.cursor}
+        selected?={MapSet.size(@session.selection) > 0}
       >
         <.score
           id="score"
