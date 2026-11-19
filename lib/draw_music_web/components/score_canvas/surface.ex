@@ -23,6 +23,11 @@ defmodule DrawMusicWeb.ScoreCanvas.Surface do
   attr :layout, :atom, required: true, doc: "`:page` or `:strip`"
   attr :show_note_names?, :boolean, required: true
   attr :cursor, :integer, default: nil, doc: "the insertion cursor's tick, or nil"
+
+  attr :selected?, :boolean,
+    default: false,
+    doc: "whether anything is selected (else the arrows move the cursor)"
+
   slot :inner_block, required: true
   @doc "The score element, holding what the canvas draws in it."
   @spec surface(map()) :: Phoenix.LiveView.Rendered.t()
@@ -41,6 +46,7 @@ defmodule DrawMusicWeb.ScoreCanvas.Surface do
       data-layout={@layout}
       data-show-note-names={to_string(@show_note_names?)}
       data-cursor={@cursor}
+      data-selected={to_string(@selected?)}
     >
       {render_slot(@inner_block)}
       <script :type={Phoenix.LiveView.ColocatedHook} name=".ScoreCanvas">
@@ -59,6 +65,7 @@ defmodule DrawMusicWeb.ScoreCanvas.Surface do
         import {sharedAudio} from "@/js/score_editor/audio"
         import {Band} from "@/js/score_editor/band"
         import {Caret} from "@/js/score_editor/caret"
+        import {cursorAt, cursorMove} from "@/js/score_editor/cursor_moves"
         import {endTick} from "@/js/score_editor/playhead"
         import {chordAt} from "@/js/score_editor/chord"
         import {setPageCursor} from "@/js/score_editor/cursor"
@@ -80,8 +87,6 @@ defmodule DrawMusicWeb.ScoreCanvas.Surface do
 
         // A pointer drag shorter than this (staff spaces) is a click.
         const DRAG_THRESHOLD = 0.5
-        // Clicks on empty staff remember a paste position on this grid (a 16th).
-        const CLICK_GRID = 240
         // Length of the tone played over each new line or space (seconds).
         const PLACEMENT_TONE = 0.25
         // ↑/↓: a scale step (Shift: an octave, Ctrl: a semitone); ←/→: a beat.
@@ -111,6 +116,11 @@ defmodule DrawMusicWeb.ScoreCanvas.Surface do
           destroyed() {
             for (const [target, type, fun, capture] of this.listeners) target.removeEventListener(type, fun, capture)
             setPageCursor(this.el, null)
+          },
+
+          // A key moved the cursor to `at`: drawn and scrolled to at once.
+          moveCursor(at) {
+            this.send("set_cursor", {at}, this.caret.reveal(this.geometry, this.mode, at, this.insert))
           },
 
           // Every event goes to the canvas component.
@@ -144,6 +154,7 @@ defmodule DrawMusicWeb.ScoreCanvas.Surface do
             this.armed = JSON.parse(this.el.dataset.armed || "null")
             this.mode = this.el.dataset.mode || "edit"
             this.insert = this.el.dataset.insert === "true"
+            this.selected = this.el.dataset.selected === "true"
             this.showNoteNames = this.el.dataset.showNoteNames === "true"
             this.el.classList.toggle("play-mode", this.mode === "play")
             this.overlay.setViewBox(this.score.dataset.viewBox)
@@ -248,12 +259,13 @@ defmodule DrawMusicWeb.ScoreCanvas.Surface do
           },
 
           // A click (no drag) on empty music clears the selection and puts the
-          // cursor there, for a paste; a drag selects the range it covers.
+          // cursor in front of the next note or rest (cursorAt); a drag selects
+          // the range it covers.
           endBand() {
             const {start, end} = this.band.finish()
             if (Math.hypot(end.x - start.x, end.y - start.y) < DRAG_THRESHOLD) {
-              const at = tickAt(this.geometry, start)
-              if (at !== null) this.send("set_cursor", {at: Math.floor(at / CLICK_GRID) * CLICK_GRID})
+              const at = cursorAt(this.geometry, start)
+              if (at !== null) this.send("set_cursor", {at})
               return this.send("clear_selection")
             }
 
@@ -416,7 +428,16 @@ defmodule DrawMusicWeb.ScoreCanvas.Surface do
               return send(this.armed ? "disarm" : "clear_selection")
             }
 
-            if (ARROWS[e.key]) {
+            // With nothing selected the arrows move the cursor (cursor_moves.js).
+            if (ARROWS[e.key] && !this.selected) {
+              e.preventDefault()
+              const to = cursorMove(this.geometry, this.caret.tick ?? 0, e.key, ctrl)
+              return to === null || this.moveCursor(to)
+            }
+
+            // Ctrl+←/→ only move the cursor; with a selection they do nothing.
+            const sideways = e.key === "ArrowLeft" || e.key === "ArrowRight"
+            if (ARROWS[e.key] && !(ctrl && sideways)) {
               const by = e.shiftKey ? "octave" : ctrl ? "semitone" : "step"
               // Moved up or down, the notes sound once redrawn.
               this.announceMove = e.key === "ArrowUp" || e.key === "ArrowDown"
@@ -424,9 +445,8 @@ defmodule DrawMusicWeb.ScoreCanvas.Surface do
             }
 
             if (ctrl && (e.key === "Home" || e.key === "End")) {
-              const at = e.key === "Home" ? 0 : endTick(this.geometry)
-              this.caret.reveal(this.geometry, this.mode, at, this.insert)
-              return send("set_cursor", {at})
+              e.preventDefault()
+              return this.moveCursor(e.key === "Home" ? 0 : endTick(this.geometry))
             }
             if (ctrl && k === "c") return send("copy")
             if (ctrl && k === "x") return send("cut")

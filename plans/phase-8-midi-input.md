@@ -129,7 +129,7 @@ Phases 5, 6 and 7 had 104, 53 and 57 files per PR. That is far too many to revie
 | 8.22 | **Done**: the insertion cursor (`Session.cursor`, replacing the canvas's `last_click`: a click on empty music, or selecting one note or rest, puts it; edits and undo clamp it; paste uses it), the caret in Edit mode (`caret.js`), the cheat sheet. Shown whenever it's set, not only with MIDI on: it's where paste goes |
 | 8.22a | **Done**: Copy, Cut and Paste here in both right-click menus (Paste here goes where the note, rest or selection starts; greyed out until something is copied) |
 | 8.22c | **Done**: paste follows the mode: it goes where the selection starts, else at the cursor; Insert goes ahead (the selection moves right), Overlay replaces the selection, or the clipboard's length with nothing selected; the cursor follows the paste. Overwriting's clearing (`Time.clear_span/4`) is shared with placing |
-| 8.22b | The arrow keys move the cursor with nothing selected: Left/Right by one note or rest (either staff), Ctrl+Left/Right by one bar, Up/Down to the same beat in the system above or below (Page layout); the view follows |
+| 8.22b | **Done**: the arrow keys move the cursor with nothing selected: Left/Right by one note or rest (either staff), Ctrl+Left/Right by one bar, Up/Down to the same beat in the system above or below (Page layout); the view follows |
 | 8.23 | MIDI in the browser: WEBMIDI.js, the device menu, sounding the keys |
 | 8.24 | MIDI into the score: `KeyEntry`, `play_keys`, the `midi_length` preference (on the 8.2 Settings page), the cheat sheet |
 

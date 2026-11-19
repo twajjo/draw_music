@@ -104,6 +104,14 @@ defmodule DrawMusicWeb.Editor.ScoreCanvasTest do
     assert {0, 2880, "C4", :quarter, 0} in edited(fun, session)
   end
 
+  test "the score says whether anything is selected, so the arrows know what to move",
+       %{conn: conn} = setup do
+    assert has_element?(host(conn, setup), "#score-editor[data-selected=false]")
+
+    view = host(conn, setup, %{session: with_selection(setup, [setup.c4])})
+    assert has_element?(view, "#score-editor[data-selected=true]")
+  end
+
   test "the bar buttons add, insert and delete bars", %{conn: conn} = setup do
     view = host(conn, setup)
 

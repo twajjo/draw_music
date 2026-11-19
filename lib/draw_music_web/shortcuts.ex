@@ -139,7 +139,7 @@ defmodule DrawMusicWeb.Shortcuts do
       keys: ["ArrowUp", "ArrowDown"],
       modes: @edit,
       action:
-        "Move the selection a scale step; each note keeps its sharp or flat. A note taken past its staff's half of the gap (treble below D3, bass above B4) moves to the other staff, joining a note of the same length there as a chord"
+        "Move the selection a scale step; each note keeps its sharp or flat. A note taken past its staff's half of the gap (treble below D3, bass above B4) moves to the other staff, joining a note of the same length there as a chord. With nothing selected (Page layout): move the cursor to the line of music above or below, about the same place across"
     },
     %Shortcut{
       group: "Selecting and moving",
@@ -157,7 +157,15 @@ defmodule DrawMusicWeb.Shortcuts do
       group: "Selecting and moving",
       keys: ["ArrowLeft", "ArrowRight"],
       modes: @edit,
-      action: "Move it a beat earlier or later"
+      action:
+        "Move it a beat earlier or later. With nothing selected: move the cursor back or on to where the previous or next note or rest starts, on either staff (Esc clears the selection)"
+    },
+    %Shortcut{
+      group: "Selecting and moving",
+      keys: ["Ctrl+ArrowLeft", "Ctrl+ArrowRight"],
+      modes: @edit,
+      action:
+        "With nothing selected: move the cursor back or on a bar (with a selection, nothing)"
     },
     # Ties and chords
     %Shortcut{group: "Ties and chords", keys: ["T"], modes: @edit, action: "Pick the tie tool"},
