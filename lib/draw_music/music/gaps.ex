@@ -17,7 +17,9 @@ defmodule DrawMusic.Music.Gaps do
       plain rests aligned to the beat's start, so none crosses into the next
       beat (after a first eighth: two eighth rests).
     * **An empty bar** is one rest when one value fills it (a dotted half
-      in 3/4), drawn as a whole-bar rest.
+      in 3/4), else the rests the rules give (a whole and a quarter in
+      5/4). Either way the engraver draws it as one whole-bar rest
+      (`DrawMusic.Music.Fillers.silent_bar?/2`).
   """
 
   alias DrawMusic.Music.{Context, Duration, Measure, Rest}

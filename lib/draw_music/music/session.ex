@@ -15,7 +15,7 @@ defmodule DrawMusic.Music.Session do
   never sits past the score's end: edits, undo and redo bring it back.
   """
 
-  alias DrawMusic.Music.{Context, Editing, Entry, Note, Rest, Score, Timeline}
+  alias DrawMusic.Music.{Context, Editing, Entry, Fillers, Note, Rest, Score, Timeline}
 
   defstruct score: nil,
             ctx: %Context{},
@@ -167,8 +167,10 @@ defmodule DrawMusic.Music.Session do
 
   @doc """
   Selects `ids` (unknown ones are ignored), adding to the selection when
-  `add?`. When one note or rest ends up selected, the cursor goes just
-  after it.
+  `add?`. A rest of a silent bar brings the bar's other rests with it,
+  since they are drawn as one whole-bar rest
+  (`DrawMusic.Music.Fillers.bar_silences/1`). When one drawn item ends up
+  selected, the cursor goes just after it.
   """
   @spec select(t(), [Ecto.UUID.t()], boolean()) :: t()
   def select(%__MODULE__{} = session, ids, add?) do
@@ -176,6 +178,7 @@ defmodule DrawMusic.Music.Session do
       session
       |> event_ids()
       |> MapSet.intersection(MapSet.new(ids))
+      |> with_bar_silences(session.score)
 
     follow_selection(%{session | selection: selected(session.selection, known, add?)})
   end
@@ -190,11 +193,15 @@ defmodule DrawMusic.Music.Session do
   @spec selection_ids(t()) :: [Ecto.UUID.t()]
   def selection_ids(%__MODULE__{selection: selection}), do: MapSet.to_list(selection)
 
-  @doc "Adds `id` to the selection, or removes it if already selected."
+  @doc """
+  Adds `id` to the selection, or removes it if already selected; a silent
+  bar's rests go in or out together.
+  """
   @spec toggle(t(), Ecto.UUID.t()) :: t()
   def toggle(%__MODULE__{} = session, id) do
     if MapSet.member?(session.selection, id) do
-      %{session | selection: MapSet.delete(session.selection, id)}
+      drawn = with_bar_silences(MapSet.new([id]), session.score)
+      %{session | selection: MapSet.difference(session.selection, drawn)}
     else
       select(session, [id], true)
     end
@@ -225,19 +232,38 @@ defmodule DrawMusic.Music.Session do
     %{session | cursor: min(cursor, Timeline.end_tick(score, ctx))}
   end
 
-  # One note or rest selected: the cursor goes just after it.
+  # `ends` are the end ticks of one drawn item's notes or rests (none for a
+  # tempo change, which leaves the cursor where it is).
+  defp cursor_after(session, []), do: session
+  defp cursor_after(session, ends), do: %{session | cursor: Enum.max(ends)}
+
+  # One drawn item selected (a note, a rest, or a silent bar's rests, drawn
+  # as one): the cursor goes just after it.
   defp follow_selection(%__MODULE__{selection: selection} = session) do
-    with [id] <- MapSet.to_list(selection),
-         {:ok, entry} <- Entry.find(Timeline.flatten(session.score, session.ctx), id) do
-      %{session | cursor: Entry.end_tick(entry)}
-    else
-      _none_or_several -> session
+    case one_drawn_item(selection, session.score) do
+      nil ->
+        session
+
+      ids ->
+        entries = Timeline.flatten(session.score, session.ctx)
+        ends = for id <- ids, {:ok, entry} <- [Entry.find(entries, id)], do: Entry.end_tick(entry)
+        cursor_after(session, ends)
     end
   end
 
   # An edit that changes nothing leaves history and the saved state alone.
   defp maybe_record(%__MODULE__{score: score} = session, score), do: session
   defp maybe_record(session, score), do: record(session, score, session.ctx)
+
+  # The ids of the one item drawn for `selection`, or nil when it is empty
+  # or more than one drawn item.
+  defp one_drawn_item(selection, score) do
+    case MapSet.to_list(selection) do
+      [] -> nil
+      [id] -> [id]
+      ids -> Enum.find(Fillers.bar_silences(score), &(MapSet.new(&1) == MapSet.new(ids)))
+    end
+  end
 
   defp prune_selection(session) do
     %{session | selection: MapSet.intersection(session.selection, event_ids(session))}
@@ -270,5 +296,13 @@ defmodule DrawMusic.Music.Session do
       {[], cursor} when is_integer(cursor) -> cursor
       {[], nil} -> 0
     end
+  end
+
+  # `ids` plus the other rests of every silent bar they touch.
+  defp with_bar_silences(ids, score) do
+    score
+    |> Fillers.bar_silences()
+    |> Enum.filter(fn silence -> Enum.any?(silence, &MapSet.member?(ids, &1)) end)
+    |> Enum.reduce(ids, &MapSet.union(MapSet.new(&1), &2))
   end
 end

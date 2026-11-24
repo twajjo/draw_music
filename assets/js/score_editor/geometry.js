@@ -80,7 +80,7 @@ export function staffItems(geometry, measure, staff) {
   return measure.columns.filter((c) => c.staves.includes(staff))
 }
 
-// x of the measure's bar rest; mirrors Notes.bar_rest (lib/draw_music/engraving/notes.ex).
+// x of the measure's bar rest; mirrors Rests.bar_rest (lib/draw_music/engraving/rests.ex).
 function barRestX(geometry, measure) {
   return measure.x + (measure.width - geometry.bar_rest_width) / 2
 }
