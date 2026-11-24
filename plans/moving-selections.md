@@ -61,6 +61,10 @@ the place it left. Notes and rests are treated alike.
    - **1b:** an empty bar no single rest fills (5/4, 9/8) is still two
      rests; it should be drawn as one whole-bar rest. That is the
      engraver's (`Engraving.Notes`, already 507 lines: split it first).
+     - **1b-split (in review):** the rest drawing moves out of
+       `Engraving.Notes` into `Engraving.Rests` (Notes 404 lines, Rests
+       122); `voice_counts/1` moves to `Music.Measure`. No behaviour change.
+     - **1b:** then the whole-bar rest, in `Engraving.Rests`.
    Step 3 above leans on these rules.
 2. **Moving a selection whole** (replaces #78, closed; done): `Editing.Time.step/4`
    (the block move with displacement, rules 1–6), the arrow wiring, the

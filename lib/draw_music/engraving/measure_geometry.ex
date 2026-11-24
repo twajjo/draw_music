@@ -11,7 +11,7 @@ defmodule DrawMusic.Engraving.MeasureGeometry do
   `content_x` is beat 1 and `content_end` the end of the last column's
   space. A measure with no columns maps linearly with `scale` (staff spaces
   per tick). `bar_rests` are the staves drawn as one whole rest centred in
-  the bar (`DrawMusic.Engraving.Notes.bar_rest_staves/2`).
+  the bar (`DrawMusic.Engraving.Rests.bar_rest_staves/2`).
   """
 
   alias DrawMusic.Engraving.Column
