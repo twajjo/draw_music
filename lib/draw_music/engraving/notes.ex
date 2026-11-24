@@ -1,8 +1,9 @@
 defmodule DrawMusic.Engraving.Notes do
   @moduledoc """
-  Lays out one measure's notes and rests as drawing items
+  Lays out one measure's notes as drawing items
   (`DrawMusic.Engraving.Item`): noteheads, ledger lines, accidentals, dots,
-  stems, flags, beams and rests.
+  stems, flags and beams, with the measure's rests from
+  `DrawMusic.Engraving.Rests`.
 
   Chords are the notes of one voice that share an offset. In a chord, a
   note a second away from its neighbour moves to the other side of the
@@ -18,6 +19,7 @@ defmodule DrawMusic.Engraving.Notes do
     Item,
     Line,
     MeasureGeometry,
+    Rests,
     Smufl,
     Staff
   }
@@ -28,7 +30,6 @@ defmodule DrawMusic.Engraving.Notes do
     Beaming,
     Context,
     Duration,
-    Gaps,
     Measure,
     Stems
   }
@@ -50,21 +51,6 @@ defmodule DrawMusic.Engraving.Notes do
   @accidental_column 1.2
   # Accidentals closer than this many steps go in different columns.
   @accidental_clearance 6
-  @voice_rest_shift 2
-  # A whole rest hangs from the staff's second line.
-  @whole_rest_line 1
-
-  @rest_glyphs %{
-    whole: :restWhole,
-    half: :restHalf,
-    quarter: :restQuarter,
-    eighth: :rest8th,
-    sixteenth: :rest16th,
-    thirty_second: :rest32nd,
-    sixty_fourth: :rest64th,
-    hundred_twenty_eighth: :rest128th,
-    two_hundred_fifty_sixth: :rest256th
-  }
 
   @flag_glyphs %{
     {1, :up} => :flag8thUp,
@@ -90,29 +76,6 @@ defmodule DrawMusic.Engraving.Notes do
   }
 
   @doc """
-  The staves `measure` shows as a single whole rest centred in the bar
-  (whatever the meter): a staff with nothing on it, or one rest filling the
-  bar in a single voice. The editor hit-tests those rests where they're
-  drawn, not at beat 1.
-  """
-  @spec bar_rest_staves(Measure.t(), pos_integer()) :: [:treble | :bass]
-  def bar_rest_staves(%Measure{} = measure, capacity) do
-    voice_counts = voice_counts(measure)
-
-    for staff <- [:treble, :bass],
-        not Map.has_key?(voice_counts, staff) or
-          Enum.any?(
-            measure.rests,
-            &(&1.staff == staff and bar_rest?(&1, capacity, voice_counts[staff]))
-          ),
-        do: staff
-  end
-
-  @doc "The width of the whole rest drawn for a bar rest (staff spaces)."
-  @spec bar_rest_width() :: float()
-  def bar_rest_width, do: Smufl.width(:restWhole)
-
-  @doc """
   Items for `measure` (number `index`) laid out in `geom` (see
   `DrawMusic.Engraving.MeasureGeometry.x_at/2` for where offsets go). `tied_in`
   holds the ids of notes continuing a tie from the previous measure.
@@ -123,7 +86,7 @@ defmodule DrawMusic.Engraving.Notes do
   @spec items(Measure.t(), non_neg_integer(), MeasureGeometry.t(), Context.t(), MapSet.t()) ::
           {[Item.t()], %{Ecto.UUID.t() => Anchor.t()}}
   def items(%Measure{} = measure, index, %MeasureGeometry{} = geom, %Context{} = ctx, tied_in) do
-    voice_counts = voice_counts(measure)
+    voice_counts = Measure.voice_counts(measure)
     chords = Enum.group_by(measure.notes, &{&1.staff, &1.voice, &1.offset})
     groups = Beaming.groups(measure, ctx, index)
 
@@ -148,7 +111,7 @@ defmodule DrawMusic.Engraving.Notes do
 
     items =
       Enum.flat_map(laid, fn {_key, chord} -> chord.items end) ++
-        stems ++ Enum.flat_map(groups, &beam(&1, laid)) ++ rests(measure, geom, ctx, voice_counts)
+        stems ++ Enum.flat_map(groups, &beam(&1, laid)) ++ Rests.items(measure, geom, ctx)
 
     anchors = for {_key, chord} <- laid, anchor <- chord.anchors, into: %{}, do: anchor
     {items, anchors}
@@ -180,17 +143,6 @@ defmodule DrawMusic.Engraving.Notes do
   # y grows downward: stems up point toward negative y.
   defp away(:up), do: -1
   defp away(:down), do: 1
-
-  # Centred in the bar; the editor's hit-testing mirrors this
-  # (`barRestX` in assets/js/score_editor/geometry.js).
-  defp bar_rest(staff, geom, id) do
-    x = geom.x + (geom.width - bar_rest_width()) / 2
-    glyph(:rest, :restWhole, x, rest_y(:whole, staff), id)
-  end
-
-  defp bar_rest?(rest, capacity, voices) do
-    match?({0, ^capacity, 1}, {rest.offset, Duration.ticks(rest.value, rest.dots), voices})
-  end
 
   # The beam runs between the ideal stem tips of the first and last chords,
   # its slope clamped, then moves away from the notes until every stem is
@@ -397,50 +349,6 @@ defmodule DrawMusic.Engraving.Notes do
     }
   end
 
-  defp placed_rest(rest, geom, shift) do
-    glyph = Map.fetch!(@rest_glyphs, rest.value)
-    x = MeasureGeometry.x_at(geom, rest.offset)
-    right = x + Smufl.width(glyph)
-    dot_y = Staff.middle(rest.staff) - @half_space + shift
-
-    dots =
-      for i <- 0..(rest.dots - 1)//1 do
-        glyph(:dot, :augmentationDot, right + @dot_gap + i * @dot_step, dot_y)
-      end
-
-    [glyph(:rest, glyph, x, rest_y(rest.value, rest.staff) + shift, rest.id) | dots]
-  end
-
-  # A rest filling the bar alone on its staff is drawn as a centered whole
-  # rest, whatever the meter.
-  defp rest(rest, %MeasureGeometry{capacity: capacity} = geom, voices) do
-    if bar_rest?(rest, capacity, voices),
-      do: [bar_rest(rest.staff, geom, rest.id)],
-      else: placed_rest(rest, geom, voice_shift(rest.voice, voices))
-  end
-
-  defp rest_y(:whole, staff), do: Staff.top(staff) + @whole_rest_line
-  defp rest_y(_value, staff), do: Staff.middle(staff)
-
-  # Stored rests, then implied ones: a whole-bar rest on an empty staff, and
-  # rests in the gaps of each voice on a staff with notes.
-  defp rests(measure, geom, ctx, voice_counts) do
-    stored = Enum.flat_map(measure.rests, &rest(&1, geom, voice_counts[&1.staff]))
-
-    empty_staves =
-      for staff <- [:treble, :bass], not Map.has_key?(voice_counts, staff) do
-        bar_rest(staff, geom, nil)
-      end
-
-    gaps =
-      for rest <- Gaps.rests(measure, geom.capacity, ctx),
-          Map.has_key?(voice_counts, rest.staff),
-          item <- rest(rest, geom, voice_counts[rest.staff]),
-          do: item
-
-    stored ++ empty_staves ++ gaps
-  end
-
   defp second_from_unmoved?(_note, nil), do: false
   defp second_from_unmoved?(_note, %Head{moved: true}), do: false
   defp second_from_unmoved?(note, %Head{note: previous}), do: abs(note.step - previous.step) == 1
@@ -493,15 +401,4 @@ defmodule DrawMusic.Engraving.Notes do
 
   defp tip_side(chord, :up), do: chord.top_y
   defp tip_side(chord, :down), do: chord.bottom_y
-
-  defp voice_counts(measure) do
-    (measure.notes ++ measure.rests)
-    |> Enum.group_by(& &1.staff, & &1.voice)
-    |> Map.new(fn {staff, voices} -> {staff, length(Enum.uniq(voices))} end)
-  end
-
-  # With several voices, odd voices' rests move up and even voices' down.
-  defp voice_shift(_voice, 1 = _voices), do: 0
-  defp voice_shift(voice, _voices) when rem(voice, 2) == 1, do: -@voice_rest_shift
-  defp voice_shift(_voice, _voices), do: @voice_rest_shift
 end

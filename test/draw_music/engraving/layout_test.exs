@@ -3,7 +3,7 @@ defmodule DrawMusic.Engraving.LayoutTest do
 
   import DrawMusic.MusicHelpers
 
-  alias DrawMusic.Engraving.{Beam, Layout, MeasureGeometry, Notes, Staff, TempoMark, Tie}
+  alias DrawMusic.Engraving.{Beam, Layout, MeasureGeometry, Rests, Staff, TempoMark, Tie}
   alias DrawMusic.Music.{Context, Editing, Score}
 
   @ctx %Context{}
@@ -102,7 +102,7 @@ defmodule DrawMusic.Engraving.LayoutTest do
 
       # The bass's whole rest is drawn centred, not at beat 1's column.
       [%{x: rest_x}] = Enum.filter(role(layout, :rest), &(&1.glyph == :restWhole))
-      assert rest_x == measure.x + (measure.width - Notes.bar_rest_width()) / 2
+      assert rest_x == measure.x + (measure.width - Rests.bar_rest_width()) / 2
       assert rest_x > hd(measure.columns).x + 2
     end
 

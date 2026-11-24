@@ -31,6 +31,7 @@ defmodule DrawMusic.Engraving.Layout do
     Line,
     MeasureGeometry,
     Notes,
+    Rests,
     Smufl,
     Staff,
     System,
@@ -334,7 +335,7 @@ defmodule DrawMusic.Engraving.Layout do
       scale: scale,
       gap: @insert_gap,
       columns: columns,
-      bar_rests: Notes.bar_rest_staves(measure, capacity)
+      bar_rests: Rests.bar_rest_staves(measure, capacity)
     }
   end
 

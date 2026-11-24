@@ -27,4 +27,15 @@ defmodule DrawMusic.Music.Measure do
   @doc "An empty measure with a fresh id."
   @spec new() :: t()
   def new, do: %__MODULE__{id: Ecto.UUID.generate(), notes: [], rests: []}
+
+  @doc """
+  How many voices each staff of `measure` uses, counting notes and rests.
+  A staff with nothing on it is absent from the map.
+  """
+  @spec voice_counts(t()) :: %{optional(:treble | :bass) => pos_integer()}
+  def voice_counts(%__MODULE__{} = measure) do
+    (measure.notes ++ measure.rests)
+    |> Enum.group_by(& &1.staff, & &1.voice)
+    |> Map.new(fn {staff, voices} -> {staff, length(Enum.uniq(voices))} end)
+  end
 end
