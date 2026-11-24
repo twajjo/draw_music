@@ -5,12 +5,15 @@ defmodule DrawMusic.Engraving.Rests do
   and the rests that fill the gaps between notes (`DrawMusic.Music.Gaps`).
 
   A rest that fills the bar alone on its staff is drawn as a whole rest
-  centred in the bar, whatever the meter. With several voices on a staff,
+  centred in the bar, whatever the meter, and so is a silent bar
+  (`DrawMusic.Music.Fillers.silent_bar?/2`): filler rests that take
+  several values to fill the bar (a whole and a quarter in 5/4) are drawn
+  as that one rest, carrying the first one's id. With several voices on a staff,
   odd voices' rests move up and even voices' rests move down.
   """
 
   alias DrawMusic.Engraving.{Glyph, Item, MeasureGeometry, Smufl, Staff}
-  alias DrawMusic.Music.{Context, Duration, Gaps, Measure}
+  alias DrawMusic.Music.{Context, Duration, Fillers, Gaps, Measure}
 
   @half_space 0.5
   @dot_gap 0.3
@@ -33,16 +36,16 @@ defmodule DrawMusic.Engraving.Rests do
 
   @doc """
   The staves `measure` shows as a single whole rest centred in the bar
-  (whatever the meter): a staff with nothing on it, or one rest filling the
-  bar in a single voice. The editor hit-tests those rests where they're
-  drawn, not at beat 1.
+  (whatever the meter): a staff with nothing on it, a silent bar, or one
+  rest filling the bar in a single voice. The editor hit-tests those rests
+  where they're drawn, not at beat 1.
   """
   @spec bar_rest_staves(Measure.t(), pos_integer()) :: [:treble | :bass]
   def bar_rest_staves(%Measure{} = measure, capacity) do
     voice_counts = Measure.voice_counts(measure)
 
     for staff <- [:treble, :bass],
-        not Map.has_key?(voice_counts, staff) or
+        not Map.has_key?(voice_counts, staff) or Fillers.silent_bar?(measure, staff) or
           Enum.any?(
             measure.rests,
             &(&1.staff == staff and bar_rest?(&1, capacity, voice_counts[staff]))
@@ -55,14 +58,20 @@ defmodule DrawMusic.Engraving.Rests do
   def bar_rest_width, do: Smufl.width(:restWhole)
 
   @doc """
-  Items for the rests of `measure` laid out in `geom`: stored rests, then a
-  whole-bar rest on each empty staff, then rests in the gaps of each voice
-  on a staff with notes.
+  Items for the rests of `measure` laid out in `geom`: stored rests (one
+  whole-bar rest for a silent bar), then a whole-bar rest on each empty
+  staff, then rests in the gaps of each voice on a staff with notes.
   """
   @spec items(Measure.t(), MeasureGeometry.t(), Context.t()) :: [Item.t()]
   def items(%Measure{} = measure, %MeasureGeometry{} = geom, %Context{} = ctx) do
     voice_counts = Measure.voice_counts(measure)
-    stored = Enum.flat_map(measure.rests, &rest(&1, geom, voice_counts[&1.staff]))
+
+    stored =
+      measure.rests
+      |> Enum.group_by(& &1.staff)
+      |> Enum.flat_map(fn {staff, rests} ->
+        staff_rests(measure, staff, rests, geom, voice_counts[staff])
+      end)
 
     empty_staves =
       for staff <- [:treble, :bass], not Map.has_key?(voice_counts, staff) do
@@ -115,6 +124,19 @@ defmodule DrawMusic.Engraving.Rests do
 
   defp rest_y(:whole, staff), do: Staff.top(staff) + @whole_rest_line
   defp rest_y(_value, staff), do: Staff.middle(staff)
+
+  # A silent bar's rests are drawn as one whole-bar rest with the first
+  # one's id; other stored rests one by one.
+  defp staff_rests(measure, staff, rests, geom, voices) do
+    case Fillers.silent_bar?(measure, staff) do
+      true ->
+        first = Enum.min_by(rests, & &1.offset)
+        [bar_rest(staff, geom, first.id)]
+
+      false ->
+        Enum.flat_map(rests, &rest(&1, geom, voices))
+    end
+  end
 
   defp voice_shift(_voice, 1 = _voices), do: 0
   defp voice_shift(voice, _voices) when rem(voice, 2) == 1, do: -@voice_rest_shift

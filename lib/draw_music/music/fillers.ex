@@ -7,11 +7,23 @@ defmodule DrawMusic.Music.Fillers do
   rests the user placed or edited are kept like notes.
   """
 
-  alias DrawMusic.Music.{Context, Entry, Gaps, Note, Rest, Score, Timeline}
+  alias DrawMusic.Music.{Context, Entry, Gaps, Measure, Note, Rest, Score, Timeline}
 
   @typedoc "Where a filler rest sits, and how long it is: what keeps its id."
   @type key ::
           {Ecto.UUID.t(), Note.staff(), Note.voice(), non_neg_integer(), atom(), 0..2}
+
+  @doc """
+  The ids of each silent bar's filler rests (see `silent_bar?/2`), one list
+  per measure and staff, in time order. Each list is drawn as one whole-bar
+  rest, so it is selected as one item.
+  """
+  @spec bar_silences(Score.t()) :: [[Ecto.UUID.t()]]
+  def bar_silences(%Score{} = score) do
+    for measure <- score.measures, staff <- [:treble, :bass], silent_bar?(measure, staff) do
+      for rest <- Enum.sort_by(measure.rests, & &1.offset), rest.staff == staff, do: rest.id
+    end
+  end
 
   @doc "An edited rest is the user's: it is no longer rewritten as filler."
   @spec claim(Note.t() | Rest.t()) :: Note.t() | Rest.t()
@@ -62,6 +74,21 @@ defmodule DrawMusic.Music.Fillers do
       end)
 
     %{score | measures: filled}
+  end
+
+  @doc """
+  Whether `staff` of `measure` is a silent bar: no notes, and only filler
+  rests, in one voice. However many rests the meter needs to fill it (a
+  whole and a quarter in 5/4), it is drawn as one whole-bar rest. A rest
+  the user placed keeps the bar from being silent: it is drawn as written.
+  """
+  @spec silent_bar?(Measure.t(), Note.staff()) :: boolean()
+  def silent_bar?(%Measure{} = measure, staff) do
+    rests = Enum.filter(measure.rests, &(&1.staff == staff))
+
+    rests != [] and Enum.all?(rests, & &1.filler) and
+      not Enum.any?(measure.notes, &(&1.staff == staff)) and
+      match?([_one], Enum.uniq_by(rests, & &1.voice))
   end
 
   defp key(measure, rest) do
