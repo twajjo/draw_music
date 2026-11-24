@@ -77,7 +77,15 @@ defmodule DrawMusicWeb.Shortcuts do
       mouse: "click in the gap before a note or rest",
       modes: @edit,
       action:
-        "Every note and rest has a gap before it. Insert: the picked item goes in front of it and everything after moves right; the preview waits in the gap. Overlay: the item starts there and types over the time it covers"
+        "Insert: every note and rest has a gap before it; the picked item goes in front of it and everything after moves right; the preview waits in the gap"
+    },
+    %Shortcut{
+      group: "Placing",
+      mouse: "hover a bar, then click a zone",
+      modes: @edit,
+      action:
+        "Overlay: the bar under the pointer is shaded in zones, one per place the picked item can start: its own length if it divides the beat (an eighth: 8 in 4/4, 12 in 12/8), else one per beat (a half in 4/4: 4, so it can start on beat 2). The zone under the pointer lights up over all the time the item will cover; a click types over exactly that, and a note running past the bar line is tied into the next bar",
+      diagram: :overlay_zones
     },
     %Shortcut{
       group: "Placing",
@@ -253,7 +261,7 @@ defmodule DrawMusicWeb.Shortcuts do
       keys: ["Insert"],
       modes: @edit,
       action:
-        "Switch between Insert (the default) and Overlay, like typing in a text editor (also the palette's Overlay/Insert button). Insert: the new item goes in front of the note or rest you click before (rests are items like notes, the ones after the music too), everything after it on that staff moves right (the rests at the very end shrink, like trailing spaces, and a bar is added if notes are pushed past the last one), and deleting pulls later music left. Overlay: the new item replaces the time it covers on that staff, from the beat you click: a half replaces two beats of notes and rests, a note sounding into it is shortened, and what's left of a covered note becomes rests. Either way a note too long for the bar is tied over the bar line, and the space after a bar's last note or rest belongs to the next bar: a click there starts the next bar (a bar is added after the last one), leaving the bar you clicked in as it is",
+        "Switch between Insert (the default) and Overlay, like typing in a text editor (also the palette's Overlay/Insert button). Insert: the new item goes in front of the note or rest you click before (rests are items like notes, the ones after the music too), everything after it on that staff moves right (the rests at the very end shrink, like trailing spaces, and a bar is added if notes are pushed past the last one), and deleting pulls later music left. In Insert the space after a bar's last note or rest belongs to the next bar: a click there starts the next bar (a bar is added after the last one), leaving the bar you clicked in as it is. Overlay: the new item replaces the time it covers on that staff, from the zone you click (see the shaded zones): a half replaces two beats of notes and rests, a note sounding into it is shortened, and what's left of a covered note becomes rests. Either way a note too long for the bar is tied over the bar line",
       diagram: :insert_shift
     },
     %Shortcut{

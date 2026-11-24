@@ -38,11 +38,28 @@ written by the beat (`Gaps`), eighths are beamed by the beat, and the
 zones show the beats. To help the user see the beat:
 
 - the palette marks the value that is **one beat** in the current meter
-  (a quarter in 4/4, a dotted quarter in 6/8, 9/8, 12/8), with one key to
-  arm it; part of the zones PR.
+  (a quarter in 4/4, a dotted quarter in 6/8, 9/8, 12/8), with the **B**
+  key to arm it (PR 2).
 
-## PR
+## Decided: in Overlay the zones decide (2026-11-23)
 
-One PR: the zone geometry (pure JS, beside `placing.js`), the overlay
-drawing, the snapping, the cheat sheet (with a diagram), tests of the
-zone rule.
+- A click lands on the start of the zone under the pointer, everywhere in
+  the bar: no snapping to an existing note's or rest's own start.
+- The space after a bar's last item is that bar's last zone, not the next
+  bar (that rule now holds for Insert only).
+
+## PRs
+
+1. **Zones (in review):** the zone-width rule on the server (`Context`, beside the
+   beat; sent to the hook as the armed item's `grid`, tested in ExUnit),
+   the zone drawing and snapping in the hook, the cheat sheet (with a
+   diagram).
+2. **The beat value:** the palette marks the one-beat value; **B** arms it.
+
+## Status
+
+- **PR 1** is in review. It was tried in the browser on 2026-11-24: a half
+  in 6/8 gets two zones, and on beat 2 of the last bar it is a dotted
+  quarter tied to an eighth in a new bar.
+- **Next:** PR 2 (the one-beat mark in the palette, **B** arms it), then a
+  refactor PR splitting `lib/draw_music_web/shortcuts.ex` (508 lines).

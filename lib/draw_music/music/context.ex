@@ -84,4 +84,27 @@ defmodule DrawMusic.Music.Context do
   @doc "Time-signature denominators a score may use."
   @spec time_denominators() :: [pos_integer()]
   def time_denominators, do: @time_denominators
+
+  @doc """
+  How far apart the places are where an item `ticks` long may start in
+  Overlay (its placement zones, see plans/overlay-zones.md), so that it
+  shows the beat:
+
+    * a beat or longer: one zone per beat (`beam_group_ticks/1`: a dotted
+      quarter in 12/8, a quarter in 4/4, so a half can start on beat 2);
+    * shorter, dividing the beat evenly: zones of its own length (an eighth
+      in 12/8 or 4/4);
+    * shorter, not dividing it (a quarter in 6/8): zones of the meter's
+      pulse, the time signature's unit (`beat_ticks/1`).
+  """
+  @spec zone_ticks(t(), pos_integer()) :: pos_integer()
+  def zone_ticks(%__MODULE__{} = ctx, ticks) do
+    beat = beam_group_ticks(ctx)
+
+    case {ticks >= beat, rem(beat, ticks)} do
+      {true, _rem} -> beat
+      {false, 0} -> ticks
+      {false, _rem} -> beat_ticks(ctx)
+    end
+  end
 end

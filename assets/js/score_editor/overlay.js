@@ -8,6 +8,7 @@
 import {keyAlter, ledgerSteps, stepY} from "./geometry"
 import {chordAt} from "./chord"
 import {playheadSpan} from "./playhead"
+import {coverage, zones} from "./zones"
 
 const SVG = "http://www.w3.org/2000/svg"
 const ACCIDENTALS = {"-2": "", "-1": "", 0: "", 1: "", 2: ""}
@@ -27,6 +28,10 @@ const BAND_PAD = 1.5
 const STAFF_SPACES = 4
 // What clear() leaves: lines other modules own.
 const KEPT = ["playhead", "insertion-caret"]
+// Overlay's zones reach this far (staff spaces) above and below their staff.
+const ZONE_PAD = 1
+const ZONE_SHADE = 0.06
+const ZONE_COVER = 0.18
 
 function element(name, attributes) {
   const el = document.createElementNS(SVG, name)
@@ -78,6 +83,11 @@ function clamp(x, low, high) {
   return Math.min(high, Math.max(low, x))
 }
 
+// A zone's rectangle, from x0 to x1, `height` tall from y, in `fill`.
+function zoneRect(y, x0, x1, height, fill, opacity) {
+  return element("rect", {x: x0, y, width: Math.max(0, x1 - x0), height, fill, "fill-opacity": opacity})
+}
+
 export class Overlay {
   constructor(svg) {
     this.svg = svg
@@ -106,6 +116,7 @@ export class Overlay {
   // note if given; a chord's notes (and its name), if one is armed.
   ghost(geometry, armed, t, name = null) {
     this.clear()
+    if (t.zoned) this.zones(geometry, armed, t)
     const g = ghostGroup(t.system.y)
     const x = t.ghostX
     const chord = chordAt(armed, t, geometry.sf)
@@ -145,6 +156,23 @@ export class Overlay {
     }
     this.svg.appendChild(g)
     if (label) this.svg.appendChild(label)
+  }
+
+  // Overlay's zones on the staff under the pointer (`t`, from placementAt):
+  // the bar's zones alternately shaded, and the time the armed piece would
+  // cover from its zone highlighted (into the next bar for a piece tied
+  // over the bar line).
+  zones(geometry, armed, t) {
+    const top = geometry.staff_top[t.staff] - ZONE_PAD
+    const height = STAFF_SPACES + 2 * ZONE_PAD
+
+    for (const zone of zones(t.measure, armed.grid).filter((z) => z.shaded)) {
+      this.svg.appendChild(zoneRect(t.system.y + top, zone.x0, zone.x1, height, "var(--score-ink)", ZONE_SHADE))
+    }
+    for (const span of coverage(geometry, t.measure, t.offset, armed.ticks)) {
+      const system = geometry.systems.find((s) => s.measures.includes(span.measure))
+      this.svg.appendChild(zoneRect(system.y + top, span.x0, span.x1, height, "var(--score-selection)", ZONE_COVER))
+    }
   }
 
   // A dashed guide line, from a tie's start to the pointer.
