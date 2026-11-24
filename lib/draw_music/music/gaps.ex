@@ -22,6 +22,29 @@ defmodule DrawMusic.Music.Gaps do
 
   alias DrawMusic.Music.{Context, Duration, Measure, Rest}
 
+  @doc """
+  Whether a rest `ticks` long may start `offset` ticks into a bar of
+  `ctx`'s meter, by the same rules the gaps are written by: in a simple
+  meter it starts on a multiple of its own length (a half rest in 4/4 on
+  beat 1 or 3); in a compound meter a rest of whole beats starts on a
+  multiple of its length, and a shorter one stays inside one beat, on a
+  multiple of its length from the beat's start.
+  """
+  @spec rest_allowed?(Context.t(), non_neg_integer(), pos_integer()) :: boolean()
+  def rest_allowed?(%Context{} = ctx, offset, ticks) do
+    case {Context.compound?(ctx), 3 * Context.beat_ticks(ctx)} do
+      {false, _beat} ->
+        rem(offset, ticks) == 0
+
+      {true, beat} when rem(ticks, beat) == 0 ->
+        rem(offset, ticks) == 0
+
+      {true, beat} ->
+        beat_start = offset - rem(offset, beat)
+        rem(offset - beat_start, ticks) == 0 and offset + ticks <= beat_start + beat
+    end
+  end
+
   @doc "The filler rests for `measure`'s gaps, `capacity` long, in `ctx`'s meter."
   @spec rests(Measure.t(), pos_integer(), Context.t()) :: [Rest.t()]
   def rests(%Measure{} = measure, capacity, %Context{} = ctx) do
