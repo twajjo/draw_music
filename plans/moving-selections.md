@@ -64,7 +64,7 @@ the place it left. Notes and rests are treated alike.
      - **1b-split (done, #81):** the rest drawing moves out of
        `Engraving.Notes` into `Engraving.Rests` (Notes 404 lines, Rests
        122); `voice_counts/1` moves to `Music.Measure`. No behaviour change.
-     - **1b (in review):** a silent bar (no notes, only filler rests, one
+     - **1b (done, #82):** a silent bar (no notes, only filler rests, one
        voice: `Fillers.silent_bar?/2`) is drawn as one whole-bar rest,
        hit-tested where it's drawn; a click selects all its rests and puts
        the cursor after the bar. Rests the user placed are drawn as written.

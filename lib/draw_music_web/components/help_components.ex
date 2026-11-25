@@ -187,6 +187,16 @@ defmodule DrawMusicWeb.HelpComponents do
     """
   end
 
+  # A 4/4 bar's four zones for a half note, alternately shaded; the one
+  # under the pointer (beat 2) lit over the two beats the half will cover.
+  defp picture(%{name: :overlay_zones} = assigns) do
+    ~H"""
+    <rect :for={x <- [0, 8]} x={x} y="-1" width="4" height="6" fill-opacity="0.08" />
+    <rect x="4" y="-1" width="8" height="6" fill="var(--score-selection)" fill-opacity="0.2" />
+    <text x="5" y="2" opacity="0.45">{@note}</text>
+    """
+  end
+
   defp picture(%{name: :play_cursor} = assigns) do
     ~H"""
     <text x="3" y="2">{@note}</text>

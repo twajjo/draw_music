@@ -23,7 +23,8 @@ defmodule DrawMusicWeb.EditorGeometry do
 
   @doc """
   The armed item for the hook: what to draw as the cursor and the time grid
-  to snap to (the undotted value's length), or nil when nothing is armed.
+  of its placement zones (`DrawMusic.Music.Context.zone_ticks/2`), or nil
+  when nothing is armed.
   """
   @spec armed(Armed.t() | nil, Context.t()) :: ArmedPayload.t() | nil
   def armed(nil, _ctx), do: nil
@@ -35,7 +36,8 @@ defmodule DrawMusicWeb.EditorGeometry do
       dots: armed.dots,
       alter: armed.alter,
       glyph: EditorPalette.cursor_glyph(armed),
-      grid: Duration.ticks(armed.value),
+      grid: Context.zone_ticks(ctx, Duration.ticks(armed.value, armed.dots)),
+      ticks: Duration.ticks(armed.value, armed.dots),
       chord: chord_shape(armed.chord, ctx)
     }
   end

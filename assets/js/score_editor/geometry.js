@@ -85,12 +85,6 @@ function barRestX(geometry, measure) {
   return measure.x + (measure.width - geometry.bar_rest_width) / 2
 }
 
-// Overlay: the item (staffItems) whose insertion gap or head (`head` wide)
-// is at x, or null.
-export function columnAt(items, gap, x, head) {
-  return items.find((c) => x >= c.x - gap && x < c.x + head) || null
-}
-
 // Insert: the item (staffItems) a click at x goes in front of (the first
 // whose head ends right of x), or null past the last one.
 export function insertColumn(items, x, head) {
