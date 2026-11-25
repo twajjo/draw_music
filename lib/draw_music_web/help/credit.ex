@@ -1,4 +1,4 @@
-defmodule DrawMusicWeb.Credit do
+defmodule DrawMusicWeb.Help.Credit do
   @moduledoc """
   A third-party work DrawMusic uses, as listed on the Credits page: who
   made it, its license (with a link when there is one), where it comes

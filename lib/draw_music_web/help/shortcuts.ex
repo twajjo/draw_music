@@ -1,4 +1,4 @@
-defmodule DrawMusicWeb.Shortcuts do
+defmodule DrawMusicWeb.Help.Shortcuts do
   @moduledoc """
   The cheat-sheet's contents: every key and mouse action the editor
   understands, for `/help` and the editor's help dialog. The entries are
@@ -9,8 +9,8 @@ defmodule DrawMusicWeb.Shortcuts do
   editor's hook acts on; a test keeps the two in step.
   """
 
-  alias DrawMusicWeb.Shortcut
-  alias DrawMusicWeb.Shortcuts.{Editing, Placing, SavingAndPlayback}
+  alias DrawMusicWeb.Help.Shortcut
+  alias DrawMusicWeb.Help.Shortcuts.{Editing, Placing, SavingAndPlayback}
 
   @groups [
     "Placing",

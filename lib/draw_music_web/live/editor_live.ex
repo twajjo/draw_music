@@ -35,9 +35,10 @@ defmodule DrawMusicWeb.EditorLive do
     EditorSettings,
     LayoutToggle,
     PaperToggle,
-    Shortcuts,
     VersionLookup
   }
+
+  alias DrawMusicWeb.Help.Shortcuts
 
   alias DrawMusicWeb.Editor.{
     Palette,

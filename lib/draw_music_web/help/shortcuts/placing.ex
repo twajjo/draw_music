@@ -1,7 +1,7 @@
-defmodule DrawMusicWeb.Shortcuts.Placing do
-  @moduledoc "The cheat-sheet's Placing and Selecting and moving entries. See `DrawMusicWeb.Shortcuts`."
+defmodule DrawMusicWeb.Help.Shortcuts.Placing do
+  @moduledoc "The cheat-sheet's Placing and Selecting and moving entries. See `DrawMusicWeb.Help.Shortcuts`."
 
-  alias DrawMusicWeb.Shortcut
+  alias DrawMusicWeb.Help.Shortcut
 
   @edit [:edit]
 

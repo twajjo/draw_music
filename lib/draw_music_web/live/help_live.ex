@@ -8,7 +8,7 @@ defmodule DrawMusicWeb.HelpLive do
 
   import DrawMusicWeb.HelpComponents
 
-  alias DrawMusicWeb.Shortcuts
+  alias DrawMusicWeb.Help.Shortcuts
 
   @impl true
   def mount(_params, _session, socket) do

@@ -82,7 +82,7 @@ defmodule DrawMusicWeb.ScoreCanvas.Surface do
         import {StatusNotes} from "@/js/score_editor/status_notes"
         // The editor's keys, this hook's, the palette's (Editor.Palette's
         // .PaletteKeys) and the transport's (Editor.Transport's .Transport);
-        // the cheat-sheet (DrawMusicWeb.Shortcuts) lists the same ones.
+        // the cheat-sheet (DrawMusicWeb.Help.Shortcuts) lists the same ones.
         import KEYS from "@/js/score_editor/keys.json"
 
         // A pointer drag shorter than this (staff spaces) is a click.

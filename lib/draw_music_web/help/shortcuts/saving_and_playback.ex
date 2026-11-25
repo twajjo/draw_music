@@ -1,7 +1,7 @@
-defmodule DrawMusicWeb.Shortcuts.SavingAndPlayback do
-  @moduledoc "The cheat-sheet's Saving, Playback and Modes entries. See `DrawMusicWeb.Shortcuts`."
+defmodule DrawMusicWeb.Help.Shortcuts.SavingAndPlayback do
+  @moduledoc "The cheat-sheet's Saving, Playback and Modes entries. See `DrawMusicWeb.Help.Shortcuts`."
 
-  alias DrawMusicWeb.Shortcut
+  alias DrawMusicWeb.Help.Shortcut
 
   @play [:play]
   @both [:edit, :play]
