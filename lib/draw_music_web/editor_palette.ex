@@ -8,7 +8,7 @@ defmodule DrawMusicWeb.EditorPalette do
   """
 
   alias DrawMusic.Engraving.Smufl
-  alias DrawMusic.Music.{Chords, Duration}
+  alias DrawMusic.Music.{Chords, Context, Duration}
   alias DrawMusicWeb.Armed
 
   @values Map.new(Duration.values(), &{Atom.to_string(&1), &1})
@@ -70,6 +70,17 @@ defmodule DrawMusicWeb.EditorPalette do
   end
 
   @doc """
+  Arms one beat (`beat/1`'s `{value, dots}`) as a note or a rest, as the
+  duration row shows (`row_kind`), keeping the accidental of a note
+  already armed at that value. In chord mode the chord becomes a beat long.
+  """
+  @spec arm_beat(Armed.t() | nil, :note | :rest, {Duration.value(), 0..2}) :: Armed.t()
+  def arm_beat(armed, row_kind, {value, dots}) do
+    {:ok, armed} = arm(armed, Atom.to_string(row_kind), Atom.to_string(value))
+    %{armed | dots: dots}
+  end
+
+  @doc """
   Chord mode: places `chord` at the armed note's length, dots and
   accidental (a quarter with nothing armed), whichever was picked first.
   Picking the chord that is already on turns chord mode off.
@@ -85,6 +96,17 @@ defmodule DrawMusicWeb.EditorPalette do
   @doc "Arms the tie tool."
   @spec arm_tie() :: Armed.t()
   def arm_tie, do: %Armed{kind: :tie, value: :quarter}
+
+  @doc """
+  The value that is one beat in `ctx`'s meter, as `{value, dots}`: the beat
+  felt in the bar (`Context.beam_group_ticks/1`), a quarter in 4/4, a half
+  in 2/2, a dotted quarter in 6/8, 9/8 and 12/8.
+  """
+  @spec beat(Context.t()) :: {Duration.value(), 0..2}
+  def beat(%Context{} = ctx) do
+    {:ok, [beat]} = Duration.decompose(Context.beam_group_ticks(ctx))
+    beat
+  end
 
   @doc "Parses a chord pick: a quality or a scale degree; `:error` for anything else."
   @spec chord(map()) :: {:ok, Armed.chord()} | :error

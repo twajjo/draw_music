@@ -80,6 +80,18 @@ defmodule DrawMusicWeb.EditorPaletteTest do
     assert has_element?(view, "#palette-insert[aria-pressed=true]", "Insert")
   end
 
+  test "the Beat sign shows one beat, and B arms it as a note or a rest", %{view: view} do
+    assert has_element?(view, "#palette-beat[data-value=quarter]")
+
+    view |> element("#palette") |> render_hook("arm_beat", %{})
+    assert has_element?(view, "#palette-quarter[data-kind=note][aria-pressed=true]")
+    refute has_element?(view, "#palette-dot[aria-pressed=true]")
+
+    view |> element("#palette-rest-toggle") |> render_click()
+    view |> element("#palette") |> render_hook("arm_beat", %{})
+    assert has_element?(view, "#palette-quarter[data-kind=rest][aria-pressed=true]")
+  end
+
   test "undo and redo are disabled with no history", %{view: view} do
     assert has_element?(view, "#palette-undo[disabled]")
     assert has_element?(view, "#palette-redo[disabled]")

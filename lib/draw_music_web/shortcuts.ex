@@ -46,6 +46,13 @@ defmodule DrawMusicWeb.Shortcuts do
     },
     %Shortcut{
       group: "Placing",
+      keys: ["B"],
+      modes: @edit,
+      action:
+        "Pick one beat of the meter, as a note or a rest: a quarter in 4/4, a dotted quarter in 6/8, 9/8 and 12/8. The palette shows it as “Beat” and its note, beside the lengths"
+    },
+    %Shortcut{
+      group: "Placing",
       keys: ["."],
       modes: @edit,
       action: "Dot the picked value, or the selected notes (a 128th takes one dot, a 256th none)"

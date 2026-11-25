@@ -17,6 +17,9 @@ defmodule DrawMusicWeb.Editor.Palette do
   ## Inputs
     * `:id`: the component's id (required by LiveView).
     * `:armed`, `:row_kind`, `:insert?`: the palette's state.
+    * `:beat`: the value that is one beat in the score's meter, as
+      `{value, dots}` (`DrawMusicWeb.EditorPalette.beat/1`): the durations
+      mark it, and B arms it.
     * `:selection`: the selected ids, which the dot, the accidentals and
       the chords change when nothing is armed.
     * `:can_undo?`, `:can_redo?`, `:mode` (the key's), `:editor_mode`.
@@ -51,6 +54,7 @@ defmodule DrawMusicWeb.Editor.Palette do
     armed: nil,
     row_kind: :note,
     insert?: false,
+    beat: {:quarter, 0},
     selection: [],
     can_undo?: false,
     can_redo?: false,
@@ -65,7 +69,7 @@ defmodule DrawMusicWeb.Editor.Palette do
 
   # Edit mode's events; in Play mode (its buttons gone, its keys off) a
   # stray one is ignored.
-  @edit_events ~w(arm arm_value arm_chord arm_tie disarm single_notes toggle_rest toggle_dot
+  @edit_events ~w(arm arm_beat arm_value arm_chord arm_tie disarm single_notes toggle_rest toggle_dot
                   set_accidental toggle_insert select_all undo redo open_settings rekey)
 
   @impl true
@@ -78,6 +82,13 @@ defmodule DrawMusicWeb.Editor.Palette do
 
   def handle_event("arm", %{"kind" => kind, "value" => value}, socket) do
     report_armed(EditorPalette.arm(socket.assigns.armed, kind, value))
+    {:noreply, socket}
+  end
+
+  # B arms one beat of the meter, of the row's kind.
+  def handle_event("arm_beat", _params, socket) do
+    %{armed: armed, row_kind: row_kind, beat: beat} = socket.assigns
+    Intent.notify({:palette, %{armed: EditorPalette.arm_beat(armed, row_kind, beat)}})
     {:noreply, socket}
   end
 
@@ -234,6 +245,7 @@ defmodule DrawMusicWeb.Editor.Palette do
         armed={@armed}
         row_kind={@row_kind}
         insert?={@insert?}
+        beat={@beat}
         can_undo?={@can_undo?}
         can_redo?={@can_redo?}
         mode={@mode}
@@ -263,6 +275,7 @@ defmodule DrawMusicWeb.Editor.Palette do
           "Ctrl+A": "select_all",
           "Insert": "toggle_insert",
           "0": "disarm",
+          "B": "arm_beat",
           "R": "toggle_rest",
           ".": "toggle_dot",
           "T": "arm_tie"

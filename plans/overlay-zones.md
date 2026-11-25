@@ -54,12 +54,21 @@ zones show the beats. To help the user see the beat:
    beat; sent to the hook as the armed item's `grid`, tested in ExUnit),
    the zone drawing and snapping in the hook, the cheat sheet (with a
    diagram).
-2. **The beat value:** the palette marks the one-beat value; **B** arms it.
+2. **The beat value:** the palette shows the one-beat value as a "Beat" sign; **B** arms it.
 
 ## Status
 
-- **PR 1** is in review. It was tried in the browser on 2026-11-24: a half
-  in 6/8 gets two zones, and on beat 2 of the last bar it is a dotted
-  quarter tied to an eighth in a new bar.
-- **Next:** PR 2 (the one-beat mark in the palette, **B** arms it), then a
-  refactor PR splitting `lib/draw_music_web/shortcuts.ex` (508 lines).
+- **PR 1 (done, #83):** tried in the browser on 2026-11-24: a half in 6/8
+  gets two zones, and on beat 2 of the last bar it is a dotted quarter
+  tied to an eighth in a new bar.
+- **PR 2 (in review):** `EditorPalette.beat/1` (the felt beat as
+  `{value, dots}`) is passed to the palette, which shows it as a sign,
+  "Beat" and its note (dotted in 6/8), between the lengths and Tie; the
+  buttons themselves stay unmarked (a mark on the quarter alone misled in
+  6/8). **B** arms it as a note or rest (`arm_beat/3`).
+- **Next:** a refactor PR splitting `lib/draw_music_web/shortcuts.ex`
+  (over 500 lines).
+- **Then, a feature of its own:** reloading the page must not lose work.
+  Today the main page always opens a new blank draft, so a reload drops an
+  unsaved piece, its settings included. Keep the draft across reloads (or
+  at least refuse to lose it); plan it as its own PR list.

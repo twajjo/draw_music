@@ -150,6 +150,15 @@ defmodule DrawMusicWeb.EditorSettingsTest do
     assert {saved.tempo_bpm, saved.tempo_text} == {90, "Andante"}
   end
 
+  test "the palette's Beat sign follows the meter: a dotted quarter in 6/8", %{conn: conn} do
+    view = draft(conn)
+    assert has_element?(view, "#palette-beat[data-value=quarter][data-dots='0']")
+
+    apply_settings(view, %{"time_num" => "6", "time_den" => "8"})
+
+    assert has_element?(view, "#palette-beat[data-value=quarter][data-dots='1']")
+  end
+
   # A marking is chosen first: its words are then the ones that can be printed.
   defp apply_settings(view, changes) do
     settings = Map.merge(@settings, changes)

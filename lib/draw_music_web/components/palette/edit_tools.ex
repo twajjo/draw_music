@@ -1,7 +1,8 @@
 defmodule DrawMusicWeb.Palette.EditTools do
   @moduledoc """
   The palette's two rows in Edit mode. The first holds what is placed: the
-  durations, then tie and the chords menu. The second holds how it is
+  durations, the meter's beat (a sign, not a button: B arms it), then tie
+  and the chords menu. The second holds how it is
   placed: the modifiers (rest, dot, accidentals), the Insert/Overlay
   switch, Suggest key (`DrawMusicWeb.Palette.KeyMenu`), then settings,
   select all, undo and redo.
@@ -16,6 +17,7 @@ defmodule DrawMusicWeb.Palette.EditTools do
   import DrawMusicWeb.Palette.Buttons
   import DrawMusicWeb.Palette.KeyMenu
 
+  alias DrawMusic.Engraving.Smufl
   alias DrawMusic.Music.{Chords, KeySuggestion}
   alias DrawMusicWeb.{Dropdown, EditorPalette}
   alias Phoenix.LiveView.JS
@@ -31,6 +33,11 @@ defmodule DrawMusicWeb.Palette.EditTools do
     {:hundred_twenty_eighth, "128th", "8", :note128thUp, :rest128th},
     {:two_hundred_fifty_sixth, "256th", "9", :note256thUp, :rest256th}
   ]
+
+  # Where the beat sign's dots go (`beat_sign/1`), in staff spaces: past
+  # the stem, at the notehead's height.
+  @beat_dot_x 1.7
+  @beat_dot_gap 0.6
 
   @qualities [
     :major,
@@ -57,6 +64,11 @@ defmodule DrawMusicWeb.Palette.EditTools do
   attr :armed, :map, default: nil
   attr :row_kind, :atom, default: :note, values: [:note, :rest]
   attr :insert?, :boolean, default: false
+
+  attr :beat, :any,
+    default: {:quarter, 0},
+    doc: "the value that is one beat in the meter, as `{value, dots}`, shown beside the durations"
+
   attr :can_undo?, :boolean, default: false
   attr :can_redo?, :boolean, default: false
   attr :mode, :atom, default: :major, doc: "the key's mode, for chord numerals"
@@ -72,6 +84,7 @@ defmodule DrawMusicWeb.Palette.EditTools do
     <div id="palette-edit" class="contents">
       <div class="col-start-3 row-start-1 ml-3 flex min-w-0 flex-nowrap items-stretch gap-2">
         <.durations armed={@armed} row_kind={@row_kind} target={@target} />
+        <.beat_sign beat={@beat} />
         <div class="join" role="group" aria-label="Ties and chords">
           <.tie_button armed={@armed} target={@target} />
           <.chords_menu
@@ -98,6 +111,58 @@ defmodule DrawMusicWeb.Palette.EditTools do
 
   defp armed?(nil, _kinds, _value), do: false
   defp armed?(%{kind: kind, value: value}, kinds, wanted), do: kind in kinds and value == wanted
+
+  attr :beat, :any, required: true
+  # "Beat:" over the value that is one beat in the meter, drawn as in a score:
+  # a quarter in 4/4, a dotted quarter in 6/8. Not a button: B arms it.
+  defp beat_sign(assigns) do
+    {value, dots} = assigns.beat
+
+    assigns =
+      assign(assigns,
+        value: value,
+        glyph: note_glyph(value),
+        dots: dots,
+        dot_x: @beat_dot_x,
+        dot_gap: @beat_dot_gap
+      )
+
+    ~H"""
+    <div
+      id="palette-beat"
+      data-value={@value}
+      data-dots={@dots}
+      title={beat_title(@dots)}
+      class="flex shrink-0 flex-col items-center justify-center text-base-content/70"
+    >
+      <span class="text-[0.65rem] leading-none">Beat:</span>
+      <svg viewBox={beat_view_box(@glyph, @dots)} class="mt-0.5 h-5 w-auto" aria-hidden="true">
+        <text font-family="Bravura" font-size="4" fill="currentColor">{Smufl.char(@glyph)}</text>
+        <text
+          :for={dot <- 1..@dots//1}
+          x={@dot_x + (dot - 1) * @dot_gap}
+          font-family="Bravura"
+          font-size="4"
+          fill="currentColor"
+          class="beat-dot"
+        >
+          {Smufl.char(:augmentationDot)}
+        </text>
+      </svg>
+    </div>
+    """
+  end
+
+  defp beat_title(0), do: "One beat in this meter (B arms it)"
+  defp beat_title(_dots), do: "One beat in this meter is dotted (B arms it)"
+
+  # The sign's box, in staff spaces (y down): the note on the duration row's
+  # range, and room for its dots past the notehead.
+  defp beat_view_box(glyph, dots) do
+    {_x0, _y0, x1, _y1} = Smufl.bbox(glyph)
+    right = max(x1, @beat_dot_x + dots * @beat_dot_gap)
+    Enum.map_join([-0.1, -3.6, right + 0.1, 4.3], " ", &Float.round(&1 / 1, 3))
+  end
 
   defp chip_class(selected) do
     [
@@ -196,6 +261,12 @@ defmodule DrawMusicWeb.Palette.EditTools do
     end
   end
 
+  # A length's tooltip.
+  defp duration_title(label, key, row_kind) do
+    kind = if row_kind == :rest, do: "rest", else: "note"
+    "#{label} #{kind} (#{key})"
+  end
+
   attr :armed, :map, required: true
   attr :row_kind, :atom, required: true
   attr :target, :any, required: true
@@ -211,7 +282,7 @@ defmodule DrawMusicWeb.Palette.EditTools do
         event="arm"
         kind={@row_kind}
         value={value}
-        title={"#{label} #{if @row_kind == :rest, do: "rest", else: "note"} (#{key})"}
+        title={duration_title(label, key, @row_kind)}
         pressed={armed?(@armed, [:note, :rest, :chord], value)}
         glyph={if @row_kind == :rest, do: rest_glyph, else: note_glyph}
         target={@target}
@@ -267,6 +338,12 @@ defmodule DrawMusicWeb.Palette.EditTools do
       </.tool_button>
     </div>
     """
+  end
+
+  # A value's note glyph, as on its button.
+  defp note_glyph(value) do
+    {^value, _label, _key, glyph, _rest} = List.keyfind(@values, value, 0)
+    glyph
   end
 
   defp insert_title(true = _insert?) do
