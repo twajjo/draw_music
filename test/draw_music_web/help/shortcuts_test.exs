@@ -1,7 +1,7 @@
-defmodule DrawMusicWeb.ShortcutsTest do
+defmodule DrawMusicWeb.Help.ShortcutsTest do
   use ExUnit.Case, async: true
 
-  alias DrawMusicWeb.Shortcuts
+  alias DrawMusicWeb.Help.Shortcuts
 
   @hook_keys "assets/js/score_editor/keys.json"
 

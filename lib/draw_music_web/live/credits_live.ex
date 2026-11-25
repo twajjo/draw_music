@@ -6,7 +6,7 @@ defmodule DrawMusicWeb.CreditsLive do
 
   use DrawMusicWeb, :live_view
 
-  alias DrawMusicWeb.Credit
+  alias DrawMusicWeb.Help.Credit
 
   @mit "https://opensource.org/license/mit"
 

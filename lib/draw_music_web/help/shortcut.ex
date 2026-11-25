@@ -1,4 +1,4 @@
-defmodule DrawMusicWeb.Shortcut do
+defmodule DrawMusicWeb.Help.Shortcut do
   @moduledoc """
   One line of the cheat-sheet: the keys (as `assets/js/score_editor/keys.json`
   names them) or mouse gesture that does something, the modes it works

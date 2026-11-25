@@ -1,7 +1,7 @@
-defmodule DrawMusicWeb.Shortcuts.Editing do
-  @moduledoc "The cheat-sheet's Ties and chords, Measures and Editing entries. See `DrawMusicWeb.Shortcuts`."
+defmodule DrawMusicWeb.Help.Shortcuts.Editing do
+  @moduledoc "The cheat-sheet's Ties and chords, Measures and Editing entries. See `DrawMusicWeb.Help.Shortcuts`."
 
-  alias DrawMusicWeb.Shortcut
+  alias DrawMusicWeb.Help.Shortcut
 
   @edit [:edit]
 

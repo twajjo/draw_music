@@ -1,6 +1,6 @@
 defmodule DrawMusicWeb.HelpComponents do
   @moduledoc """
-  The cheat-sheet: every key and mouse action (`DrawMusicWeb.Shortcuts`) by
+  The cheat-sheet: every key and mouse action (`DrawMusicWeb.Help.Shortcuts`) by
   group, with small diagrams of the gestures, drawn in the score's own ink
   and paper colours and its music font.
   """
@@ -8,7 +8,7 @@ defmodule DrawMusicWeb.HelpComponents do
   use Phoenix.Component
 
   alias DrawMusic.Engraving.Smufl
-  alias DrawMusicWeb.Shortcut
+  alias DrawMusicWeb.Help.Shortcut
 
   @key_labels %{
     "ArrowUp" => "↑",
@@ -26,7 +26,7 @@ defmodule DrawMusicWeb.HelpComponents do
   @staff_width 16
 
   @doc "Shortcuts in groups, in the order given."
-  attr :shortcuts, :list, required: true, doc: "`DrawMusicWeb.Shortcut` structs, grouped"
+  attr :shortcuts, :list, required: true, doc: "`DrawMusicWeb.Help.Shortcut` structs, grouped"
   @spec cheat_sheet(map()) :: Phoenix.LiveView.Rendered.t()
   def cheat_sheet(assigns) do
     assigns = assign(assigns, :groups, Enum.chunk_by(assigns.shortcuts, & &1.group))
@@ -54,7 +54,7 @@ defmodule DrawMusicWeb.HelpComponents do
     """
   end
 
-  @doc "One gesture's picture, by name (see `DrawMusicWeb.Shortcut`'s `:diagram`)."
+  @doc "One gesture's picture, by name (see `DrawMusicWeb.Help.Shortcut`'s `:diagram`)."
   attr :name, :atom, required: true
   @spec diagram(map()) :: Phoenix.LiveView.Rendered.t()
   def diagram(assigns) do

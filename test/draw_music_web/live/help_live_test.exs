@@ -3,7 +3,7 @@ defmodule DrawMusicWeb.HelpLiveTest do
 
   import Phoenix.LiveViewTest
 
-  alias DrawMusicWeb.Shortcuts
+  alias DrawMusicWeb.Help.Shortcuts
 
   test "/help renders signed out with every group and the gesture diagrams" do
     {:ok, view, _html} = live(build_conn(), ~p"/help")
