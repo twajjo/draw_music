@@ -31,6 +31,7 @@ defmodule DrawMusicWeb.EditorLive do
 
   alias DrawMusicWeb.{
     DetailsDialog,
+    EditorPalette,
     EditorSettings,
     LayoutToggle,
     PaperToggle,
@@ -188,6 +189,7 @@ defmodule DrawMusicWeb.EditorLive do
         armed={@palette.armed}
         row_kind={@palette.row_kind}
         insert?={@palette.insert?}
+        beat={EditorPalette.beat(@session.ctx)}
         selection={Session.selection_ids(@session)}
         can_undo?={@session.undo != []}
         can_redo?={@session.redo != []}
